@@ -1,0 +1,74 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/turret.gd" id="1"]
+[ext_resource type="Resource" path="res://data/ammo_types/he_shell.tres" id="2"]
+[ext_resource type="Resource" path="res://data/ammo_types/iron_piercing_ammo.tres" id="3"]
+
+[sub_resource type="BoxShape3D" id="1"]
+size = Vector3(1.5, 1.5, 1.5)
+
+[sub_resource type="BoxMesh" id="2"]
+size = Vector3(1.5, 1.5, 1.5)
+
+[sub_resource type="CylinderMesh" id="3"]
+top_radius = 0.22
+bottom_radius = 0.24
+height = 0.9
+
+[sub_resource type="StandardMaterial3D" id="4"]
+albedo_color = Color(0.35, 0.32, 0.18, 1)
+
+[node name="TurretCannon" type="StaticBody3D"]
+script = ExtResource("1")
+compatible_ammo = Array[AmmoType]([ExtResource("2"), ExtResource("3")])
+ammo_per_shot = 1
+attack_range = 20.0
+fire_interval = 1.6
+head_turn_speed = 4.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)
+shape = SubResource("1")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)
+mesh = SubResource("2")
+
+[node name="Head" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+
+[node name="Barrel" type="MeshInstance3D" parent="Head"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0.15, -0.45)
+mesh = SubResource("3")
+surface_material_override/0 = SubResource("4")
+
+[node name="Muzzle" type="Marker3D" parent="Head"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, -0.9)
+
+[node name="LabelPosZ" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0.76)
+billboard = 0
+double_sided = false
+font_size = 32
+text = "Turret (Cannon)"
+
+[node name="LabelNegZ" type="Label3D" parent="."]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0.75, -0.76)
+billboard = 0
+double_sided = false
+font_size = 32
+text = "Turret (Cannon)"
+
+[node name="LabelPosX" type="Label3D" parent="."]
+transform = Transform3D(-4.37114e-08, 0, -1, 0, 1, 0, 1, 0, -4.37114e-08, 0.76, 0.75, 0)
+billboard = 0
+double_sided = false
+font_size = 32
+text = "Turret (Cannon)"
+
+[node name="LabelNegX" type="Label3D" parent="."]
+transform = Transform3D(-4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, -0.76, 0.75, 0)
+billboard = 0
+double_sided = false
+font_size = 32
+text = "Turret (Cannon)"

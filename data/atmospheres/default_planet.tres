@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="PlanetAtmosphere" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/planet_atmosphere.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+zenith_color = Color(0.1, 0.28, 0.65, 1)
+horizon_color = Color(0.68, 0.78, 0.88, 1)
+ground_color = Color(0.14, 0.12, 0.11, 1)
+horizon_curve = 2.0
+sun_color = Color(1, 0.95, 0.85, 1)
+sun_angular_size = 0.03
+sun_glow_color = Color(1, 0.7, 0.4, 1)
+sun_glow_intensity = 1.8
+sun_glow_exponent = 10.0
+atmosphere_energy = 1.0
+sun_light_color = Color(1, 0.97, 0.92, 1)
+sun_light_energy = 1.2
+fog_enabled = true
+fog_color = Color(0.68, 0.78, 0.88, 1)
+fog_density = 0.003
+air_density = 1.225

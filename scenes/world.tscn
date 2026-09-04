@@ -1,0 +1,41 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/world.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/inventory_ui.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/build_ui.tscn" id="5"]
+[ext_resource type="PackedScene" path="res://scenes/building_ui.tscn" id="6"]
+[ext_resource type="PackedScene" path="res://scenes/interact_prompt.tscn" id="7"]
+[ext_resource type="PackedScene" path="res://scenes/planet.tscn" id="8"]
+[ext_resource type="Resource" path="res://data/celestial_bodies/home_planet.tres" id="9"]
+[ext_resource type="Resource" path="res://data/celestial_bodies/test_moon.tres" id="10"]
+[ext_resource type="Script" path="res://scripts/world/threat_director.gd" id="11"]
+
+[node name="World" type="Node3D"]
+script = ExtResource("1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+
+[node name="HomePlanet" parent="." instance=ExtResource("8")]
+body = ExtResource("9")
+
+[node name="TestMoon" parent="." instance=ExtResource("8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 0, 0)
+body = ExtResource("10")
+
+[node name="Player" parent="." instance=ExtResource("2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+
+[node name="InventoryUI" parent="." instance=ExtResource("4")]
+
+[node name="BuildUI" parent="." instance=ExtResource("5")]
+
+[node name="BuildingUI" parent="." instance=ExtResource("6")]
+
+[node name="InteractPrompt" parent="." instance=ExtResource("7")]
+
+[node name="ThreatDirector" type="Node3D" parent="."]
+script = ExtResource("11")

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CelestialBody" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/celestial_body.gd" id="1"]
+[ext_resource type="Resource" path="res://data/atmospheres/moon.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Test Moon"
+seed = 42
+radius = 60.0
+height_amplitude = 10.0
+detail_amplitude = 3.0
+ore_vein_depth_min = 0.5
+ore_vein_depth_max = 14.0
+ore_iron_threshold = 0.3
+ore_copper_threshold = 0.45
+ore_sulfur_threshold = 0.5
+ore_coal_threshold = 0.4
+ore_silica_threshold = 0.2
+atmosphere = ExtResource("2")

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="Item" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "ore_silica"
+display_name = "Silica"
+material_index = 6
+debug_color = Color(0.88, 0.84, 0.72, 1)

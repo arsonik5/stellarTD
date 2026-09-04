@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Item" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/item.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/constructor.tscn" id="2"]
+
+[resource]
+script = ExtResource("1")
+id = "constructor"
+display_name = "Constructor"
+material_index = -1
+debug_color = Color(0.4, 0.6, 0.9, 1)
+is_building = true
+building_scene = ExtResource("2")
+ghost_size = Vector3(1.5, 1.5, 1.5)
+force_grid_snap = true

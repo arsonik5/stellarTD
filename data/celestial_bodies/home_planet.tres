@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CelestialBody" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/celestial_body.gd" id="1"]
+[ext_resource type="Resource" path="res://data/atmospheres/default_planet.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Home"
+seed = 1
+radius = 100.0
+height_amplitude = 6.0
+detail_amplitude = 1.5
+ore_vein_depth_min = 0.5
+ore_vein_depth_max = 14.0
+ore_iron_threshold = 0.25
+ore_copper_threshold = 0.3
+ore_sulfur_threshold = 0.35
+ore_coal_threshold = 0.32
+ore_silica_threshold = 0.38
+atmosphere = ExtResource("2")
