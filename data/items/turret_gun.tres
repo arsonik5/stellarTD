@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1")
 id = "turret_gun"
-display_name = "Turret (Gun)"
+display_name = "Gun Turret"
 material_index = -1
 debug_color = Color(0.75, 0.15, 0.15, 1)
 is_building = true

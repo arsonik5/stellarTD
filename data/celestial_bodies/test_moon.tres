@@ -1,13 +1,23 @@
-[gd_resource type="Resource" script_class="CelestialBody" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="CelestialBody" load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/celestial_body.gd" id="1"]
 [ext_resource type="Resource" path="res://data/atmospheres/moon.tres" id="2"]
+[ext_resource type="Resource" path="res://data/ore_types/iron.tres" id="3"]
+[ext_resource type="Resource" path="res://data/ore_types/copper.tres" id="4"]
+[ext_resource type="Resource" path="res://data/ore_types/sulfur.tres" id="5"]
+[ext_resource type="Resource" path="res://data/ore_types/coal.tres" id="6"]
+[ext_resource type="Resource" path="res://data/ore_types/silica.tres" id="7"]
+[ext_resource type="Resource" path="res://data/ore_types/crystal.tres" id="8"]
+[ext_resource type="Resource" path="res://data/biomes/regolith_plains.tres" id="9"]
+[ext_resource type="Resource" path="res://data/biomes/frozen_wastes.tres" id="10"]
+[ext_resource type="Resource" path="res://data/biomes/sulfur_flats.tres" id="11"]
+[ext_resource type="Resource" path="res://data/biomes/crystal_fields.tres" id="12"]
 
 [resource]
 script = ExtResource("1")
 display_name = "Test Moon"
 seed = 42
-radius = 60.0
+radius = 2200.0
 height_amplitude = 10.0
 detail_amplitude = 3.0
 ore_vein_depth_min = 0.5
@@ -18,3 +28,6 @@ ore_sulfur_threshold = 0.5
 ore_coal_threshold = 0.4
 ore_silica_threshold = 0.2
 atmosphere = ExtResource("2")
+ore_types = []
+biomes = [ExtResource("9")]
+climate_bias = Vector2(0.15, 0.5)

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="Biome" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/biome.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/frozen.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+surface = ExtResource("2")
+display_name = "Frozen Wastes"
+temperature_min = 0.0
+temperature_max = 0.35
+roughness_min = 0.0
+roughness_max = 0.6
+height_amplitude_mult = 0.9
+detail_amplitude_mult = 0.8
+stone_material_index = 8
+ore_bias = {
+"silica": 1.4,
+"sulfur": 0.6
+}

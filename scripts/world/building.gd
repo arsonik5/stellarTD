@@ -21,6 +21,9 @@ var _auto_recipes: Array[bool] = []
 var _last_auto_index: int = -1
 var _mesh_instances: Array[MeshInstance3D] = []
 var _highlight_material: StandardMaterial3D
+## The model's "Working" animation (press stroke, robot arm, fans...), played only while a recipe runs.
+var _work_player: AnimationPlayer
+var _work_anim := ""
 
 func _ready() -> void:
 	for i in inventory_slots:
@@ -41,6 +44,27 @@ func _ready() -> void:
 	_highlight_material.albedo_color = Color(1.0, 1.0, 0.4, 0.35)
 	_highlight_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_highlight_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_setup_work_anim()
+
+func _setup_work_anim() -> void:
+	var players := find_children("*", "AnimationPlayer", true, false)
+	if players.is_empty():
+		return
+	_work_player = players[0]
+	for anim_name in _work_player.get_animation_list():
+		if String(anim_name).begins_with("Working"):
+			_work_anim = anim_name
+			_work_player.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+			return
+
+func _update_work_anim() -> void:
+	if _work_anim == "":
+		return
+	var working := _active_recipe_index != -1
+	if working and not _work_player.is_playing():
+		_work_player.play(_work_anim)
+	elif not working and _work_player.is_playing():
+		_work_player.pause()
 
 ## Drawn as an overlay pass (doesn't replace the base material) so it works
 ## the same regardless of what each building's mesh material actually is.
@@ -49,6 +73,7 @@ func set_highlighted(active: bool) -> void:
 		mesh.material_overlay = _highlight_material if active else null
 
 func _process(_delta: float) -> void:
+	_update_work_anim()
 	if recipes.is_empty() or _timer == null or not _timer.is_stopped() or _active_recipe_index != -1:
 		return
 	for offset in recipes.size():
@@ -239,3 +264,35 @@ func take_slot(index: int) -> Dictionary:
 		slot.count = 0
 		changed.emit()
 	return result
+
+## --- Persistence (see scripts/save/save_manager.gd) ---
+##
+## Recipes are saved by INDEX rather than id because that is what the auto
+## flags and the running job are keyed on. A recipe list reordered in a later
+## build would therefore shift a save's auto toggles; ids would fix that, but
+## the running-job index has no id to fall back on, so both stay indices and
+## the array is length-clamped on load.
+
+func save_state() -> Dictionary:
+	var slots: Array = []
+	for slot in _inventory:
+		slots.append({"item_id": slot.item_id, "count": slot.count})
+	return {
+		"inventory": slots,
+		"modifiers": _modifiers.duplicate(),
+		"auto": _auto_recipes.duplicate(),
+	}
+
+func load_state(data: Dictionary) -> void:
+	var slots: Array = data.get("inventory", [])
+	for i in _inventory.size():
+		var src: Dictionary = slots[i] if i < slots.size() else {}
+		_inventory[i].item_id = String(src.get("item_id", ""))
+		_inventory[i].count = int(src.get("count", 0))
+	var mods: Array = data.get("modifiers", [])
+	for i in _modifiers.size():
+		_modifiers[i] = String(mods[i]) if i < mods.size() else ""
+	var autos: Array = data.get("auto", [])
+	for i in _auto_recipes.size():
+		_auto_recipes[i] = bool(autos[i]) if i < autos.size() else false
+	changed.emit()

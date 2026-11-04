@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="StarBody" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/star_body.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Sol-A"
+radius = 7040.0
+temperature = 5772.0
+luminosity = 9.728e13
+surface_gravity = 3.75
+limb_darkening = 0.45
+limb_darkening_quad = 0.35
+visual_brightness = 3.2
+corona_ratio = 3.0
+corona_falloff = 7.0
+corona_rim_width = 0.22
+corona_rim_boost = 2.4

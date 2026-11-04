@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_thruster.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/buildings/ship_thruster/SM_ShipThruster.glb" id="model"]
+
+[node name="ShipThruster" type="Node3D"]
+script = ExtResource("1")
+mass_kg = 60.0
+max_force = 4000.0
+
+[node name="Model" parent="." instance=ExtResource("model")]

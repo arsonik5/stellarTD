@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://bvec3peuo510e"
+path="res://.godot/imported/normalize.glsl-3953e13249baaefd919699c1b0ed37a1.res"
+
+[deps]
+
+source_file="res://shaders/erosion/normalize.glsl"
+dest_files=["res://.godot/imported/normalize.glsl-3953e13249baaefd919699c1b0ed37a1.res"]
+
+[params]
+

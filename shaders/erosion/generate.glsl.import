@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://c80wg1rbjdvcg"
+path="res://.godot/imported/generate.glsl-1f6ce098557b1cdd5108e792d1b66a8b.res"
+
+[deps]
+
+source_file="res://shaders/erosion/generate.glsl"
+dest_files=["res://.godot/imported/generate.glsl-1f6ce098557b1cdd5108e792d1b66a8b.res"]
+
+[params]
+

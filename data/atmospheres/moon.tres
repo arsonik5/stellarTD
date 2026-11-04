@@ -4,19 +4,15 @@
 
 [resource]
 script = ExtResource("1")
-zenith_color = Color(0.01, 0.01, 0.02, 1)
-horizon_color = Color(0.03, 0.03, 0.05, 1)
-ground_color = Color(0.02, 0.02, 0.02, 1)
-horizon_curve = 1.0
-sun_color = Color(1, 1, 0.98, 1)
-sun_angular_size = 0.02
-sun_glow_color = Color(1, 1, 0.95, 1)
-sun_glow_intensity = 0.3
-sun_glow_exponent = 40.0
-atmosphere_energy = 0.3
+rayleigh_coefficients = Vector3(0, 0, 0)
+mie_coefficient = 0.0
+mie_anisotropy = 0.0
+ozone_absorption = Vector3(0, 0, 0)
+rayleigh_scale_ratio = 0.02
+mie_scale_ratio = 0.01
+shell_radius_ratio = 1.0
+scattering_energy = 0.0
+surface_air_density = 0.0
 sun_light_color = Color(1, 1, 0.98, 1)
 sun_light_energy = 1.4
-fog_enabled = false
-fog_color = Color(0.03, 0.03, 0.05, 1)
-fog_density = 0.0
-air_density = 0.0
+sun_angular_size = 0.02

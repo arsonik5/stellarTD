@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="OreType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ore_type.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "crystal"
+material_index = 7
+depth_min = 70.0
+depth_max = 150.0
+base_threshold = 0.55
+noise_frequency = 0.05

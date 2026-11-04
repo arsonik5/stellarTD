@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Quest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "autocraft"
+title = "Automate the Processor"
+description = "Let the Processor keep refining ore on its own."
+hint = "In the Processor menu, toggle Auto next to a recipe."
+prerequisite_ids = Array[String](["refine_iron"])
+objective_type = 2
+target_id = "toggle_autocraft"
+target_amount = 1

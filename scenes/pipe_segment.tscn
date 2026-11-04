@@ -2,10 +2,9 @@
 
 [ext_resource type="Script" path="res://scripts/world/pipe_segment.gd" id="1"]
 
-[sub_resource type="BoxShape3D" id="1"]
-size = Vector3(0.9, 0.9, 0.9)
+[ext_resource type="PackedScene" path="res://data/models/buildings/pipe/SM_VacuumPipe.glb" id="model"]
 
-[sub_resource type="BoxMesh" id="2"]
+[sub_resource type="BoxShape3D" id="1"]
 size = Vector3(0.9, 0.9, 0.9)
 
 [sub_resource type="BoxMesh" id="3"]
@@ -23,21 +22,22 @@ script = ExtResource("1")
 position = Vector3(0, 0.45, 0)
 shape = SubResource("1")
 
-[node name="Body" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.45, 0)
-mesh = SubResource("2")
-
 [node name="ItemCube" type="MeshInstance3D" parent="."]
 position = Vector3(0, 0.45, 0.45)
 mesh = SubResource("3")
 visible = false
 
 [node name="InputArrow" type="MeshInstance3D" parent="."]
+visible = false
 position = Vector3(0, 0.45, 0.5)
 rotation = Vector3(-1.5707963, 0, 0)
 mesh = SubResource("4")
 
 [node name="OutputArrow" type="MeshInstance3D" parent="."]
+visible = false
 position = Vector3(0, 0.45, -0.5)
 rotation = Vector3(-1.5707963, 0, 0)
 mesh = SubResource("4")
+
+[node name="Body" parent="." instance=ExtResource("model")]
+position = Vector3(0, 0.45, 0)

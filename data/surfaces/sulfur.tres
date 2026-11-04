@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="SurfaceStyle" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/surface_style.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Sulfur Flats"
+texture_name = "sulfur"
+albedo_tint = Color(1.05, 0.95, 0.78, 1)
+roughness_scale = 0.95
+metallic = 0.0
+specular = 0.28
+normal_strength = 0.9
+texture_scale_m = 3.5

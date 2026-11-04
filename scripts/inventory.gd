@@ -13,6 +13,7 @@ const ITEM_DEFS_LIST := [
 	preload("res://data/items/refined_copper_ingot.tres"),
 	preload("res://data/items/placeable_block.tres"),
 	preload("res://data/items/mining_tool.tres"),
+	preload("res://data/items/scanner_tool.tres"),
 	preload("res://data/items/building_tool.tres"),
 	preload("res://data/items/basic_crafter.tres"),
 	preload("res://data/items/sulfur.tres"),
@@ -31,10 +32,22 @@ const ITEM_DEFS_LIST := [
 	preload("res://data/items/refined_carbon.tres"),
 	preload("res://data/items/refined_silica.tres"),
 	preload("res://data/items/metal_foundation.tres"),
+	preload("res://data/items/foundation_1m.tres"),
+	preload("res://data/items/foundation_2m.tres"),
+	preload("res://data/items/frame_2m.tres"),
+	preload("res://data/items/ramp_1m.tres"),
+	preload("res://data/items/stairs_1m.tres"),
 	preload("res://data/items/turret_gun.tres"),
 	preload("res://data/items/turret_cannon.tres"),
 	preload("res://data/items/he_shell.tres"),
 	preload("res://data/items/ore_crystal.tres"),
+	preload("res://data/items/stone.tres"),
+	preload("res://data/items/ship_core.tres"),
+	preload("res://data/items/ship_hull.tres"),
+	preload("res://data/items/ship_thruster.tres"),
+	preload("res://data/items/ship_gyroscope.tres"),
+	preload("res://data/items/ship_cockpit.tres"),
+	preload("res://data/items/ship_garage.tres"),
 ]
 
 var _item_defs: Dictionary = {}
@@ -45,12 +58,18 @@ var _hands: Dictionary = {
 }
 
 func _ready() -> void:
-	for item: Item in ITEM_DEFS_LIST:
+	for item: Item in ITEM_DEFS_LIST + ShipParts.ITEMS:
 		_item_defs[item.id] = item
 	for i in GRID_SIZE:
 		_grid.append({"item_id": "", "count": 0})
 	set_slot({"kind": "hand", "side": "left"}, "mining_tool", 1)
 	set_slot({"kind": "hand", "side": "right"}, "building_tool", 1)
+	# Into the grid, not a hand slot - both hands are already taken, and the
+	# scanner is something you swap in when you go prospecting rather than
+	# carry drawn. Granted at start because ore deposits are sparse and mostly
+	# buried, so without it a new game has no way to find anything below the
+	# surface patches.
+	add("scanner_tool", 1)
 
 ## --- Back-compat resource-counter API (used by player.gd/processor.gd/debug_ui.gd) ---
 
@@ -123,6 +142,9 @@ func get_slot(ref: Dictionary) -> Dictionary:
 
 func set_slot(ref: Dictionary, item_id: String, count: int) -> void:
 	var target: Dictionary = get_slot(ref)
+	if count <= 0:
+		item_id = ""
+		count = 0
 	target.item_id = item_id
 	target.count = count
 	changed.emit()
@@ -132,8 +154,49 @@ func can_place(ref: Dictionary, item_id: String) -> bool:
 		return true
 	if ref.kind == "hand":
 		var item := get_item_def(item_id)
-		return item != null and item.is_tool
+		return item != null and (item.is_tool or item.is_ship_core or item.is_ship_block)
 	return true
+
+## "left", "right" or "" - which hand holds this tool.
+func hand_holding(item_id: String) -> String:
+	for side in ["right", "left"]:
+		if _hands[side].item_id == item_id:
+			return side
+	return ""
 
 func has_tool_equipped(item_id: String) -> bool:
 	return _hands["left"].item_id == item_id or _hands["right"].item_id == item_id
+
+## --- Persistence (see scripts/save/save_manager.gd) ---
+##
+## Only the slot contents are stored, never the Item resources themselves: item
+## ids are the stable identity across versions, and a saved copy of a .tres
+## would go stale the moment a recipe or stack size changed.
+
+func save_state() -> Dictionary:
+	var grid: Array = []
+	for slot in _grid:
+		grid.append({"item_id": slot.item_id, "count": slot.count})
+	return {
+		"grid": grid,
+		"hands": {
+			"left": {"item_id": _hands.left.item_id, "count": _hands.left.count},
+			"right": {"item_id": _hands.right.item_id, "count": _hands.right.count},
+		},
+	}
+
+func load_state(data: Dictionary) -> void:
+	var grid: Array = data.get("grid", [])
+	for i in GRID_SIZE:
+		# Tolerates a saved grid of a different size than the current build's,
+		# so changing GRID_COLS/ROWS later degrades to "some slots empty"
+		# instead of crashing on an old save.
+		var src: Dictionary = grid[i] if i < grid.size() else {}
+		_grid[i].item_id = String(src.get("item_id", ""))
+		_grid[i].count = int(src.get("count", 0))
+	var hands: Dictionary = data.get("hands", {})
+	for side in ["left", "right"]:
+		var src: Dictionary = hands.get(side, {})
+		_hands[side].item_id = String(src.get("item_id", ""))
+		_hands[side].count = int(src.get("count", 0))
+	changed.emit()

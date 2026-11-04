@@ -1,0 +1,21 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_landing_gear.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/parts/part_landing_gear/SM_PartLandingGear.glb" id="model"]
+
+[node name="part_landing_gear" type="Node3D"]
+script = ExtResource("1")
+block_id = "landing_gear"
+mass_kg = 50.0
+max_health = 100.0
+size_cells = Vector3i(2, 2, 2)
+collision_size = Vector3(0.9, 0.1, 0.9)
+collision_offset = Vector3(0, 0.45, 0)
+radius = 0.025
+rest_drop = 0.795
+travel = 0.1
+mount_local = Vector3(0, 0.32, 0)
+grip = 15.0
+
+[node name="Model" parent="." instance=ExtResource("model")]

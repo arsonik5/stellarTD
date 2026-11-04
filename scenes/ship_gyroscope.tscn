@@ -1,0 +1,15 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_gyroscope.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/buildings/ship_gyroscope/SM_ShipGyroscope.glb" id="model"]
+
+[ext_resource type="Script" path="res://scripts/world/model_autoplay.gd" id="autoplay"]
+
+[node name="ShipGyroscope" type="Node3D"]
+script = ExtResource("1")
+mass_kg = 90.0
+max_torque = 100000.0
+
+[node name="Model" parent="." instance=ExtResource("model")]
+script = ExtResource("autoplay")

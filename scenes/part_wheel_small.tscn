@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_wheel.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/parts/part_wheel_small/SM_PartWheelSmall.glb" id="model"]
+
+[node name="part_wheel_small" type="Node3D"]
+script = ExtResource("1")
+block_id = "wheel_small"
+mass_kg = 40.0
+max_health = 80.0
+size_cells = Vector3i(2, 2, 2)
+collision_size = Vector3(0.1, 0.4, 0.9)
+collision_offset = Vector3(-0.45, 0.15, 0)
+
+[node name="Model" parent="." instance=ExtResource("model")]

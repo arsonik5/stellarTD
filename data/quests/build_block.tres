@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Quest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "build_block"
+title = "Raise a Wall"
+description = "Use an Iron Ingot to place a solid block directly onto the terrain."
+hint = "Right-click with your Mining Tool equipped (costs 1 Iron Ingot)."
+prerequisite_ids = Array[String](["refine_iron"])
+objective_type = 2
+target_id = "place_block"
+target_amount = 1

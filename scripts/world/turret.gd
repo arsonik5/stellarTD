@@ -21,6 +21,11 @@ const ProjectileScene := preload("res://scenes/projectile.tscn")
 
 @onready var _head: Node3D = $Head
 @onready var _muzzle: Node3D = $Head/Muzzle
+## The model's moving parts: the yaw fork turns about Y, the cradle between the fork arms pitches about X.
+## Head stays the invisible aim node; _sync_model_head() copies its yaw/pitch onto them.
+var _model_head: Node3D
+var _model_cradle: Node3D
+var _fire_player: AnimationPlayer
 
 var _fire_cooldown := 0.0
 var _target: Node3D = null
@@ -42,6 +47,13 @@ func _ready() -> void:
 	for ammo in compatible_ammo:
 		_enabled_ammo[ammo.item_id] = true
 	super._ready()
+	var model := get_node_or_null("Model")
+	if model != null:
+		_model_head = model.find_child("*_Head", true, false)
+		_model_cradle = model.find_child("*_Cradle", true, false)
+		var players := model.find_children("*", "AnimationPlayer", true, false)
+		if not players.is_empty():
+			_fire_player = players[0]
 
 ## Only a compatible ammo item may be deposited - Building's default would
 ## reject everything (no recipes to match against). Compatible-but-disabled
@@ -160,7 +172,7 @@ func _compute_aim_point(target_pos: Vector3, ammo: AmmoType) -> Vector3:
 	if x < 0.01:
 		return target_pos
 
-	var g := PlanetPhysics.GRAVITY_MAGNITUDE
+	var g := maxf(PlanetPhysics.get_gravity_accel(global_position).length(), 0.01)
 	var v2 := ammo.muzzle_velocity * ammo.muzzle_velocity
 	var discriminant := v2 * v2 - g * (g * x * x + 2.0 * y * v2)
 	if discriminant < 0.0:
@@ -189,6 +201,20 @@ func _aim_at(target_pos: Vector3, delta: float) -> void:
 	var desired_basis := _head.global_transform.looking_at(target_pos, up).basis
 	var t := clampf(head_turn_speed * delta, 0.0, 1.0)
 	_head.global_transform.basis = _head.global_transform.basis.slerp(desired_basis, t)
+	_sync_model_head()
+
+## Splits the Head's facing into yaw (fork) and pitch (cradle on its trunnions), in the turret's own frame
+## so it works on any slope of the spherical planet.
+func _sync_model_head() -> void:
+	if _model_head == null:
+		return
+	var dir := global_transform.basis.orthonormalized().inverse() * (-_head.global_transform.basis.z)
+	if dir.length() < 0.0001:
+		return
+	dir = dir.normalized()
+	_model_head.rotation.y = atan2(-dir.x, -dir.z)
+	if _model_cradle != null:
+		_model_cradle.rotation.x = asin(clampf(dir.y, -1.0, 1.0))
 
 ## Fires along the head's CURRENT facing (whatever _aim_at() has turned it
 ## to so far this session, mid-turn or not - same "don't wait for a perfect
@@ -199,9 +225,30 @@ func _aim_at(target_pos: Vector3, delta: float) -> void:
 func _fire(ammo: AmmoType) -> void:
 	remove_item(ammo.item_id, ammo_per_shot)
 	_fire_cooldown = fire_interval
+	if _fire_player != null and _fire_player.has_animation("Fire"):
+		_fire_player.stop()
+		_fire_player.play("Fire")
 
 	var launch_dir := -_head.global_transform.basis.z
 	var projectile: Node3D = ProjectileScene.instantiate()
 	get_tree().current_scene.add_child(projectile)
 	projectile.global_position = _muzzle.global_position
 	projectile.setup(launch_dir * ammo.muzzle_velocity, ammo, get_rid())
+
+## --- Persistence (see scripts/save/save_manager.gd) ---
+## Adds the ammo toggles on top of Building's inventory/modifier/auto state.
+## Cooldown and current target are deliberately not saved: both are sub-second
+## and re-derived within a frame of loading.
+
+func save_state() -> Dictionary:
+	var data := super.save_state()
+	data["enabled_ammo"] = _enabled_ammo.duplicate()
+	return data
+
+func load_state(data: Dictionary) -> void:
+	super.load_state(data)
+	_enabled_ammo.clear()
+	var saved: Dictionary = data.get("enabled_ammo", {})
+	for item_id: String in saved:
+		if is_ammo_compatible(item_id):
+			_enabled_ammo[item_id] = bool(saved[item_id])

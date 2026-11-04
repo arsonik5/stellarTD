@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="Biome" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/biome.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/crystal.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+surface = ExtResource("2")
+display_name = "Crystal Fields"
+temperature_min = 0.35
+temperature_max = 0.65
+roughness_min = 0.75
+roughness_max = 1.0
+height_amplitude_mult = 1.6
+detail_amplitude_mult = 2.0
+stone_material_index = 10
+ore_bias = {
+"crystal": 3.0
+}

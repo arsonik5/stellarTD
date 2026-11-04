@@ -1,7 +1,8 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/compact_hud.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/inventory_ui.tscn" id="4"]
 [ext_resource type="PackedScene" path="res://scenes/build_ui.tscn" id="5"]
 [ext_resource type="PackedScene" path="res://scenes/building_ui.tscn" id="6"]
@@ -10,6 +11,12 @@
 [ext_resource type="Resource" path="res://data/celestial_bodies/home_planet.tres" id="9"]
 [ext_resource type="Resource" path="res://data/celestial_bodies/test_moon.tres" id="10"]
 [ext_resource type="Script" path="res://scripts/world/threat_director.gd" id="11"]
+[ext_resource type="PackedScene" path="res://scenes/journal_ui.tscn" id="12"]
+[ext_resource type="Script" path="res://scripts/world/atmosphere_renderer.gd" id="13"]
+[ext_resource type="Script" path="res://scripts/world/star.gd" id="14"]
+[ext_resource type="Resource" path="res://data/stars/home_star.tres" id="15"]
+[ext_resource type="PackedScene" path="res://scenes/loading_screen.tscn" id="16"]
+[ext_resource type="PackedScene" path="res://scenes/pause_menu.tscn" id="17"]
 
 [node name="World" type="Node3D"]
 script = ExtResource("1")
@@ -19,15 +26,25 @@ shadow_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 
+[node name="AtmosphereRenderer" type="MeshInstance3D" parent="."]
+script = ExtResource("13")
+
+[node name="Star" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8800, 175120, 14854)
+script = ExtResource("14")
+body = ExtResource("15")
+reference_light_energy = 1.6
+reference_distance = 176000.0
+
 [node name="HomePlanet" parent="." instance=ExtResource("8")]
 body = ExtResource("9")
 
 [node name="TestMoon" parent="." instance=ExtResource("8")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44000, 0, 0)
 body = ExtResource("10")
 
 [node name="Player" parent="." instance=ExtResource("2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5205.7, 4785.8, 4534.0)
 
 [node name="InventoryUI" parent="." instance=ExtResource("4")]
 
@@ -37,5 +54,13 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
 
 [node name="InteractPrompt" parent="." instance=ExtResource("7")]
 
+[node name="JournalUI" parent="." instance=ExtResource("12")]
+
+[node name="CompactHUD" parent="." instance=ExtResource("3")]
+
 [node name="ThreatDirector" type="Node3D" parent="."]
 script = ExtResource("11")
+
+[node name="PauseMenu" parent="." instance=ExtResource("17")]
+
+[node name="LoadingScreen" parent="." instance=ExtResource("16")]

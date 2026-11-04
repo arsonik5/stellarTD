@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_block.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/parts/part_frame_corner/SM_PartFrameCorner.glb" id="model"]
+
+[node name="part_frame_corner" type="Node3D"]
+script = ExtResource("1")
+block_id = "frame_corner"
+mass_kg = 10.0
+max_health = 80.0
+size_cells = Vector3i(1, 1, 1)
+
+[node name="Model" parent="." instance=ExtResource("model")]

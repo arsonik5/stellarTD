@@ -1,0 +1,18 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/foundation.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/buildings/foundation_2m/SM_Foundation2m.glb" id="model"]
+
+[sub_resource type="BoxShape3D" id="1"]
+size = Vector3(2.0, 2.0, 2.0)
+
+[node name="foundation_2m" type="StaticBody3D"]
+script = ExtResource("1")
+height = 2.0
+mountable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("1")
+
+[node name="Model" parent="." instance=ExtResource("model")]

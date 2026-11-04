@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Quest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "conveyor"
+title = "Wire It Up"
+description = "Connect a Vacuum Pipe so buildings can move items between themselves without you."
+hint = "Enter build mode and place a Vacuum Pipe between two buildings."
+prerequisite_ids = Array[String](["autocraft", "build_block"])
+objective_type = 1
+target_id = "vacuum_pipe"
+target_amount = 1

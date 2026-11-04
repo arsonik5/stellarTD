@@ -1,15 +1,25 @@
-[gd_resource type="Resource" script_class="CelestialBody" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="CelestialBody" load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/celestial_body.gd" id="1"]
 [ext_resource type="Resource" path="res://data/atmospheres/default_planet.tres" id="2"]
+[ext_resource type="Resource" path="res://data/ore_types/iron.tres" id="3"]
+[ext_resource type="Resource" path="res://data/ore_types/copper.tres" id="4"]
+[ext_resource type="Resource" path="res://data/ore_types/sulfur.tres" id="5"]
+[ext_resource type="Resource" path="res://data/ore_types/coal.tres" id="6"]
+[ext_resource type="Resource" path="res://data/ore_types/silica.tres" id="7"]
+[ext_resource type="Resource" path="res://data/ore_types/crystal.tres" id="8"]
+[ext_resource type="Resource" path="res://data/biomes/regolith_plains.tres" id="9"]
+[ext_resource type="Resource" path="res://data/biomes/frozen_wastes.tres" id="10"]
+[ext_resource type="Resource" path="res://data/biomes/sulfur_flats.tres" id="11"]
+[ext_resource type="Resource" path="res://data/biomes/crystal_fields.tres" id="12"]
 
 [resource]
 script = ExtResource("1")
 display_name = "Home"
 seed = 1
-radius = 100.0
-height_amplitude = 6.0
-detail_amplitude = 1.5
+radius = 20000.0
+height_amplitude = 2.0
+detail_amplitude = 1.0
 ore_vein_depth_min = 0.5
 ore_vein_depth_max = 14.0
 ore_iron_threshold = 0.25
@@ -18,3 +28,6 @@ ore_sulfur_threshold = 0.35
 ore_coal_threshold = 0.32
 ore_silica_threshold = 0.38
 atmosphere = ExtResource("2")
+ore_types = [ExtResource("3"), ExtResource("4"), ExtResource("5"), ExtResource("6"), ExtResource("7"), ExtResource("8")]
+biomes = [ExtResource("9")]
+climate_bias = Vector2(0.5, 0.5)

@@ -25,3 +25,12 @@ extends Resource
 ## instead of force_grid_snap's flat voxel-cell snapping. See player.gd's
 ## _resolve_build_placement().
 @export var is_foundation: bool = false
+## True for Ship Core - placing it spawns a brand new Ship, not a block on
+## an existing one. Mutually exclusive with is_ship_block in practice.
+@export var is_ship_core: bool = false
+## True for a block placeable onto an existing Ship's local grid (hull,
+## thruster, gyroscope, cockpit, ...). Uses `block_scene`, not
+## `building_scene` - ship blocks are never placed through the planetary
+## build-mode/foundation system, see player.gd's ship placement functions.
+@export var is_ship_block: bool = false
+@export var block_scene: PackedScene

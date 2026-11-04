@@ -1,55 +1,6 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/inventory_ui.gd" id="1"]
-[ext_resource type="Theme" path="res://ui/alpha_theme.tres" id="2"]
 
 [node name="InventoryUI" type="CanvasLayer"]
 script = ExtResource("1")
-theme = ExtResource("2")
-
-[node name="Background" type="ColorRect" parent="."]
-anchor_right = 1.0
-anchor_bottom = 1.0
-mouse_filter = 2
-color = Color(0.0196, 0.0471, 0.0706, 0.84)
-
-[node name="Layout" type="VBoxContainer" parent="."]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -280.0
-offset_top = -270.0
-offset_right = 280.0
-offset_bottom = 270.0
-
-[node name="Title" type="Label" parent="Layout"]
-text = "FIELD INVENTORY"
-horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.949, 0.651, 0.3529, 1)
-theme_override_font_sizes/font_size = 22
-
-[node name="HandRow" type="HBoxContainer" parent="Layout"]
-alignment = 1
-
-[node name="HandLabel" type="Label" parent="Layout"]
-text = "EQUIPPED TOOLS"
-theme_override_colors/font_color = Color(0.3059, 0.8039, 0.7686, 1)
-
-[node name="HandLeft" type="Button" parent="Layout/HandRow"]
-custom_minimum_size = Vector2(120, 70)
-text = ""
-
-[node name="HandRight" type="Button" parent="Layout/HandRow"]
-custom_minimum_size = Vector2(120, 70)
-text = ""
-
-[node name="StorageLabel" type="Label" parent="Layout"]
-text = "STORAGE"
-theme_override_colors/font_color = Color(0.3059, 0.8039, 0.7686, 1)
-
-[node name="GridContainer" type="GridContainer" parent="Layout"]
-columns = 6
-
-[node name="CarriedLabel" type="Label" parent="."]
-text = ""

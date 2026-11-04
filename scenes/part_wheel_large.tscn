@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_wheel.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/parts/part_wheel_large/SM_PartWheelLarge.glb" id="model"]
+
+[node name="part_wheel_large" type="Node3D"]
+script = ExtResource("1")
+block_id = "wheel_large"
+mass_kg = 140.0
+max_health = 200.0
+size_cells = Vector3i(4, 4, 4)
+collision_size = Vector3(0.2, 0.8, 1.8)
+collision_offset = Vector3(-0.9, 0.3, 0)
+radius = 0.84
+rest_drop = 0.3
+travel = 0.24
+mount_local = Vector3(0.16, 0.3, 0)
+arm_length = 0.7
+max_steer = 0.4
+
+[node name="Model" parent="." instance=ExtResource("model")]

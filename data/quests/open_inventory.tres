@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Quest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "open_inventory"
+title = "Check Your Gear"
+description = "Open your inventory to see what you're carrying."
+hint = "Press Tab."
+prerequisite_ids = Array[String]([])
+objective_type = 2
+target_id = "open_inventory"
+target_amount = 1

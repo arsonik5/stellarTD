@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="Biome" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/biome.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/sulfur.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+surface = ExtResource("2")
+display_name = "Sulfur Flats"
+temperature_min = 0.65
+temperature_max = 1.0
+roughness_min = 0.4
+roughness_max = 1.0
+height_amplitude_mult = 1.3
+detail_amplitude_mult = 1.4
+stone_material_index = 9
+ore_bias = {
+"sulfur": 1.6,
+"coal": 1.3
+}

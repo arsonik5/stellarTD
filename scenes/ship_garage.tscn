@@ -1,0 +1,20 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_garage.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/buildings/ship_garage/SM_ShipGarage.glb" id="model"]
+
+[ext_resource type="Script" path="res://scripts/world/model_autoplay.gd" id="autoplay"]
+
+[sub_resource type="BoxShape3D" id="1"]
+size = Vector3(3.0, 0.28, 3.0)
+
+[node name="ShipGarage" type="StaticBody3D"]
+script = ExtResource("1")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14, 0)
+shape = SubResource("1")
+
+[node name="Model" parent="." instance=ExtResource("model")]
+script = ExtResource("autoplay")

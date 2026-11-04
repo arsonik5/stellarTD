@@ -4,5 +4,15 @@
 
 [node name="Planet" type="Node3D"]
 script = ExtResource("1")
+cliff_rock_enabled = false
+caves_enabled = false
 
-[node name="Terrain" type="VoxelTerrain" parent="." groups=["voxel_terrain"]]
+[node name="Terrain" type="VoxelLodTerrain" parent="." groups=["voxel_terrain"]]
+lod_count = 12
+lod_distance = 192.0
+secondary_lod_distance = 192.0
+view_distance = 40000
+mesh_block_size = 16
+collision_lod_count = 1
+threaded_update_enabled = true
+streaming_system = 1

@@ -2,16 +2,10 @@
 
 [ext_resource type="Script" path="res://scripts/world/foundation.gd" id="1"]
 
+[ext_resource type="PackedScene" path="res://data/models/buildings/foundation/SM_Foundation.glb" id="model"]
+
 [sub_resource type="BoxShape3D" id="1"]
 size = Vector3(2.0, 0.25, 2.0)
-
-[sub_resource type="BoxMesh" id="2"]
-size = Vector3(2.0, 0.25, 2.0)
-
-[sub_resource type="StandardMaterial3D" id="3"]
-albedo_color = Color(0.55, 0.57, 0.6, 1)
-metallic = 0.6
-roughness = 0.4
 
 [node name="Foundation" type="StaticBody3D"]
 script = ExtResource("1")
@@ -19,6 +13,4 @@ script = ExtResource("1")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("1")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-mesh = SubResource("2")
-surface_material_override/0 = SubResource("3")
+[node name="Model" parent="." instance=ExtResource("model")]

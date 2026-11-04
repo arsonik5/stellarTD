@@ -1,0 +1,94 @@
+# CLAUDE.md
+
+## Read order (keep context small)
+
+Read this file first. Read only the reference needed for the task:
+
+- Product direction, implementation patterns, and known issues: `main-design.md`
+- Current milestone and scope: `slice.md`
+- Art, materials, colors, and proportions: `art-direction-brief.md`
+- Historical/status indexes: `architecture-status-slice.md` and `status.md`
+
+Do not load every Markdown file by default. Markdown under `addons/` is third-party/legal material, not project guidance.
+
+## Working rules
+
+Use the minimum tokens that fully answer the user. Preserve behavior unless explicitly changing it. Reuse existing systems instead of creating parallel implementations. Keep sphere/radial-world assumptions explicit; avoid hidden world-Y-only logic. Do not speculatively build deferred systems. Validate changes with the smallest relevant test or headless check.
+
+`main-design.md` is the detailed design source, `slice.md` is the scope gate, and `art-direction-brief.md` is the art source of truth. Update sources in place; do not create v2/v3 copies or duplicate rules here.
+
+## Output: minimum amount tokens only
+
+No preamble/postamble, no restating the task, no summarizing what you just did unless asked. No filler. Answer directly; skip headers/bullets for short answers. Code: no comments unless requested. Explanations only when asked or a non-obvious decision needs one line of why. This also applies mid-task, not just to final replies: don't narrate what you're about to do between tool calls, don't recap findings. Use the most information dense language/format when possible. Anything where user doesnt interact/see (in game/menu/your output/etc.) use what is technically the most optimal (Mandarin/something else you come up with)
+
+**Hard cap, reinforced**: treat *EVERY* reply as super expensive. Your default output is a result plus one line of context — not a paragraph. No "here's what I did and why" walkthroughs, no restating what the code already shows. A multi-file change gets a file list, not a per-file description, unless a file's change is non-obvious enough to need one clause. If a response is trending past ~5 lines, cut it down before sending — length is a bug, not thoroughness. Full detail only when explicitly asked ("explain", "walk me through", "why").
+
+## Architecture principles (standing, from explicit user direction 2026-09-03)
+
+**Multi-planet future, no reload between them.** The game will eventually have many procedurally generated planets and moons, plus open spacebe tween them. One continuous open space, not discrete instances you "enter/leave" (explicitly not Astroneer/No Man's Sky-style) - technically streamed/LOD under the hood for performance/precision, but no visible seam or loading transition. What stops the player from going anywhere is mechanical/realistic (fuel, oxygen/atmosphere) not a physical wall or height limit. A ship exists for real interplanetary travel; on-foot jetpack flight comes later for short hops. procedurally generated system per save (not a hand-authored fixed set, not unbounded/infinite generation). Full persistence is required - dug terrain and built structures must survive leaving and returning, since the stated endgame goal is running bases on multiple planets simultaneously.
+
+**Phase 1 - done 2026-09-04**: the physics/generation layer is now genuinely multi-body. `scripts/world/celestial_body.gd` (`CelestialBody` resource: radius/seed/noise/ore-rarity/atmosphere - what used to be hardcoded consts in `ore_generator.gd`) + `scripts/world/planet.gd`/`scenes/planet.tscn` (`Planet`: owns its own `VoxelTerrain`, builds the generator from its own body, registers with `PlanetPhysics`) + a generalized `scripts/planet_physics.gd` (`register_body`/`unregister_body`/`get_nearest_body`, every gravity/atmosphere/terrain query resolving through nearest-in-range rather than "the one planet," with `Planet.influence_radius()` giving each body a bounded well so far-apart bodies have a genuine zero-gravity/vacuum gap between them rather than gravity always snapping to whichever is merely less-far). Proven with two simultaneously-registered planets (different radius/seed/atmosphere, one vacuum) before touching any gameplay code - see whatworks.md for the full writeup and mistakes.md for a parse-error-in-an-autoload gotcha hit along the way.
+
+**Still not built** (deliberately deferred, each is its own substantial task - don't attempt speculatively, confirm scope first): a real procedural star-system generator (tonight's two bodies are hand-placed, not generated); floating-origin/precision handling for genuinely large distances (not yet needed at hundreds of meters, matters once real inter-planet distances are decided); a ship/vehicle controller + oxygen/fuel mechanics for actually reaching the void; save/persistence (currently zero save system exists anywhere in this project - `PlanetPhysics` registration is purely in-memory/runtime).
+
+**Build systems once, compose them everywhere.** Define a capability once (inventory, ammo handling, modifier slots, ...) and give entities that capability through configuration (export fields like a size/capacity), not by re-implementing a parallel version per entity type. This is *why* `Building` is a base class every production building composes rather than each reimplementing storage, and why `Turret extends Building` reuses that same inventory instead of rolling its own ammo box. When adding a new entity that needs an existing capability, extend/compose the existing system - don't write a second one that looks similar but drifts (different edge cases, different bugs, inconsistent UI/feel). If two similar-looking systems already exist with genuinely different requirements (e.g. `PipeNetwork`'s exact-cell dictionary lookup for axis-aligned buildings vs. `FoundationNetwork`'s linear nearest-neighbor scan for arbitrarily-oriented foundations), that's fine *only* if the difference is real and load-bearing - say so explicitly in a comment, don't let it happen by accident.
+
+Periodically sanity-check new work against both of these rather than assuming - see main-design.md for implementation patterns and known issues.
+
+**Resolved 2026-09-03, same session this rule was written**: audited the codebase against it immediately and found a real violation - three independent hand-written "click to carry/place/merge/swap an item between slots" implementations (`inventory_ui.gd`, and two more inside `building_ui.gd`) had already drifted from each other. Consolidated into `scripts/ui/slot_carry.gd` (`SlotCarry`, the one implementation) driven through small duck-typed adapters per backing store (`inventory_slot_adapter.gd`, `building_inventory_adapter.gd`, `building_modifier_adapter.gd`). See whatworks.md for the design and PipeNetwork/FoundationNetwork remains the reference example of a *justified* divergence (real, load-bearing, documented) rather than an accidental one.
+
+## Status
+
+Slice 1 (voxel+mining/building) implemented: `addons/zylann.voxel` (godot_voxel GDExtension, Transvoxel terrain), `scenes/world.tscn` (main scene, FPS player, hold-to-dig/build gated by equipped Mining Tool), Tab-toggled inventory+hand slots, `data/items/`, `data/recipes/`. Buildings: Processor (manual, worse ratio) + Smelter (auto, 1:1) both refine ore, Chest (generic storage), Constructor (4-recipe ammo chain ending in Iron Piercing Ammo — inert, no consumer until Slice 2 turrets), Vacuum Pipe conveyor + Merger/Splitter (tick-based, `scripts/pipe_network.gd` autoload for grid-cell lookup). Ores: iron, copper, sulfur, coal, silica (coal/silica added 2026-09-03, each with its own refine/smelt recipe → ingot, same pattern as iron/copper). `Recipe` supports multi-input (`input_ids`/`input_amounts` arrays). Per-recipe autocraft toggle in the building interact panel (`E`), generic across all recipe-driven buildings via `Building`'s own timer/auto-scan.
+
+**Terrain is a sphere (2026-09-03)**: `scripts/world/ore_generator.gd` carves a solid planet (~100 local-unit / 40m-world radius, two octaves of unit-sphere-direction noise for hills/craters, ore veins near the surface) instead of a flat slab — sphere-wrapping was pulled forward from "later-stage" into Slice 1 on explicit user request. `scripts/player/player.gd` was reworked for it: gravity always pulls toward the planet center (`_planet_center`, read from Terrain's position), the body's basis realigns every physics frame so local Y tracks the current radial "up" while preserving facing (`_align_to_up`), mouse yaw uses `rotate_object_local` (not `rotate_y`, which only rotates around the *parent's* Y and breaks once away from the spawn pole), and the top-down build camera/ghost-placement math was generalized from world-Y-relative to a tangent-plane frame snapshotted at build-mode entry (`_build_up`/`_build_ref_forward`/`_build_ref_right`). Verified via a driven WASD-walk headless test (pole to near-opposite-pole, `on_floor`/radius/up-alignment sampled every simulated second) — see main-design.md Implementation Patterns. (Building world-Y-up gap fixed later the same session — see the foundation entry below.) Terrain shader (`scripts/world/voxel_debug_material.gdshader`) got two-octave hash-noise albedo/roughness variation plus a planet-latitude tint so materials don't read as flat-color plastic. Build-camera cursor mapping was also fixed this session: it now stays `PROJECTION_PERSPECTIVE` only for the enter/exit flight tween and switches to `PROJECTION_ORTHOGONAL` for the whole interactive placement session (a perspective ray intersected with a plane it isn't perpendicular to is non-uniform at any pitch other than -90°; orthographic rays are direction-constant across the screen, so the same intersection is affine/uniform at any pitch) — see main-design.md Known Issues section.
+
+**Sky/atmosphere + render distance (2026-09-03)**: `WorldEnvironment` added to `world.tscn`; `world.gd`'s `_apply_atmosphere()` builds a `ShaderMaterial`(`scripts/world/sky_atmosphere.gdshader`, `shader_type sky;`, procedural gradient + sun disc/glow off `LIGHT0_*`) + `Sky` + `Environment` (with fog) in code from a `PlanetAtmosphere` resource (`scripts/world/planet_atmosphere.gd`, `data/atmospheres/default_planet.tres`). Swapping the `atmosphere` export field to a different `.tres` is the entire "different planet" story — no shader/scene changes needed. `VoxelViewer.view_distance` doubled 320→640 (player.tscn). Verified headless that the shader-param/light/fog/view-distance plumbing all lands correctly; actual visual result needs the user's playtest (no GPU device under `--headless`).
+
+**Metal Foundation / local-grid system (2026-09-03)**: `scripts/world/foundation.gd` (`class_name Foundation`, `SIZE=2.0` flat plate, center-anchored origin) + `scripts/foundation_network.gd` (new autoload, flat `Array` + linear nearest-neighbor scan — deliberately not a `Vector3i`-keyed dictionary like `PipeNetwork`, since foundations aren't axis-aligned). `player.gd`'s `_resolve_build_placement()` is the single source of truth for both the live ghost and the actual commit: a Foundation snaps to an existing neighbor's edge (copying its *exact* basis, not recomputing its own — this is what keeps a whole connected cluster flat/square to itself regardless of sphere curvature) or free-places tangent to raw terrain if none nearby; any other building mounts flush on a nearby foundation's top face (inheriting its orientation, R-key rotation still free on top) or free-places tangent directly on raw terrain as the explicit fallback. Ghost orientation is now recomputed from the cursor's *actual current position* every frame (not the build-session's entry-point snapshot used for the camera), fixing a milder version of the sphere-conversion's "sideways" bug that would've resurfaced once panning far from the entry point. Verified via a driven test: orientation exactly matches local radial direction at 4 well-spread points (pole, 2 equator axes, oblique — dot product 1.0000 every time), snapped foundations match their neighbor's basis exactly at exactly one tile-width apart, mounted buildings sit flush, and a full end-to-end placement through the real build UI/inventory/PipeNetwork pipeline works. See main-design.md Implementation Patterns and Known Issues for the design writeup and gotchas. Known gap, not done: the pipe/merger/splitter conveyor system's own cardinal-direction math still assumes world-Y rotation, same underlying issue buildings just got fixed for — see main-design.md Scale/Terrain System sections.
+
+**Slice 2 started — Turret buildings (2026-09-03)**: `scripts/world/turret.gd` (`class_name Turret extends Building`), two scenes (`scenes/turret_gun.tscn` — fast, single-target, 14m range; `scenes/turret_cannon.tscn` — slow, splash, 20m range). Ammo is a plain `Building` inventory with `can_accept_input`/`can_add_output` overridden (no Recipe involved), so the existing `building_ui.gd` works as an ammo box. Targeting is group+duck-typed (`get_nodes_in_group("enemy")` + `has_method("take_damage")`), not a typed `Enemy` class — `scripts/world/enemy_dummy.gd` (`EnemyDummy`, health + `take_damage` + `"enemy"` group, no AI/movement) is a minimal test-target scaffold standing in for the real Slice-2 wave/AI system, which is still unbuilt. Head aiming reads its own `global_transform.basis.y` (not `Vector3.UP`) so it stays correct under the foundation system's surface-tangent orientation with no extra work. Not done: real enemy AI/movement/spawning, wave pressure scaling, power grid — still Slice 2 follow-up work, `EnemyDummy` is not that system.
+
+**Volumetric ballistics (2026-09-03, explicit user request, replaces the turret's original hitscan)**: `scripts/world/projectile.gd` is a real simulated round — hand-integrated semi-implicit Euler physics each tick (gravity from the new `scripts/planet_physics.gd` autoload, shared with player.gd which was migrated onto it too so gravity/planet-center have exactly one source of truth; quadratic aerodynamic drag from `PlanetPhysics.air_density`, itself set from the active `PlanetAtmosphere` resource — a thinner/thicker atmosphere changes bullet drag automatically) plus a per-tick swept `PhysicsRayQueryParameters3D` raycast (prev-position to new-position, not a point check, so a fast round can't tunnel through a thin target in one step). `scripts/data/ammo_type.gd` (`class_name AmmoType`, plain `Resource`) owns the *complete* spec for one round — mass/muzzle_velocity/caliber/drag_coefficient AND damage/splash — deliberately not split across (turret, ammo), so different ammo types are what actually differentiates combat outcomes, not which turret fired them. `Turret.compatible_ammo: Array[AmmoType]` is an explicit allow-list (`iron_piercing_ammo` — both turrets; new `he_shell`, heavy/splash, cannon-only, crafted from `refined_material`+`gunpowder`) plus a runtime per-item `set_ammo_enabled()`/`is_ammo_enabled()` toggle so the player can lock out a compatible type without unloading it — both the allow-list and the toggle are surfaced in `building_ui.gd`'s new ammo row (only shown `if _building is Turret`). `turret.gd`'s `_compute_aim_point()` solves the classic no-drag ballistic-range quadratic for a firing-solution elevation angle (a deliberately simpler/separate model from the projectile's own drag-inclusive simulated flight — falls back to aiming flat if the target is beyond what the chosen ammo can ballistically reach at all). Modifier slots (`Building.modifier_slots`/`compatible_modifiers`, previously inert placeholder buttons) were made functionally real (`set_modifier_slot`, click-to-carry in `building_ui.gd`) but no modifier items/effects are designed yet — the mechanism exists, the content doesn't. Verified via a driven test: hand-recomputed expected velocity/position matches the real projectile after one integration step (sub-cm tolerance), trajectory visibly curves off a straight line under gravity, a turret auto-fires and actually damages an in-range target only once the projectile has flight time to arrive (not instantly), `set_ammo_enabled(false)` genuinely stops firing, a 2-ammo turret prefers its first-declared compatible/enabled/stocked type, and the building_ui ammo row round-trips real turret state. Caught and fixed a real runtime bug this way (a ternary between an array literal and `[]` silently produces an untyped `Array`, not the declared `Array[RID]` — see main-design.md Known Issues) that only threw once a real projectile flew far enough to hit that code path, invisible to a boot-only smoke test.
+
+Plan: `C:\Users\Admin\.claude\plans\while-anther-agent-works-whimsical-creek.md` (supersedes `lexical-weaving-boot.md`, which covered the earlier inventory/tool-gating pass).
+
+## Design Documentation
+
+**source of truth:** `main-design.md` — read before touching godot_voxel/terrain/input code. Contains:
+- Current implementation status
+- All systems (terrain, combat, ships, atmosphere, etc.)
+- Implementation patterns (validated designs, architectural decisions)
+- Known issues and design debt
+- Scale ladder and architectural risks
+
+When fixing a non-obvious bug, add to the Known Issues section in main-design.md. When confirming something works via headless test/playtest, document in Implementation Patterns section. Keep entries terse, dated (YYYY-MM-DD), no duplication.
+
+## Headless smoke test
+
+Godot not on PATH. Binary: `C:\Users\Admin\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe`
+
+```
+"<binary>" --headless --path . --quit-after 60
+```
+Boots world.tscn ~60 frames, catches script/scene errors only — no gameplay/feel/input validation (needs F5 playtest by user).
+
+- `--headless --path . --import --quit` — reimport only
+- `-s script.gd` in place of default scene — isolated one-off check; delete after
+
+Gotchas: see main-design.md Known Issues section (stale-DLL-lock, stale-class-cache → confusing headless failures).
+
+## Concept
+
+Space Engineers (voxel mining/deformable terrain) + Satisfactory (logistics/conveyor production) + Mindustry (factory output → combat ammo economy, wave pressure tied to base output/power). Persistent world, periodic waves not constant threat.
+
+## Stack
+
+Godot 4.7 (Forward+, Jolt, D3D12/Windows) · godot_voxel (`addons/zylann.voxel`) · Gaea (heightmaps) · Blender→glTF · GDScript default, C# only if perf requires (Mono/.NET build) · Qdrant (agent memory) 
+
+Role split: user = scope/testing/approval. Claude = architecture/judgment work.
+
+
+## Reference
+
+Veloren (Rust/Bevy, voxel/persistent/building/combat) — closest analog, study for architecture despite different stack.

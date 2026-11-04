@@ -1,0 +1,74 @@
+== smelter
+00:04.656  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_Smelter                   tris=26420  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Smelter                   x[-1.000,1.000] y[-1.000,1.000] z[0.000,2.561] origin=(0.0, 0.0, 0.0)
+== crafter
+00:04.187  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_Crafter                   tris=15852  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Crafter                   x[-0.750,0.750] y[-0.750,0.750] z[0.000,1.704] origin=(0.0, 0.0, 0.0)
+== constructor
+00:03.750  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_Constructor               tris=16540  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Constructor               x[-0.750,0.750] y[-0.750,0.750] z[0.000,2.070] origin=(0.0, 0.0, 0.0)
+== chest
+00:04.109  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_Chest                     tris=18340  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Chest                     x[-0.750,0.750] y[-0.750,0.750] z[0.000,1.150] origin=(0.0, 0.0, 0.0)
+== pipe
+00:03.344  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_VacuumPipe                tris=3796   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_VacuumPipe                x[-0.300,0.300] y[-0.450,0.450] z[-0.460,0.300] origin=(0.0, 0.0, 0.0)
+== merger
+00:03.297  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_Merger                    tris=5616   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Merger                    x[-0.412,0.412] y[-0.462,0.460] z[-0.450,0.320] origin=(0.0, 0.0, 0.0)
+== splitter
+00:03.485  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_Splitter                  tris=8792   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Splitter                  x[-0.460,0.460] y[-0.462,0.460] z[-0.450,0.350] origin=(0.0, 0.0, 0.0)
+== foundation
+00:03.062  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_Foundation                tris=2666   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Foundation                x[-1.000,1.000] y[-1.000,1.000] z[-0.125,0.125] origin=(0.0, 0.0, 0.0)
+== turret_gun
+00:03.984  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_TurretGun                 tris=8228   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretGun                 x[-0.750,0.750] y[-0.750,0.750] z[0.000,1.150] origin=(0.0, 0.0, 0.0)
+REPORT SM_TurretGun_Head            tris=7680   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretGun_Head            x[-0.355,0.355] y[-0.330,1.225] z[1.130,1.840] origin=(0.0, 0.0, 1.5)
+== turret_cannon
+00:04.156  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_TurretCannon              tris=16300  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretCannon              x[-0.750,0.750] y[-0.750,0.750] z[0.000,1.150] origin=(0.0, 0.0, 0.0)
+REPORT SM_TurretCannon_Head         tris=5392   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretCannon_Head         x[-0.442,0.442] y[-0.632,0.960] z[1.110,1.910] origin=(0.0, 0.0, 1.5)
+== ship_hull
+00:04.125  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_ShipHull                  tris=11372  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipHull                  x[-0.994,0.994] y[-0.994,0.994] z[-0.994,0.994] origin=(0.0, 0.0, 0.0)
+== ship_core
+00:02.860  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_ShipCore                  tris=14700  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipCore                  x[-1.000,1.000] y[-1.000,1.000] z[-1.000,1.000] origin=(0.0, 0.0, 0.0)
+== ship_cockpit
+00:02.687  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_ShipCockpit               tris=5392   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipCockpit               x[-1.000,1.000] y[-1.000,0.998] z[-0.800,0.800] origin=(0.0, 0.0, 0.0)
+== ship_gyroscope
+00:02.656  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_ShipGyroscope             tris=1256   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipGyroscope             x[-0.790,0.790] y[-0.550,0.550] z[-0.800,0.100] origin=(0.0, 0.0, 0.0)
+REPORT SM_ShipGyroscope_RingOuter   tris=2928   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipGyroscope_RingOuter   x[-0.710,0.710] y[-0.054,0.054] z[-0.650,0.650] origin=(0.0, 0.0, 0.0)
+REPORT SM_ShipGyroscope_RingInner   tris=2440   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipGyroscope_RingInner   x[-0.255,0.255] y[-0.520,0.520] z[-0.520,0.520] origin=(0.0, 0.0, 0.0)
+== ship_thruster
+00:02.609  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_ShipThruster              tris=4552   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipThruster              x[-0.650,0.650] y[-0.540,0.800] z[-0.650,0.650] origin=(0.0, 0.0, 0.0)
+== ship_garage
+00:02.610  cycles           | WARNING HIPEW initialization failed: Error opening HIP dynamic library
+REPORT SM_ShipGarage                tris=6704   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipGarage                x[-1.500,1.500] y[-1.500,1.500] z[0.000,1.690] origin=(0.0, 0.0, 0.0)
+C:\Users\Admin\Documents\stellar-td\art_src\contact_sheet.png
+FINISHED

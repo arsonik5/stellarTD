@@ -11,17 +11,22 @@ config_version=5
 [application]
 
 config/name="StellarTD"
-run/main_scene="res://scenes/world.tscn"
+run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
+SaveManager="*res://scripts/save/save_manager.gd"
 Inventory="*res://scripts/inventory.gd"
 PipeNetwork="*res://scripts/pipe_network.gd"
 FoundationNetwork="*res://scripts/foundation_network.gd"
 PlanetPhysics="*res://scripts/planet_physics.gd"
 RadiationSignature="*res://scripts/radiation_signature.gd"
+UiState="*res://scripts/ui_state.gd"
+QuestManager="*res://scripts/quest_manager.gd"
+GameSettings="*res://scripts/settings.gd"
+UiSound="*res://scripts/ui/kit/ui_sound.gd"
 
 [display]
 
@@ -35,3 +40,18 @@ window/stretch/aspect="expand"
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+; 4x MSAA. Terrain at range is sub-pixel triangles against a black sky, which
+; without multisampling sparkles as geometry edges flicker in and out. It looks
+; exactly like a shader artifact and survived every shading fix tried against
+; it - because it is a geometry problem and needs a geometry-level solution.
+anti_aliasing/quality/msaa_3d=2
+; FXAA on top: MSAA does not touch shading aliasing, and procedural surface
+; detail produces plenty of that.
+anti_aliasing/quality/screen_space_aa=1
+; PS2 look (docs/game/art-direction.md): per-vertex (Gouraud) lighting, like the sixth-gen consoles. Set to false
+; to go back to per-pixel lighting.
+shading/overrides/force_vertex_shading=true
+
+[gui]
+
+theme/custom="res://ui/stellar_theme.tres"

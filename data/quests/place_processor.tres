@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Quest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "place_processor"
+title = "Set Up a Processor"
+description = "Place a Processor to start refining raw ore into usable ingots."
+hint = "Press C for build mode, pick Basic Crafter (costs 5 Iron Ore)."
+prerequisite_ids = Array[String](["mine_iron"])
+objective_type = 1
+target_id = "basic_crafter"
+target_amount = 1

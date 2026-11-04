@@ -2,6 +2,16 @@ extends PipeSegment
 
 var _last_input_cursor := 0
 
+func get_connection_points() -> Array[Vector3]:
+	var fwd := -global_transform.basis.z
+	var right := global_transform.basis.x
+	return [
+		global_position + fwd * 0.5,
+		global_position - fwd * 0.5,
+		global_position + right * 0.5,
+		global_position - right * 0.5,
+	]
+
 ## Back, left, right relative to forward() - a Merger's 3 possible upstream
 ## cells (its one fixed output is forward()).
 func _upstream_cells() -> Array[Vector3i]:

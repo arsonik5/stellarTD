@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/debug_ui.gd" id="1"]
-[ext_resource type="Theme" path="res://ui/alpha_theme.tres" id="2"]
+[ext_resource type="Theme" path="res://ui/stellar_theme.tres" id="2"]
 
 [node name="DebugUI" type="CanvasLayer"]
 script = ExtResource("1")

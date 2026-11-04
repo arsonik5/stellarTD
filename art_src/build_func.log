@@ -1,0 +1,57 @@
+== smelter
+REPORT SM_Smelter                   tris=28720  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Smelter                   x[-1.000,1.000] y[-1.000,1.000] z[0.000,2.550] origin=(0.0, 0.0, 0.0)
+REPORT SM_Smelter_Fan               tris=24     ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Smelter_Fan               x[-0.180,0.180] y[-0.180,0.180] z[2.539,2.561] origin=(0.0, 0.0, 2.55)
+REPORT anim Working-loop SM_Smelter_Fan frames 24
+== crafter
+REPORT SM_Crafter                   tris=16856  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Crafter                   x[-0.750,0.750] y[-0.750,0.750] z[0.000,1.697] origin=(0.0, 0.0, 0.0)
+REPORT SM_Crafter_Fan               tris=36     ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Crafter_Fan               x[-0.160,0.160] y[-0.146,0.146] z[1.692,1.704] origin=(0.0, 0.0, 1.698)
+REPORT SM_Crafter_Arm               tris=1792   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Crafter_Arm               x[-0.260,-0.100] y[0.100,0.582] z[1.090,1.492] origin=(-0.18, 0.18, 1.12)
+REPORT anim Working-loop SM_Crafter_Fan frames 96
+REPORT anim Working-loop SM_Crafter_Arm frames 96
+== constructor
+REPORT SM_Constructor               tris=17208  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Constructor               x[-0.750,0.750] y[-0.750,0.750] z[0.000,2.070] origin=(0.0, 0.0, 0.0)
+REPORT SM_Constructor_Ram           tris=2212   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Constructor_Ram           x[-0.369,0.369] y[-0.290,0.210] z[1.110,1.770] origin=(0.0, 0.05, 1.2)
+REPORT anim Working-loop SM_Constructor_Ram frames 48
+== merger
+REPORT SM_Merger                    tris=15016  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Merger                    x[-0.450,0.450] y[-0.450,0.450] z[-0.450,0.403] origin=(0.0, 0.0, 0.0)
+== splitter
+REPORT SM_Splitter                  tris=16868  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Splitter                  x[-0.450,0.450] y[-0.450,0.450] z[-0.450,0.447] origin=(0.0, 0.0, 0.0)
+REPORT SM_Splitter_Rotor            tris=640    ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_Splitter_Rotor            x[-0.120,0.155] y[-0.120,0.120] z[0.335,0.372] origin=(0.0, 0.0, 0.35)
+REPORT anim Working-loop SM_Splitter_Rotor frames 36
+== turret_gun
+REPORT SM_TurretGun                 tris=10660  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretGun                 x[-0.750,0.750] y[-0.750,0.750] z[0.000,1.150] origin=(0.0, 0.0, 0.0)
+REPORT SM_TurretGun_Head            tris=2092   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretGun_Head            x[-0.367,0.367] y[-0.340,0.340] z[1.150,1.686] origin=(0.0, 0.0, 1.5)
+REPORT SM_TurretGun_Cradle          tris=4152   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretGun_Cradle          x[-0.295,0.295] y[-0.320,0.690] z[1.450,1.830] origin=(0.0, 0.0, 1.6)
+REPORT SM_TurretGun_Barrels         tris=2568   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretGun_Barrels         x[-0.138,0.138] y[0.675,1.225] z[1.602,1.698] origin=(0.0, 0.0, 1.65)
+REPORT anim Fire SM_TurretGun_Barrels frames 5
+== turret_cannon
+REPORT SM_TurretCannon              tris=14540  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretCannon              x[-0.750,0.750] y[-0.750,0.750] z[0.000,1.150] origin=(0.0, 0.0, 0.0)
+REPORT SM_TurretCannon_Head         tris=2300   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretCannon_Head         x[-0.477,0.477] y[-0.430,0.430] z[1.150,1.705] origin=(0.0, 0.0, 1.5)
+REPORT SM_TurretCannon_Cradle       tris=4480   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretCannon_Cradle       x[-0.400,0.400] y[-0.590,0.650] z[1.380,1.900] origin=(0.0, -0.1, 1.59)
+REPORT SM_TurretCannon_Barrel       tris=876    ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_TurretCannon_Barrel       x[-0.158,0.158] y[0.540,0.960] z[1.545,1.755] origin=(0.0, 0.0, 1.65)
+REPORT anim Fire SM_TurretCannon_Barrel frames 17
+== ship_hull
+REPORT SM_ShipHull                  tris=11228  ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipHull                  x[-0.994,0.994] y[-0.994,0.994] z[-0.994,0.994] origin=(0.0, 0.0, 0.0)
+== ship_thruster
+REPORT SM_ShipThruster              tris=8280   ngons=0 nonmanifold=0 scale=(1.0, 1.0, 1.0) rot=(0.0, 0.0, 0.0) slots=8
+REPORT SM_ShipThruster              x[-0.650,0.650] y[-0.540,0.800] z[-0.650,0.650] origin=(0.0, 0.0, 0.0)
+FINISHED

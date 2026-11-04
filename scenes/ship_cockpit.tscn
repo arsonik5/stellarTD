@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_cockpit.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/buildings/ship_cockpit/SM_ShipCockpit.glb" id="model"]
+
+[node name="ShipCockpit" type="Node3D"]
+script = ExtResource("1")
+mass_kg = 70.0
+
+[node name="CockpitCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0.2)
+
+[node name="Model" parent="." instance=ExtResource("model")]

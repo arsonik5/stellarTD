@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="PlanetHeightmap" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/planet_heightmap.gd" id="1"]
+[ext_resource type="Texture2D" path="res://data/heightmaps/home.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+image = ExtResource("2")
+relief_meters = 60.0
+sea_level = 0.45

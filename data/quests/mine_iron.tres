@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Quest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "mine_iron"
+title = "Strike the Surface"
+description = "Mine Iron Ore from the terrain to get your production chain started."
+hint = "Hold left-click with your Mining Tool equipped."
+prerequisite_ids = Array[String]([])
+objective_type = 0
+target_id = "ore_a"
+target_amount = 5

@@ -13,11 +13,11 @@ extends Resource
 @export_group("Shape")
 ## LOCAL (voxel-grid) units, same convention ore_generator.gd always used -
 ## world-space meters = radius * Planet.VOXEL_SCALE.
-@export_range(10.0, 2000.0) var radius: float = 100.0
+@export_range(10.0, 50000.0) var radius: float = 100.0
 ## Two noise octaves shape the surface: broad hills/lowlands, then smaller
 ## bumps/craters on top so the sphere doesn't read as perfectly smooth.
-@export_range(0.0, 100.0) var height_amplitude: float = 6.0
-@export_range(0.0, 20.0) var detail_amplitude: float = 1.5
+@export_range(0.0, 4000.0) var height_amplitude: float = 6.0
+@export_range(0.0, 1000.0) var detail_amplitude: float = 1.5
 
 @export_group("Ore veins")
 @export_range(0.0, 50.0) var ore_vein_depth_min: float = 0.5
@@ -33,5 +33,31 @@ extends Resource
 ## the whole threat system reacts to, not a routine crafting ingredient.
 @export_range(0.0, 1.0) var ore_crystal_threshold: float = 0.55
 
+@export_group("Shape - baked heightmap")
+## Optional. When set, this body's LARGE-SCALE shape comes from a baked,
+## eroded heightmap instead of from height_amplitude/detail_amplitude noise,
+## and the noise fields above are demoted to sub-pixel detail on top of it.
+##
+## This is the Space Engineers 2 arrangement (heightmap-first, 3D voxel detail
+## layered over it) and it is the only way to get real drainage networks and
+## river valleys - those come from iterative erosion, which cannot be
+## evaluated per-block on demand. Bake with tools/bake_planet_heightmap.py.
+##
+## Leaving it null keeps the pre-heightmap pure-noise behaviour exactly, so
+## bodies migrate one at a time.
+@export var heightmap: PlanetHeightmap
+
 @export_group("Atmosphere")
 @export var atmosphere: PlanetAtmosphere
+
+@export_group("Biomes")
+## Empty = legacy behavior (single shared depth band + the ore_*_threshold
+## fields above, exactly as before biomes existed) - never a regression risk
+## for a body that hasn't been migrated yet. See biome-system-design.md.
+@export var ore_types: Array[OreType] = []
+@export var biomes: Array[Biome] = []
+## A point in (temperature, roughness) space that shifts the whole climate
+## noise field's center - (0.5, 0.5) is neutral/unbiased. One number turns a
+## body "mostly ice moon" or "mostly volcanic" without touching biome
+## definitions themselves.
+@export var climate_bias := Vector2(0.5, 0.5)

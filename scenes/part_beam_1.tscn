@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_block.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/parts/part_beam_1/SM_PartBeam1.glb" id="model"]
+
+[node name="part_beam_1" type="Node3D"]
+script = ExtResource("1")
+block_id = "beam_1"
+mass_kg = 8.0
+max_health = 60.0
+size_cells = Vector3i(1, 1, 1)
+
+[node name="Model" parent="." instance=ExtResource("model")]

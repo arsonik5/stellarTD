@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_block.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/buildings/ship_hull/SM_ShipHull.glb" id="model"]
+
+[node name="ShipHull" type="Node3D"]
+script = ExtResource("1")
+mass_kg = 80.0
+block_id = "ship_hull"
+max_health = 150.0
+
+[node name="Model" parent="." instance=ExtResource("model")]

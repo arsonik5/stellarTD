@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_o2_tank.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/parts/part_o2_tank/SM_PartO2Tank.glb" id="model"]
+
+[node name="part_o2_tank" type="Node3D"]
+script = ExtResource("1")
+block_id = "o2_tank"
+mass_kg = 70.0
+max_health = 60.0
+size_cells = Vector3i(2, 2, 2)
+
+[node name="Model" parent="." instance=ExtResource("model")]

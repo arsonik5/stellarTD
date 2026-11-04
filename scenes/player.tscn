@@ -1,16 +1,13 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/player.gd" id="1"]
+[ext_resource type="PackedScene" path="res://data/models/tools/tool_mining/SM_MiningTool.glb" id="t_mining"]
+[ext_resource type="PackedScene" path="res://data/models/tools/tool_scanner/SM_ScannerTool.glb" id="t_scanner"]
+[ext_resource type="PackedScene" path="res://data/models/tools/tool_build/SM_BuildTool.glb" id="t_build"]
 
 [sub_resource type="CapsuleShape3D" id="1"]
 radius = 0.4
 height = 1.8
-
-[sub_resource type="BoxMesh" id="2"]
-size = Vector3(0.08, 0.08, 0.32)
-
-[sub_resource type="StandardMaterial3D" id="3"]
-albedo_color = Color(0.25, 0.25, 0.28, 1)
 
 [node name="Player" type="CharacterBody3D"]
 script = ExtResource("1")
@@ -24,11 +21,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
 current = true
 
 [node name="VoxelViewer" type="VoxelViewer" parent="Camera3D"]
-view_distance = 640
+view_distance = 1024
 requires_visuals = true
 requires_collisions = true
 
-[node name="ViewmodelTool" type="MeshInstance3D" parent="Camera3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.22, -0.18, -0.4)
-mesh = SubResource("2")
-surface_material_override/0 = SubResource("3")
+[node name="ViewmodelTool" type="Node3D" parent="Camera3D"]
+transform = Transform3D(0.95, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0.22, -0.21, -0.46)
+
+[node name="MiningTool" parent="Camera3D/ViewmodelTool" instance=ExtResource("t_mining")]
+
+[node name="ScannerTool" parent="Camera3D/ViewmodelTool" instance=ExtResource("t_scanner")]
+
+[node name="BuildTool" parent="Camera3D/ViewmodelTool" instance=ExtResource("t_build")]

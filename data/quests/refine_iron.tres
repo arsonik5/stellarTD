@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Quest" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/quest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "refine_iron"
+title = "Smelt Some Ingots"
+description = "Refine Iron Ore into Iron Ingots at your Processor."
+hint = "Press E on the Processor and click a recipe to run it manually."
+prerequisite_ids = Array[String](["place_processor"])
+objective_type = 0
+target_id = "refined_material"
+target_amount = 3
