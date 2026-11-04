@@ -1,6 +1,6 @@
 # Stellar TD agent rules
 
-Scope now: Slice 1 feel loop — spherical voxel planet, dig/place, five ores, processing, save/load. Do not speculatively build power, combat, or advanced logistics. Ships and persistence are already built - maintain them, don't re-implement.
+Scope now: the design pass in `docs/game/design/` (2026-11-04) - build in the order of `design/07-roadmap.md`. Do not build a mechanic that is not in the design docs; add it there first. Ships and persistence are already built - maintain them, don't re-implement.
 
 Always:
 - Preserve behavior unless asked to change it; validate with the smallest relevant test.
@@ -12,6 +12,7 @@ Always:
 
 Read only one needed reference:
 - `docs/game/README.md` — game-doc router
+- `docs/game/design/README.md` — whole-game design (vision, mechanics, planets, architecture, roadmap)
 - `docs/game/current-scope.md` — milestone boundary
 - `docs/game/art-direction.md` — assets/art
 - `docs/game/ux-bible.md` — ANY UI, HUD, menu, input or first-person feel work (locked rules; evidence in `ux-log.md`)

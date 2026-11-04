@@ -4,6 +4,7 @@ Load only the task topic.
 
 | Need | Read |
 |---|---|
+| Whole-game design: vision, mechanics (core/minor/small), planets, architecture, roadmap | `design/README.md` |
 | Current allowed scope | `current-scope.md` |
 | Reported defects being worked | `open-items.md` |
 | Art/assets | `art-direction.md` |

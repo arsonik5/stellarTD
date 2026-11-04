@@ -1,11 +1,10 @@
 # Current scope
 
-Slice 1: prove the repeatable feel loop on a spherical voxel planet: dig/place, five ores, processing, and one ore→refined→placeable chain.
+Since 2026-11-04 the game is planned by the design pass in `design/` (vision, core/minor/small mechanics,
+planets, architecture, roadmap). Work follows `design/07-roadmap.md`: milestone G1 (foundations) first, World
+track W1-W2 alongside.
 
-Deferred: power, combat, UI polish, advanced automation/logistics.
+Still true and maintained: ships/constructs, save/load, terrain generator, scanner, hand drill, factory chain.
 
-Built past this line and now in scope to maintain: ships, and save/load
-(main menu, slots, terrain edit deltas, world state - see
-`architecture/gameplay-systems.md`).
-
-Known boundary: foundation placement follows local surface orientation; pipe/merger/splitter cardinal-direction math is still world-Y-based.
+Known boundary: foundation placement follows local surface orientation; pipe/merger/splitter cardinal-direction
+math is still world-Y-based (fixed in G2).
