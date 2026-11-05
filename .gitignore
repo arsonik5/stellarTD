@@ -1,3 +1,6 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# agent worktrees (separate checkouts, never part of the repo)
+.claude/worktrees/
