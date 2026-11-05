@@ -13,7 +13,7 @@ extends Node
 
 const BASELINE_PATH := "res://data/dev/planet_hash_baseline.json"
 const HASH_DIRS := 24
-const CENSUS_DIRS := 240
+const CENSUS_DIRS := 600
 ## Budget per 16^3 surface block at LOD 0 on this machine class. Measured on the CPU container at ~4-9 ms
 ## before the world pass; the budget leaves room for the landform layers but catches a 3x regression.
 const BLOCK_BUDGET_MS := 30.0
@@ -149,6 +149,7 @@ func _test_census(p: Planet, graph: VoxelGeneratorGraph) -> void:
 	mat.create(1, 1, 1)
 	var counts := {}
 	var found := 0
+	var cliff_present := 0
 	for i in CENSUS_DIRS:
 		var dir := _fib(i, CENSUS_DIRS)
 		var r := _surface_radius(p, graph, probe, dir)
@@ -159,16 +160,73 @@ func _test_census(p: Planet, graph: VoxelGeneratorGraph) -> void:
 		var m := TerrainDrill.dominant_from_packed(mat.get_voxel(0, 0, 0, VoxelBuffer.CHANNEL_INDICES),
 			mat.get_voxel(0, 0, 0, VoxelBuffer.CHANNEL_WEIGHTS))
 		counts[m] = int(counts.get(m, 0)) + 1
+		# Blend presence, not only the dominant: a cliff wall shares its voxels with ground at the rim.
+		var pi := mat.get_voxel(0, 0, 0, VoxelBuffer.CHANNEL_INDICES)
+		var pw := mat.get_voxel(0, 0, 0, VoxelBuffer.CHANNEL_WEIGHTS)
+		for slot in 4:
+			if ((pi >> (slot * 4)) & 0xf) == 11 and ((pw >> (slot * 4)) & 0xf) >= 3:
+				cliff_present += 1
+				break
 	var parts := []
 	var keys := counts.keys()
 	keys.sort_custom(func(a, b) -> bool: return counts[a] > counts[b])
 	for m in keys:
 		parts.append("%s %.0f%%" % [MAT_NAMES.get(m, str(m)), 100.0 * counts[m] / float(found)])
-	print("%s census (%d/%d dirs): %s" % [p.name, found, CENSUS_DIRS, ", ".join(parts)])
+	print("%s census (%d/%d dirs): %s | cliff rock in the blend at %d dirs" % [p.name, found, CENSUS_DIRS,
+		", ".join(parts), cliff_present])
+	var recipe: TerrainRecipe = TerrainRecipe.of(p.body)
+	if recipe.cliff_material and recipe.canyon_enabled:
+		_test_wall_material(p, recipe)
 	_check(found >= CENSUS_DIRS * 0.9, "%s: surface found on >= 90%% of directions" % p.name)
 	var want: Array = p.expected_surface_materials() if p.has_method("expected_surface_materials") else []
 	for m in want:
 		_check(counts.has(m), "%s: surface census includes material %d" % [p.name, m])
+
+## A radial census never lands ON a vertical wall (it finds the floor or the rim), so cliff material on walls is
+## checked where a wall actually is: walk a great-circle line until the ground drops > 3 m in 3 m (45 deg), then march
+## horizontally at mid-wall height to the face and read the blend there.
+func _test_wall_material(p: Planet, recipe: TerrainRecipe) -> void:
+	var r := recipe.duplicate() as TerrainRecipe
+	r.canyon_coverage = 1.0
+	var g := p.build_generator_with_recipe(r)
+	var probe := VoxelBuffer.new()
+	probe.create(2, 2, 2)
+	var mat := VoxelBuffer.new()
+	mat.set_channel_depth(VoxelBuffer.CHANNEL_INDICES, VoxelBuffer.DEPTH_16_BIT)
+	mat.set_channel_depth(VoxelBuffer.CHANNEL_WEIGHTS, VoxelBuffer.DEPTH_16_BIT)
+	mat.create(1, 1, 1)
+	var start := _fib(5, 16)
+	var east := start.cross(Vector3.UP if absf(start.y) < 0.9 else Vector3.RIGHT).normalized()
+	var step := 3.0 / Planet.VOXEL_SCALE / p.body.radius
+	var prev := _surface_radius(p, g, probe, start)
+	for i in range(1, 2500):
+		var dir := (start + east * (step * i)).normalized()
+		var h := _surface_radius(p, g, probe, dir)
+		if prev > 0.0 and h > 0.0 and prev - h > 3.0:
+			var mid := (prev + h) * 0.5
+			var a := (start + east * (step * (i - 1))).normalized() * mid
+			var b := dir * mid
+			for k in 41:
+				var q := a.lerp(b, k / 40.0)
+				var vi := Vector3i(roundi(q.x), roundi(q.y), roundi(q.z))
+				g.generate_block(mat, vi, 0)
+				if mat.get_voxel_f(0, 0, 0, VoxelBuffer.CHANNEL_SDF) > 0.0:
+					# first air voxel past the face: read the solid one before it
+					var qs := a.lerp(b, maxf(k - 1, 0) / 40.0)
+					g.generate_block(mat, Vector3i(roundi(qs.x), roundi(qs.y), roundi(qs.z)), 0)
+					var pi := mat.get_voxel(0, 0, 0, VoxelBuffer.CHANNEL_INDICES)
+					var pw := mat.get_voxel(0, 0, 0, VoxelBuffer.CHANNEL_WEIGHTS)
+					var cliff_w := 0
+					for slot in 4:
+						if ((pi >> (slot * 4)) & 0xf) == 11:
+							cliff_w = (pw >> (slot * 4)) & 0xf
+					print("%s: wall found %.0f m along the line, drop %.1f m, cliff weight %d/15 on the face" % [
+						p.name, i * 3.0, (prev - h) * Planet.VOXEL_SCALE, cliff_w])
+					_check(cliff_w >= 4, "%s: canyon wall face is cliff rock" % p.name)
+					return
+			break
+		prev = h
+	print("%s: no canyon wall found along the test line" % p.name)
 
 # --- SHAPE ------------------------------------------------------------------------------------------------------
 

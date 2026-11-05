@@ -349,6 +349,9 @@ static var DEBUG_PART := ""
 ## Canyon cut (0..1) and spire SDF of the build in progress, for the material pass ([] = layer off).
 static var _last_canyon: Array = []
 static var _last_spire: Array = []
+## Terrace risers (0..1) and spire surfaces (0..1) of the build in progress, for cliff material.
+static var _last_riser: Array = []
+static var _last_spire_mask: Array = []
 
 static var _last_ridge: Array = []
 
@@ -449,6 +452,8 @@ static func build(body: CelestialBody, voxel_scale: float,
 	_detail_mult = []
 	_last_canyon = []
 	_last_spire = []
+	_last_riser = []
+	_last_spire_mask = []
 	var g := VoxelGeneratorGraph.new()
 	var f: VoxelGraphFunction = g.get_main_function()
 
@@ -490,6 +495,10 @@ static func build(body: CelestialBody, voxel_scale: float,
 
 	# Cliff rock needs a surface gradient, which only the procedural path has.
 	var cliff: Array = []
+	# The eroded-path cliff mask is the recipe's call, not `cliff_rock`: that flag (off in planet.tscn) governs
+	# the old noise-path slope mask, which painted rock over 76% of the surface.
+	if ridge.is_empty() and eroded != null and _r.cliff_material:
+		cliff = _eroded_cliff_mask(f)
 	if cliff_rock and not ridge.is_empty():
 		cliff = _build_slope_mask(f, body, x, y, z, norm, profile, ridge)
 
@@ -1160,6 +1169,30 @@ static func _flat_gate(f: VoxelGraphFunction, meadow: Array, slope01: Array, pos
 		_mul(f, slope01, _const(f, _r.flat_detail_slope_damp, pos + Vector2(0, 40)), pos + Vector2(60, 40)),
 		pos + Vector2(120, 20)), pos + Vector2(180, 0))
 
+## Cliff rock on the eroded path (it only ever existed on the noise path, so home's census was 100% biome stone
+## and every escarpment, mesa riser and canyon wall wore dust texture). Max of: steep coarse landform, terrace
+## risers, canyon walls (4c(1-c) peaks mid-wall, the floor stays sediment), spire surfaces.
+static func _eroded_cliff_mask(f: VoxelGraphFunction) -> Array:
+	var pos := Vector2(1600, 3800)
+	var parts: Array = []
+	if not _last_slope.is_empty():
+		parts.append(_smoothstep(f, _last_slope, 0.6, 0.95, pos))
+	if not _last_riser.is_empty():
+		parts.append(_last_riser)
+	if not _last_canyon.is_empty():
+		var c := _last_canyon
+		parts.append(_clamp01(f, _mul(f, _mul(f, c, _sub(f, _const(f, 1.0, pos + Vector2(0, 120)), c,
+			pos + Vector2(60, 120)), pos + Vector2(120, 120)), _const(f, 4.0, pos + Vector2(120, 160)),
+			pos + Vector2(180, 120)), pos + Vector2(240, 120)))
+	if not _last_spire_mask.is_empty():
+		parts.append(_last_spire_mask)
+	if parts.is_empty():
+		return []
+	var m: Array = parts[0]
+	for i in range(1, parts.size()):
+		m = _bin(f, VoxelGraphFunction.NODE_MAX, m, parts[i], pos + Vector2(300, 60 * i))
+	return m
+
 # --- W3: landform layers --------------------------------------------------------------------------------------
 
 ## Voxels per metre, from the rock band's own numbers (the generator cannot read Planet.VOXEL_SCALE, see the top
@@ -1207,6 +1240,9 @@ static func _build_terraces(f: VoxelGraphFunction, body: CelestialBody, norm: in
 			pos + Vector2(0, 160)),
 		_smoothstep(f, h01, _r.terrace_min_altitude, _r.terrace_min_altitude + 0.12, pos + Vector2(300, 200)),
 		pos + Vector2(540, 160))
+	# Riser band: |v| near the half step is the cliff between two treads.
+	_last_riser = _mul(f, _smoothstep(f, _abs(f, v, pos + Vector2(240, 260)), 0.5 - w * 1.4, 0.5 - w * 0.2,
+		pos + Vector2(300, 260)), gate, pos + Vector2(360, 260))
 	match DEBUG_PART:
 		"u": return u
 		"t": return t
@@ -1284,6 +1320,8 @@ static func _build_spires(f: VoxelGraphFunction, body: CelestialBody, norm: int,
 	spire = _add(f, spire, _mul(f, _sub(f, _const(f, 1.0, pos + Vector2(540, 400)), gate, pos + Vector2(600, 400)),
 		_const(f, 1000.0, pos + Vector2(600, 440)), pos + Vector2(660, 400)), pos + Vector2(720, 160))
 	_last_spire = spire
+	# 1 where the spire, not the ground, is the surface (its SDF is the lower of the two).
+	_last_spire_mask = _smoothstep(f, _sub(f, sdf, spire, pos + Vector2(780, 120)), -0.5, 1.5, pos + Vector2(840, 120))
 	return _bin(f, VoxelGraphFunction.NODE_MIN, sdf, spire, pos + Vector2(780, 0))
 
 static func _build_landform_slope(f: VoxelGraphFunction, body: CelestialBody,

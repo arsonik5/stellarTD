@@ -63,6 +63,8 @@ extends Resource
 ## The heightmap lookup drifts with altitude (measured 2026-11-05), so off-shell masks read wrong at the real
 ## ground. True is correct; false reproduces the pre-fix generator (legacy()).
 @export var mask_on_shell := true
+## Cliff rock on the eroded path: steep landform, terrace risers, canyon walls, spire faces. Legacy: none.
+@export var cliff_material := true
 
 @export_group("Slope + altitude erosion (W2, NMS-style)")
 ## 0..1. Damps the fine bands where the LANDFORM (coarse map) is gentle and keeps them where it is steep, beyond
@@ -117,6 +119,7 @@ extends Resource
 static func legacy() -> TerrainRecipe:
 	var r := TerrainRecipe.new()
 	r.mask_on_shell = false
+	r.cliff_material = false
 	r.slope_erosion = 0.0
 	r.altitude_erosion = 0.0
 	r.flat_detail_slope_damp = 0.0

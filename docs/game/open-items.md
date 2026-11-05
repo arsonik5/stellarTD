@@ -27,6 +27,14 @@ patch unless they say steep.
     differently. Crag in isolation produces clumped outcrops with bare ground
     between - the right character. Still to tune: the gates, so crags fire on
     genuinely rocky ground rather than almost never.
+  - **Likely root cause found 2026-11-05 (world pass):** every erosion mask the
+    gates read (slope, dust/deposition, wear) was sampled at the voxel's own
+    altitude, where `sphere - heightmap` is NOT the image value - it is only near
+    the nominal radius. On a 20 km world the ground is hundreds of metres off it,
+    so the gates saw the wrong slope and dust. Fixed (`mask_on_shell`, see
+    terrain-generator.md "World pass"); alone it moves 183/400 home directions
+    (mean 0.87 m, up to +13.8 m). NOT ticked: re-judge the crags on the full
+    12.3 m map on a GPU machine before calling this done.
 - [ ] **2. Flat ground ("meadows") is wrong at both ends.** The wavy, liquid look
   is **not** the rock band - it is the erosion map itself. On gentle ground with
   every band off, the surface is visibly the map's **12 m texels**, bilinear and
@@ -163,9 +171,19 @@ patch unless they say steep.
 - [ ] **5. Scanned-rock boulders read as random.** No relation to the terrain
   they sit on. Wants them clustered around rocky/broken edges and much rarer on
   flat smooth ground.
+  - **Implemented 2026-11-05 (W5):** `ScatterSet` rules - score =
+    max(talus, broken-edge slope term) x a 60 m clump field, masks sampled on the
+    shell (they were read at the wrong altitude before, like the terrain masks).
+    Captures from the CPU container show clusters with bare ground between. NOT
+    ticked until Michael judges it on the full map.
 
 ## Ore
 
-- [ ] **6. Scanner finds ore in only one place.** All ore types share one
+- [x] **6. Scanner finds ore in only one place.** All ore types share one
   `Spots3D` site field at 1400 m spacing while a scan cube spans 1024 m, so a
   scan sees at most one site and every ore in it stacks at the same point.
+  - **Validated fixed 2026-11-05** (the SCAN_LOD 7 range change in
+    gameplay-systems.md "Scanner range has to beat deposit spacing"):
+    `scenes/dev/scanner_probe.tscn` on the eroded map finds 30 / 27 / 28 / 32 /
+    32 deposits at five widely separated points (149 total), and the HUD gets 28
+    contacts from one scan. 237-616 ms per scan on the CPU-only container.
