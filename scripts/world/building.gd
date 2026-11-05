@@ -291,6 +291,28 @@ func remove_item(item_id: String, amount: int) -> bool:
 	changed.emit()
 	return true
 
+## Item ids a pipe on this building's output side may pull. Machines give their recipe outputs; storage
+## (accepts_any_item) gives whatever it holds; extractors override this.
+func output_ids() -> Array:
+	if accepts_any_item:
+		var ids := []
+		for slot in _inventory:
+			if slot.item_id != "" and not ids.has(slot.item_id):
+				ids.append(slot.item_id)
+		return ids
+	var out := []
+	for recipe in recipes:
+		if not out.has(recipe.output_id):
+			out.append(recipe.output_id)
+	return out
+
+## One item for a pipe to carry away: removed from this building and its id returned, or "" if nothing to give.
+func pipe_take_one() -> String:
+	for id: String in output_ids():
+		if get_inventory_count(id) > 0 and remove_item(id, 1):
+			return id
+	return ""
+
 func take_slot(index: int) -> Dictionary:
 	var slot := _inventory[index]
 	var result := {"item_id": slot.item_id, "count": slot.count}

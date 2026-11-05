@@ -48,6 +48,12 @@ const ITEM_DEFS_LIST := [
 	preload("res://data/items/ship_gyroscope.tres"),
 	preload("res://data/items/ship_cockpit.tres"),
 	preload("res://data/items/ship_garage.tres"),
+	preload("res://data/items/copper_wire.tres"),
+	preload("res://data/items/steel_ingot.tres"),
+	preload("res://data/items/circuit.tres"),
+	preload("res://data/items/gravel.tres"),
+	preload("res://data/items/concrete.tres"),
+	preload("res://data/items/crystal_cell.tres"),
 ]
 
 var _item_defs: Dictionary = {}

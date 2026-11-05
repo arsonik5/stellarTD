@@ -306,11 +306,9 @@ func _try_pull_from_input_side() -> void:
 	if source == null or not (source is Building):
 		return
 	var building: Building = source
-	for recipe in building.recipes:
-		var output_id: String = recipe.output_id
-		if building.get_inventory_count(output_id) > 0 and building.remove_item(output_id, 1):
-			pipe_accept(output_id, grid_pos - forward())
-			return
+	var taken := building.pipe_take_one()
+	if taken != "":
+		pipe_accept(taken, grid_pos - forward())
 
 ## A building whose footprint holds `point` (ports sit on the footprint edge, so a point just past a pipe's end
 ## is inside the building it is connected to).
