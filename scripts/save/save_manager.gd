@@ -23,7 +23,32 @@ const SAVES_DIR := "user://saves"
 const STATE_FILE := "state.json"
 ## Bumped whenever the state.json layout changes incompatibly. Loading a slot
 ## from a newer version is refused rather than half-applied.
-const FORMAT_VERSION := 1
+const FORMAT_VERSION := 2
+
+## Migrations, one per version step: MIGRATIONS[n] turns a version-n state into version n+1. Old saves are
+## upgraded on open, never refused, so changing the layout means adding a step here (design M34).
+## 1 -> 2: player vitals/suit O2 and building health/jobs were added. Every reader has defaults, so the step
+##         only stamps the version - it exists so the chain is unbroken from the first format.
+const MIGRATIONS := {
+	1: "_migrate_1_to_2",
+}
+
+func migrate(state: Dictionary) -> Dictionary:
+	var v := int(state.get("version", 1))
+	if v < 1:
+		v = 1
+	while v < FORMAT_VERSION:
+		var step: String = MIGRATIONS.get(v, "")
+		if step == "":
+			push_error("SaveManager: no migration from version %d." % v)
+			break
+		state = call(step, state)
+		v += 1
+		state["version"] = v
+	return state
+
+func _migrate_1_to_2(state: Dictionary) -> Dictionary:
+	return state
 
 ## Slot currently being played, "" when in the menu. Also what Planet reads to
 ## decide which terrain database to attach.
@@ -162,6 +187,7 @@ func open_slot(slot_id: String) -> bool:
 	if int(state.get("version", 0)) > FORMAT_VERSION:
 		push_error("SaveManager: slot '%s' was written by a newer version." % slot_id)
 		return false
+	state = migrate(state)
 	begin_session(slot_id, state)
 	return true
 

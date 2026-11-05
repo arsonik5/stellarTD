@@ -107,6 +107,7 @@ func add(item_id: String, amount: int) -> int:
 	var added := amount - remaining
 	if added > 0:
 		changed.emit()
+		GameEvents.item_added.emit(item_id, added)
 	return added
 
 func try_remove(item_id: String, amount: int) -> bool:
@@ -128,6 +129,7 @@ func try_remove(item_id: String, amount: int) -> bool:
 				slot.count = 0
 
 	changed.emit()
+	GameEvents.item_removed.emit(item_id, amount)
 	return true
 
 ## --- Slot-based API (inventory UI, hand slots) ---

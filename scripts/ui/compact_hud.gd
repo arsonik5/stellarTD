@@ -21,6 +21,16 @@ var _quest_box: VBoxContainer
 var _quest_title: Label
 var _quest_bar: ProgressBar
 var _quest_count: Label
+var _hp_bar: ProgressBar
+var _hp_text: Label
+var _hurt: ColorRect
+var _hurt_amount := 0.0
+var _death_label: Label
+var _action_box: VBoxContainer
+var _action_label: Label
+var _action_bar: ProgressBar
+var _toast: Label
+var _toast_time := 0.0
 var _o2_bar: ProgressBar
 var _o2_text: Label
 var _o2_state: Label
@@ -46,6 +56,9 @@ func _ready() -> void:
 	QuestManager.changed.connect(_refresh_quest)
 	Inventory.changed.connect(_on_inventory_changed)
 	GameSettings.changed.connect(func(_k: String) -> void: _refresh_hints())
+	GameEvents.damaged.connect(_on_damaged)
+	GameEvents.player_died.connect(func(_c: String) -> void: _death_label.visible = true)
+	GameEvents.player_respawned.connect(func() -> void: _death_label.visible = false)
 	_last_counts = _counts()
 	_refresh_visibility()
 	_refresh_quest()
@@ -75,6 +88,43 @@ func _build() -> void:
 				_crosshair.draw_line(p, p + d.normalized() * 5.0, Color(0, 0, 0, 0.5 * _cross_open), 4.0)
 				_crosshair.draw_line(p, p + d.normalized() * 5.0, col, 2.0))
 	root.add_child(_crosshair)
+
+	# damage vignette + death card: full-screen, input-transparent, drawn under every panel
+	_hurt = ColorRect.new()
+	_hurt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_hurt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hurt.color = Color(UiTokens.DANGER, 0.0)
+	root.add_child(_hurt)
+	_death_label = UiKit.label("SUIT FAILURE  ·  RECOVERING AT LANDING SITE", "HudValue")
+	_death_label.set_anchors_preset(Control.PRESET_CENTER)
+	_death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_death_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_death_label.visible = false
+	root.add_child(_death_label)
+
+	# hold-action progress (dismantle, later repair/salvage): under the crosshair, label + 2 px line
+	_action_box = UiKit.vbox(4)
+	_action_box.set_anchors_preset(Control.PRESET_CENTER)
+	_action_box.offset_top = 28
+	_action_box.offset_left = -110
+	_action_box.offset_right = 110
+	_action_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_action_box.visible = false
+	root.add_child(_action_box)
+	_action_label = UiKit.label("", "HudCaption")
+	_action_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_action_box.add_child(_action_label)
+	_action_bar = UiKit.bar("WarnBar", 2)
+	_action_box.add_child(_action_bar)
+
+	# toast: one line of feedback for refused actions ("Inventory full ..."), centre, fades after 2.5 s
+	_toast = UiKit.label("", "HudLabel")
+	_toast.set_anchors_preset(Control.PRESET_CENTER)
+	_toast.offset_top = 64
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_toast.modulate = Color(UiTokens.WARN, 0.0)
+	root.add_child(_toast)
 
 	# objective (top left, Warframe's pinned-mission spot): a gold diamond, the goal, a 2 px progress line
 	var qpanel := UiKit.panel("HudPanel")
@@ -116,6 +166,21 @@ func _build() -> void:
 	o2head.add_child(UiKit.label("SUIT O2", "HudCaption"))
 	_o2_state = UiKit.label("", "HudCaption")
 	o2head.add_child(_o2_state)
+	# suit integrity (health) sits above the air: same caption / value / 2 px line grammar
+	var hphead := UiKit.hbox(10)
+	hphead.add_child(UiKit.label("SUIT INTEGRITY", "HudCaption"))
+	_hp_text = UiKit.label("100", "HudCaption")
+	hphead.add_child(_hp_text)
+	o2.add_child(hphead)
+	_hp_bar = UiKit.bar("GoodBar", 2)
+	_hp_bar.custom_minimum_size.x = 220
+	_hp_bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_hp_bar.value = 1.0
+	o2.add_child(_hp_bar)
+	var gap := Control.new()
+	gap.custom_minimum_size.y = 8
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	o2.add_child(gap)
 	o2.add_child(o2head)
 	_o2_text = UiKit.label("5:00", "HudValue")
 	o2.add_child(_o2_text)
@@ -245,9 +310,12 @@ func _process(delta: float) -> void:
 		_player = get_tree().get_first_node_in_group("player")
 	if _player != null:
 		_update_o2()
+		_update_health(delta)
 	if _ship != null and is_instance_valid(_ship):
 		_update_ship()
 	_update_feed(delta)
+	_toast_time = maxf(_toast_time - delta, 0.0)
+	_toast.modulate = Color(UiTokens.WARN, clampf(_toast_time / 0.4, 0.0, 1.0))
 	var prompt := get_tree().get_first_node_in_group("interact_prompt") as CanvasLayer
 	var want := 1.0 if prompt != null and prompt.visible else 0.0
 	if absf(want - _cross_open) > 0.001:
@@ -283,6 +351,33 @@ func _update_o2() -> void:
 		_o2_alarm = 4.0 if o2 <= 0.0 else 12.0
 	var ship: Ship = _player.get("_piloted_ship")
 	_ship_o2.text = "SHIP O2  %d s" % int(ship.oxygen_left()) if ship != null else ""
+
+func set_action_progress(fraction: float, text: String) -> void:
+	_action_box.visible = fraction > 0.0
+	_action_bar.value = clampf(fraction, 0.0, 1.0)
+	_action_label.text = text.to_upper()
+
+func toast(text: String) -> void:
+	_toast.text = text
+	_toast_time = 2.5
+
+func _on_damaged(target: Node, amount: float, _type: String, _source: Node) -> void:
+	if target == null or not target.is_in_group("player"):
+		return
+	_hurt_amount = minf(_hurt_amount + amount / 40.0 + 0.15, 0.6)
+	UiSound.play("error")
+
+func _update_health(delta: float) -> void:
+	var v: PlayerVitals = _player.get("vitals")
+	if v == null or v.health == null:
+		return
+	var f := v.health.fraction()
+	_hp_bar.value = lerpf(_hp_bar.value, f, 0.25)
+	_hp_text.text = "%d" % ceili(v.health.health)
+	_hp_bar.theme_type_variation = "DangerBar" if f < 0.3 else ("WarnBar" if f < 0.6 else "GoodBar")
+	_hurt_amount = move_toward(_hurt_amount, 0.0, delta * 0.8)
+	var dead_dim := 0.85 if v.dead else 0.0
+	_hurt.color = Color(0.0, 0.0, 0.0, dead_dim) if v.dead else Color(UiTokens.DANGER, _hurt_amount * 0.45)
 
 func _update_ship() -> void:
 	_ship_rows["Speed"].text = "%d m/s" % roundi(_ship.linear_velocity.length())

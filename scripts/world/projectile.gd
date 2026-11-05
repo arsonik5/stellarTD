@@ -97,15 +97,17 @@ func _physics_process(delta: float) -> void:
 func _resolve_impact(result: Dictionary) -> void:
 	var collider = result.get("collider")
 	var hit_pos: Vector3 = result.get("position", global_position)
-	var hit_enemy: bool = collider != null and collider.is_in_group("enemy") and collider.has_method("take_damage")
-	if hit_enemy:
-		collider.take_damage(damage)
+	# One damage contract (Health.deal): factions decide who is hurt, so turret rounds pass over friendly
+	# buildings and alien rounds will hurt the base, with no per-target code here.
+	var dtype := "explosive" if splash_radius > 0.0 else "kinetic"
+	if collider != null:
+		Health.deal(collider, damage, dtype, self, hit_pos)
 	if splash_radius > 0.0:
-		for node in get_tree().get_nodes_in_group("enemy"):
-			if node == collider or not node is Node3D or not node.has_method("take_damage"):
+		for node in get_tree().get_nodes_in_group("damageable"):
+			if node == collider or not node is Node3D:
 				continue
 			if node.global_position.distance_to(hit_pos) <= splash_radius:
-				node.take_damage(damage * splash_damage_falloff)
+				Health.deal(node, damage * splash_damage_falloff, dtype, self, hit_pos)
 	_spawn_impact_flash(hit_pos)
 	queue_free()
 

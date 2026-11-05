@@ -61,6 +61,8 @@ var _yield_carry := {}
 var _pitch := 0.0
 ## Camera bob, tool sway, landing and use kicks (scripts/player/first_person_feel.gd).
 var feel: FirstPersonFeel = null
+## Health, falls, suffocation, death/respawn (scripts/player/player_vitals.gd).
+var vitals: PlayerVitals = null
 var _held_sig := ""
 var _terrain: VoxelNode = null
 var _inventory_open := false
@@ -115,6 +117,12 @@ var _dig_tick_timer := 0.0
 ## Build mode: the player walks and looks as normal; the build menu (mouse free) opens on entry and on Q, and
 ## closes once a building is picked. While it is open the world gets no clicks.
 var _build_mode := false
+## Dismantle sub-mode of the build tool (X): aim at something you placed, hold LMB, get its cost + contents back.
+var _dismantle := false
+var _dismantle_held := false
+var _dismantle_hold := 0.0
+var _dismantle_target: Node3D = null
+const DISMANTLE_TIME := 0.45
 var _build_grid_snap := true
 var _build_rotation := 0.0
 var _build_ghost: MeshInstance3D = null
@@ -136,6 +144,10 @@ func _ready() -> void:
 	feel.name = "Feel"
 	add_child(feel)
 	feel.setup(self, camera, viewmodel)
+	vitals = PlayerVitals.new()
+	vitals.name = "Vitals"
+	add_child(vitals)
+	vitals.setup(self)
 	_build_lamp()
 	_update_viewmodel()
 	_refresh_hud()
@@ -251,6 +263,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _build_mode:
 		if _build_menu_open():
 			return # the menu's buttons take the clicks; picking one closes it (on_build_picked)
+		if _dismantle and event is InputEventMouseButton:
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				_dismantle_held = event.pressed
+				if not event.pressed:
+					_dismantle_hold = 0.0
+			elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+				_set_dismantle(false)
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+			_pick_what_i_look_at()
+			get_viewport().set_input_as_handled()
+			return
 		if event is InputEventMouseButton and event.pressed:
 			if event.button_index == MOUSE_BUTTON_LEFT:
 				if _is_pipe_item(_selected_build_item()):
@@ -272,7 +297,15 @@ func _unhandled_input(event: InputEvent) -> void:
 				_refresh_build_hint()
 			return
 		if event is InputEventKey and event.pressed and not event.echo:
-			if event.keycode == KEY_B and _is_pipe_item(_selected_build_item()):
+			if event.keycode == KEY_X:
+				_set_dismantle(not _dismantle)
+			elif event.keycode >= KEY_1 and event.keycode <= KEY_9:
+				var build_ui := get_tree().get_first_node_in_group("build_ui")
+				if build_ui != null and build_ui.select_hotbar(event.keycode - KEY_1):
+					_set_dismantle(false)
+					_pipe_anchor_set = false
+					UiSound.play("click")
+			elif event.keycode == KEY_B and _is_pipe_item(_selected_build_item()):
 				_pipe_free_mode = not _pipe_free_mode
 			elif event.keycode == KEY_G:
 				_build_grid_snap = not _build_grid_snap
@@ -298,6 +331,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_place_ship_item(ship_item)
 			else:
 				_build()
+		elif event.button_index == MOUSE_BUTTON_MIDDLE and event.pressed:
+			_pick_what_i_look_at()
 
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		# rotate_object_local (not rotate_y/rotate_y works in the PARENT frame)
@@ -415,6 +450,7 @@ func _enter_build_mode() -> void:
 	_refresh_hud()
 
 func _exit_build_mode() -> void:
+	_set_dismantle(false)
 	_build_mode = false
 	_pipe_anchor_set = false
 	_clear_build_ghost()
@@ -456,9 +492,13 @@ func _refresh_build_hint() -> void:
 	if not _build_mode:
 		hud.set_context_hints([])
 		return
+	if _dismantle:
+		hud.set_context_hints([["Hold LMB", "Dismantle"], ["X", "Back to building"], ["RMB", "Back"]])
+		return
 	var item := _selected_build_item()
 	var pairs: Array = [["LMB", "Place " + (item.display_name if item != null else "")], ["R/Wheel", "Rotate"],
-		["G", "Grid " + ("on" if _build_grid_snap else "off")], ["Q", "Menu"], ["RMB", "Done"]]
+		["G", "Grid " + ("on" if _build_grid_snap else "off")], ["1-9", "Hotbar"], ["X", "Dismantle"],
+		["Q", "Menu"], ["RMB", "Done"]]
 	if item != null and item.id == "vacuum_pipe":
 		pairs = [["LMB", "Start / end pipe" if not _pipe_anchor_set else "End pipe here"],
 			["B", "Free angle" if _pipe_free_mode else "Straight"], ["Q", "Menu"], ["RMB", "Cancel" if _pipe_anchor_set else "Done"]]
@@ -675,20 +715,35 @@ func is_spawn_resolved() -> bool:
 ## --- Persistence (see scripts/save/save_manager.gd) ---
 
 func save_state() -> Dictionary:
-	return {"transform": SaveManager.transform_to_array(global_transform)}
+	return {
+		"transform": SaveManager.transform_to_array(global_transform),
+		"vitals": vitals.save_state() if vitals != null else {},
+		"suit_o2": suit_o2,
+	}
 
 func load_state(data: Dictionary) -> void:
 	global_transform = SaveManager.array_to_transform(data.get("transform", []))
+	if vitals != null:
+		vitals.load_state(data.get("vitals", {}))
+	suit_o2 = clampf(float(data.get("suit_o2", SUIT_O2_MAX)), 0.0, SUIT_O2_MAX)
 	_spawn_from_save = true
 	_spawn_resolved = false
 	_spawn_wait_frames = 0
 
 func _physics_process(delta: float) -> void:
 	_process_tool_anims(delta)
-	_update_suit_o2(delta)
+	# air is only used once the player is standing in the world, not while a save streams in
+	if _spawn_resolved and not (vitals != null and vitals.dead):
+		_update_suit_o2(delta)
 	_scan_cooldown = maxf(_scan_cooldown - delta, 0.0)
 	if not _spawn_resolved:
 		_try_resolve_spawn()
+		if _spawn_resolved and vitals != null and not vitals.has_respawn:
+			vitals.remember_respawn(global_transform)
+		return
+
+	if vitals != null and vitals.dead:
+		velocity = Vector3.ZERO
 		return
 
 	if _piloted_ship != null:
@@ -702,7 +757,9 @@ func _physics_process(delta: float) -> void:
 	if _is_building_ui_open():
 		return
 
-	if _build_mode:
+	if _build_mode and _dismantle:
+		_update_dismantle(delta)
+	elif _build_mode:
 		_update_build_ghost()   # the player keeps walking; the ghost follows the crosshair
 
 	# Re-resolve the nearest terrain every frame (not just once in _ready())
@@ -764,8 +821,11 @@ func _physics_process(delta: float) -> void:
 	velocity = _move_vel + up * _vertical_speed
 
 	move_and_slide()
-	if is_on_floor() and not was_on_floor and feel != null:
-		feel.land(fall_speed)
+	if is_on_floor() and not was_on_floor:
+		if feel != null:
+			feel.land(fall_speed)
+		if vitals != null:
+			vitals.on_landed(fall_speed)
 
 	var interact_down := Input.is_physical_key_pressed(KEY_E)
 	if not _inventory_open and not _is_journal_open() and interact_down and not _interact_was_down:
@@ -888,7 +948,7 @@ func _build() -> void:
 	tool.set_texture_falloff(0.5)
 	tool.do_sphere(place_pos, _local_radius(BUILD_RADIUS))
 
-	QuestManager.notify_action("place_block")
+	GameEvents.act("place_block")
 
 ## Where the crosshair (screen centre) hits the world within BUILD_MODE_RANGE: terrain collision, foundations and
 ## buildings alike, never the player. Null when it hits nothing (looking at the sky), and the ghost hides.
@@ -1172,7 +1232,7 @@ func _place_pipe(item: Item, start: Vector3, end: Vector3) -> bool:
 		instance.global_transform = _pipe_transform(start, end, is_junction)
 	PipeNetwork.register(Vector3i(floori(instance.global_position.x), floori(instance.global_position.y), floori(instance.global_position.z)), instance)
 	SaveManager.mark_placed(instance, item.id)
-	QuestManager.notify_building_placed(item.id)
+	GameEvents.building_placed.emit(item.id, instance)
 	if feel != null:
 		feel.kick("place")
 	UiSound.play("place")
@@ -1270,7 +1330,7 @@ func _place_building() -> void:
 		instance.grid_pos = cell
 	PipeNetwork.register(cell, instance)
 	SaveManager.mark_placed(instance, item.id)
-	QuestManager.notify_building_placed(item.id)
+	GameEvents.building_placed.emit(item.id, instance)
 	if feel != null:
 		feel.kick("place")
 	UiSound.play("place")
@@ -1727,3 +1787,103 @@ func _update_suit_o2(delta: float) -> void:
 	if not refill:
 		suit_o2 = maxf(suit_o2 - delta, 0.0)
 	o2_refilling = refill and suit_o2 < SUIT_O2_MAX
+
+## --- Death and respawn (driven by PlayerVitals) ----------------------------------------------------------------
+func on_died() -> void:
+	if _piloted_ship != null:
+		_exit_ship()
+	if _build_mode and has_method("_exit_build_mode"):
+		call("_exit_build_mode")
+	_dig_held = false
+	_move_vel = Vector3.ZERO
+	_vertical_speed = 0.0
+	UiSound.play("error")
+
+func on_respawned() -> void:
+	suit_o2 = SUIT_O2_MAX
+	_move_vel = Vector3.ZERO
+	_vertical_speed = 0.0
+	_align_to_up(PlanetPhysics.get_up(global_position))
+
+## --- Dismantle and pick (design M13, small-things QoL) ---------------------------------------------------------
+func _set_dismantle(on: bool) -> void:
+	if _dismantle == on:
+		return
+	_dismantle = on
+	_dismantle_held = false
+	_dismantle_hold = 0.0
+	_set_dismantle_target(null)
+	_pipe_anchor_set = false
+	if _build_ghost != null:
+		_build_ghost.visible = false
+	_refresh_build_hint()
+
+func _set_dismantle_target(t: Node3D) -> void:
+	if t == _dismantle_target:
+		return
+	if _dismantle_target != null and is_instance_valid(_dismantle_target) and _dismantle_target.has_method("set_highlighted"):
+		_dismantle_target.set_highlighted(false)
+	_dismantle_target = t
+	_dismantle_hold = 0.0
+	if t != null and t.has_method("set_highlighted"):
+		t.set_highlighted(true)
+		UiSound.play("hover")
+
+## Whatever placed object the crosshair is on (within build range), or null.
+func _aimed_placed_object() -> Node3D:
+	var from := camera.global_position
+	var to := from - camera.global_transform.basis.z * BUILD_MODE_RANGE
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return null
+	return WorldObjects.placed_root(hit.collider)
+
+func _update_dismantle(delta: float) -> void:
+	if _build_ghost != null:
+		_build_ghost.visible = false
+	_set_dismantle_target(_aimed_placed_object())
+	var hud := get_tree().get_first_node_in_group("compact_hud")
+	if _dismantle_target == null or not _dismantle_held:
+		_dismantle_hold = 0.0
+		if hud != null and hud.has_method("set_action_progress"):
+			hud.set_action_progress(0.0, "")
+		return
+	_dismantle_hold += delta
+	var name_of := Inventory.get_item_def(String(_dismantle_target.get_meta(SaveManager.ITEM_ID_META, "")))
+	if hud != null and hud.has_method("set_action_progress"):
+		hud.set_action_progress(_dismantle_hold / DISMANTLE_TIME, "Dismantling " + (name_of.display_name if name_of else ""))
+	if _dismantle_hold < DISMANTLE_TIME:
+		return
+	var target := _dismantle_target
+	_set_dismantle_target(null)
+	_dismantle_held = false
+	if hud != null and hud.has_method("set_action_progress"):
+		hud.set_action_progress(0.0, "")
+	if WorldObjects.dismantle(target):
+		if feel != null:
+			feel.kick("place")
+		UiSound.play("confirm")
+	else:
+		if feel != null:
+			feel.kick("deny")
+		UiSound.play("deny")
+		if hud != null and hud.has_method("toast"):
+			hud.toast("Inventory full - make room to dismantle")
+
+## Middle click: start building another of whatever is under the crosshair, same rotation.
+func _pick_what_i_look_at() -> void:
+	var target := _aimed_placed_object()
+	if target == null:
+		return
+	var build_ui := get_tree().get_first_node_in_group("build_ui")
+	if build_ui == null or not build_ui.select_item(String(target.get_meta(SaveManager.ITEM_ID_META, ""))):
+		return
+	if not _build_mode:
+		if not Inventory.has_tool_equipped(BuildingToolItem.id):
+			return
+		_enter_build_mode()
+	_set_dismantle(false)
+	on_build_picked()
+	UiSound.play("click")

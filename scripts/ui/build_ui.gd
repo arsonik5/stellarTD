@@ -110,6 +110,36 @@ func is_menu_open() -> bool:
 func set_hint(_text: String) -> void:
 	pass
 
+## Hotbar / pick-what-I-look-at: select the recipe that builds `item_id`. Returns false if it is not buildable.
+func select_item(item_id: String) -> bool:
+	for i in BUILDABLE_RECIPES.size():
+		if BUILDABLE_RECIPES[i].output_id == item_id:
+			_selected_index = i
+			_refresh()
+			return true
+	return false
+
+## Hotbar slot -> recipe index. Slots 1-9 hold the first nine buildables until the player re-pins them
+## (pin = hover a card in the menu and press a number).
+var hotbar: Array[int] = [0, 6, 7, 8, 9, 10, 11, 12, 13]
+
+func _input(event: InputEvent) -> void:
+	# pin: with the menu open, hovering a card and pressing 1-9 puts it in that hotbar slot
+	if not is_menu_open() or _hover < 0:
+		return
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode >= KEY_1 and event.keycode <= KEY_9:
+		hotbar[event.keycode - KEY_1] = _hover
+		UiSound.play("confirm")
+		get_viewport().set_input_as_handled()
+
+func select_hotbar(slot: int) -> bool:
+	if slot < 0 or slot >= hotbar.size() or hotbar[slot] < 0 or hotbar[slot] >= BUILDABLE_RECIPES.size():
+		return false
+	_selected_index = hotbar[slot]
+	_refresh()
+	return true
+
 func get_selected_recipe() -> Recipe:
 	if _selected_index < 0 or _selected_index >= BUILDABLE_RECIPES.size():
 		return null

@@ -326,7 +326,7 @@ func _on_auto_toggled(pressed: bool, index: int) -> void:
 	if _building != null:
 		_building.set_auto(index, pressed)
 	if pressed:
-		QuestManager.notify_action("toggle_autocraft")
+		GameEvents.act("toggle_autocraft")
 
 ## Turret ammo toggles and the garage's repair card. Rebuilt on refresh; cheap at this size.
 func _refresh_extras() -> void:

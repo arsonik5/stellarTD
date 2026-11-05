@@ -18,12 +18,12 @@ var _dead := false
 func _ready() -> void:
 	health = max_health
 	add_to_group("enemy")
+	var h := Health.ensure(self, max_health, "alien")
+	h.damaged.connect(func(_a: float, _t: String, _s: Node) -> void: health = h.health)
+	h.died.connect(func(_src: Node) -> void:
+		_dead = true
+		health = 0.0
+		died.emit())
 
 func take_damage(amount: float) -> void:
-	if _dead:
-		return
-	health = maxf(health - amount, 0.0)
-	if health <= 0.0:
-		_dead = true
-		died.emit()
-		queue_free()
+	Health.deal(self, amount)

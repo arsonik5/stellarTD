@@ -1,4 +1,16 @@
-﻿# Engineering patterns, risks & references
+# Engineering patterns, risks & references
+
+## Running the tests
+
+`tools/run_tests.sh [suite...]` runs every driven scene (`scenes/dev/<suite>_test.tscn`: systems, build_fp,
+vehicle, pipe, game) under `xvfb-run` when there is no display, and fails on any FAIL line, any script error or a
+missing DONE line. `systems` is planet-free and takes seconds - add a `_test_*` there for every new service.
+`game` boots the real world from a throwaway save (~4 min on a CPU renderer).
+
+Traps: a script parse error leaves a test scene idling until the timeout (the runner now kills it on sight);
+`get_meta(key, null)` still errors when the key is missing - test `has_meta` first; anything that ticks on the
+player (air, regen) must wait for `is_spawn_resolved()`, because a reloaded save streams terrain for many
+seconds and would otherwise change the state it just restored.
 
 ## Implementation Patterns & Known Fixes
 

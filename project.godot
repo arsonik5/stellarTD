@@ -17,6 +17,8 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+GameEvents="*res://scripts/game_events.gd"
+FactoryClock="*res://scripts/factory_clock.gd"
 SaveManager="*res://scripts/save/save_manager.gd"
 Inventory="*res://scripts/inventory.gd"
 PipeNetwork="*res://scripts/pipe_network.gd"

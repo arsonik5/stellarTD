@@ -26,7 +26,15 @@ Target economy (tiered, every good has a sink):
 
 ## Milestones
 
-### G1 - Foundations for everything (no new content, unblocks all of it)
+### G1 - Foundations for everything - DONE 2026-11-05
+Built: `GameEvents` (scripts/game_events.gd), `FactoryClock` (10 Hz, scripts/factory_clock.gd; Building crafts on
+ticks, saves its running job, reports `idle_reason()`), `Health` (scripts/components/health.gd; factions, armour,
+resistances; enemies, buildings, projectiles, ship blocks via `apply_damage_at`), `PlayerVitals` (fall damage,
+suffocation, death, respawn at landing spot or any `respawn_point` node; HUD integrity bar, hurt vignette, death
+card), `RecipeBook`, `WorldObjects` (dismantle with refund / removal), build tool X = dismantle (hold LMB),
+1-9 hotbar (pin: hover a card in the menu + number), MMB = pick what I look at, save FORMAT_VERSION 2 + migration
+chain, `tools/run_tests.sh` (systems, build_fp, vehicle, pipe, game - all under xvfb).
+Original plan:
 - `GameEvents` bus; quests subscribe to it (no behaviour change).
 - `Health` component + one damage contract; player health, death, respawn at landing pod.
 - `FactoryClock` replaces per-building timers (measure: identical output in `pipe_test`).

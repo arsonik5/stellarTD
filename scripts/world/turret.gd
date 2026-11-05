@@ -128,7 +128,8 @@ func _physics_process(delta: float) -> void:
 func _is_target_valid(target) -> bool:
 	if target == null or not is_instance_valid(target):
 		return false
-	if not target.has_method("take_damage"):
+	var h := Health.of(target)
+	if h == null or h.is_dead():
 		return false
 	return target.global_position.distance_to(global_position) <= attack_range
 
@@ -140,7 +141,7 @@ func _find_target() -> Node3D:
 	var best: Node3D = null
 	var best_dist := attack_range
 	for node in get_tree().get_nodes_in_group("enemy"):
-		if not node is Node3D or not node.has_method("take_damage"):
+		if not node is Node3D or Health.of(node) == null:
 			continue
 		var dist: float = node.global_position.distance_to(global_position)
 		if dist <= best_dist:
@@ -233,6 +234,7 @@ func _fire(ammo: AmmoType) -> void:
 	var projectile: Node3D = ProjectileScene.instantiate()
 	get_tree().current_scene.add_child(projectile)
 	projectile.global_position = _muzzle.global_position
+	projectile.set_meta("faction", "player")
 	projectile.setup(launch_dir * ammo.muzzle_velocity, ammo, get_rid())
 
 ## --- Persistence (see scripts/save/save_manager.gd) ---

@@ -27,6 +27,8 @@ func _ready() -> void:
 		_state[quest.id] = "locked"
 		_progress[quest.id] = 0
 	Inventory.changed.connect(_recompute)
+	GameEvents.action.connect(notify_action)
+	GameEvents.building_placed.connect(func(item_id: String, _node: Node) -> void: notify_building_placed(item_id))
 	_recompute()
 
 func get_all_ids() -> Array:

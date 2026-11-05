@@ -1,4 +1,4 @@
-﻿# Gameplay systems
+# Gameplay systems
 
 ### Factory / Logistics System â€” Alpha (minimal) â†’ Beta (expanded)
 
@@ -294,7 +294,7 @@ climate field, both of which broke on a sphere for exactly that reason).
 
 **Validated patterns:**
 - One `CanvasLayer` (compact HUD) with `UiState` autoload registry â€” all modals call `UiState.set_open(id, bool)`, HUD just watches aggregate
-- Build tool: first-person, Satisfactory style (since 2026-11-04; the top-down camera was deleted). C opens the build menu, picking a building closes it, the ghost sits where the crosshair hits (30 m), LMB place, R / wheel rotate, G grid, B pipe mode, Q menu, RMB / C / Esc exit. Test: scenes/dev/build_fp_test.tscn
+- Build tool: first-person, Satisfactory style (since 2026-11-04; the top-down camera was deleted). C opens the build menu, picking a building closes it, the ghost sits where the crosshair hits (30 m), LMB place, R / wheel rotate, G grid, B pipe mode, Q menu, 1-9 hotbar (pin: hover a card + number), X dismantle (hold LMB; refunds cost + contents, refused if it won't fit), MMB pick what I look at, RMB / C / Esc exit. Test: scenes/dev/build_fp_test.tscn
 - Inventory: slot-based grid + hand slots, unified click-to-carry/merge/swap via `SlotCarry` adapter pattern
 - Quest system: 7-quest diamond (two roots, two branches, one final) generated from pure data, no hand-laid-out nodes
 

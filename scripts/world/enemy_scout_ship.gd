@@ -48,15 +48,14 @@ func _ready() -> void:
 	super._ready()
 	_health = max_health
 	add_to_group("enemy")
-
-func take_damage(amount: float) -> void:
-	if _dead:
-		return
-	_health = maxf(_health - amount, 0.0)
-	if _health <= 0.0:
+	var h := Health.ensure(self, max_health, "alien")
+	h.died.connect(func(_src: Node) -> void:
 		_dead = true
-		died.emit()
-		queue_free()
+		died.emit())
+
+## Legacy entry point kept for callers that predate Health; everything routes through the one contract.
+func take_damage(amount: float) -> void:
+	Health.deal(self, amount)
 
 func _physics_process(_delta: float) -> void:
 	if _dead:

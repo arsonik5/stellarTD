@@ -11,3 +11,10 @@ func get_node_at(grid_pos: Vector3i) -> Node:
 		_cells.erase(grid_pos)
 		return null
 	return node
+
+## Drop every cell that points at `node` (dismantled / destroyed). Lookups also prune freed nodes lazily, but an
+## explicit removal keeps a queued-for-deletion node from receiving items during the frame it still exists.
+func unregister_node(node: Node) -> void:
+	for cell in _cells.keys():
+		if _cells[cell] == node:
+			_cells.erase(cell)

@@ -212,6 +212,23 @@ func apply_damage(cell: Vector3i, amount: float) -> void:
 			_rebuild_stats()
 	_recalculate_state()
 
+## Health.deal() entry point for constructs: damage the block nearest the world hit point. A hit lands on a
+## surface, so the cell just inside it (half a cell back along the radial from the centre of mass) is used,
+## falling back to the closest occupied cell.
+func apply_damage_at(world_pos: Vector3, amount: float) -> float:
+	var local := to_local(world_pos) / CELL_SIZE
+	var best := Vector3i.ZERO
+	var best_d := INF
+	for cell: Vector3i in _cells:
+		var d := (Vector3(cell) + Vector3.ONE * 0.5).distance_squared_to(local)
+		if d < best_d:
+			best_d = d
+			best = cell
+	if best_d == INF:
+		return 0.0
+	apply_damage(best, amount)
+	return amount
+
 func repair_all(amount: float) -> float:
 	var restored := 0.0
 	for cell in _blocks:

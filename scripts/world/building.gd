@@ -12,10 +12,17 @@ signal changed
 @export var compatible_modifiers: Array[String] = []
 @export var recipes: Array[Recipe] = []
 @export var accepts_any_item: bool = false
+## Structural health (design G1 / C6). Raids and bombardment damage buildings through the Health contract;
+## at zero the building is destroyed WITHOUT refund (dismantling refunds, destruction does not).
+@export var max_health: float = 300.0
 
 var _inventory: Array[Dictionary] = []
 var _modifiers: Array[String] = []
-var _timer: Timer
+## Crafting runs on FactoryClock ticks (deterministic, power-scalable), not a per-building Timer.
+var _craft_elapsed := 0.0
+var _craft_duration := 0.0
+## 0..1 speed applied to crafting each tick - power satisfaction plugs in here (design G3). 1 = full speed.
+var work_speed := 1.0
 var _active_recipe_index: int = -1
 var _auto_recipes: Array[bool] = []
 var _last_auto_index: int = -1
@@ -33,11 +40,11 @@ func _ready() -> void:
 	for i in recipes.size():
 		_auto_recipes.append(false)
 	add_to_group("building")
+	var hp := Health.ensure(self, max_health, "player")
+	hp.free_owner_on_death = false
+	hp.died.connect(func(_src: Node) -> void: WorldObjects.remove(self))
 	if not recipes.is_empty():
-		_timer = Timer.new()
-		_timer.one_shot = true
-		_timer.timeout.connect(_on_process_timeout)
-		add_child(_timer)
+		FactoryClock.tick.connect(_on_factory_tick)
 
 	_mesh_instances.assign(find_children("*", "MeshInstance3D", true, false))
 	_highlight_material = StandardMaterial3D.new()
@@ -74,12 +81,38 @@ func set_highlighted(active: bool) -> void:
 
 func _process(_delta: float) -> void:
 	_update_work_anim()
-	if recipes.is_empty() or _timer == null or not _timer.is_stopped() or _active_recipe_index != -1:
+
+func _on_factory_tick(dt: float) -> void:
+	if _active_recipe_index != -1:
+		_craft_elapsed += dt * work_speed
+		# small epsilon: 20 x 0.1 must finish a 2.0 s recipe on tick 20, not 21
+		if _craft_elapsed >= _craft_duration - 0.0001:
+			_finish_craft()
 		return
 	for offset in recipes.size():
 		var index := (_last_auto_index + 1 + offset) % recipes.size()
 		if _auto_recipes[index] and process_recipe(index):
 			return
+
+## Why this machine is not working right now, "" when it is (machine panels and the idle icon show this).
+func idle_reason() -> String:
+	if recipes.is_empty():
+		return ""
+	if _active_recipe_index != -1:
+		return "No power" if work_speed <= 0.0 else ""
+	var any_auto := false
+	for i in recipes.size():
+		if not _auto_recipes[i]:
+			continue
+		any_auto = true
+		var recipe: Recipe = recipes[i]
+		var has_inputs := true
+		for k in recipe.input_ids.size():
+			if get_inventory_count(recipe.input_ids[k]) < recipe.input_amounts[k]:
+				has_inputs = false
+		if has_inputs:
+			return "Output full"
+	return "Missing input" if any_auto else "Idle"
 
 func set_auto(index: int, enabled: bool) -> void:
 	if index >= 0 and index < _auto_recipes.size():
@@ -93,12 +126,12 @@ func get_active_recipe_index() -> int:
 
 ## 0..1 fraction of the active recipe's process_time elapsed so far, 0 when idle.
 func get_process_progress() -> float:
-	if _active_recipe_index == -1 or _timer == null or _timer.wait_time <= 0.0:
+	if _active_recipe_index == -1 or _craft_duration <= 0.0:
 		return 0.0
-	return clampf(1.0 - (_timer.time_left / _timer.wait_time), 0.0, 1.0)
+	return clampf(_craft_elapsed / _craft_duration, 0.0, 1.0)
 
 func process_recipe(recipe_index: int = 0) -> bool:
-	if recipe_index < 0 or recipe_index >= recipes.size() or _timer == null or not _timer.is_stopped():
+	if recipe_index < 0 or recipe_index >= recipes.size() or _active_recipe_index != -1:
 		return false
 	var recipe: Recipe = recipes[recipe_index]
 	var output_amount := recipe.output_amount * output_multiplier
@@ -111,15 +144,17 @@ func process_recipe(recipe_index: int = 0) -> bool:
 		remove_item(recipe.input_ids[i], recipe.input_amounts[i])
 	_active_recipe_index = recipe_index
 	_last_auto_index = recipe_index
-	_timer.wait_time = max(recipe.process_time, 0.05)
-	_timer.start()
+	_craft_elapsed = 0.0
+	_craft_duration = maxf(recipe.process_time, FactoryClock.TICK)
 	return true
 
-func _on_process_timeout() -> void:
-	if _active_recipe_index != -1:
-		var recipe: Recipe = recipes[_active_recipe_index]
-		add_output(recipe.output_id, recipe.output_amount * output_multiplier)
-		_active_recipe_index = -1
+func _finish_craft() -> void:
+	var recipe: Recipe = recipes[_active_recipe_index]
+	var amount := recipe.output_amount * output_multiplier
+	add_output(recipe.output_id, amount)
+	_active_recipe_index = -1
+	_craft_elapsed = 0.0
+	GameEvents.item_crafted.emit(recipe.output_id, amount, self)
 
 func interact() -> void:
 	var building_ui := get_tree().get_first_node_in_group("building_ui")
@@ -281,6 +316,10 @@ func save_state() -> Dictionary:
 		"inventory": slots,
 		"modifiers": _modifiers.duplicate(),
 		"auto": _auto_recipes.duplicate(),
+		# the running job: its inputs are already consumed, so dropping it on save would delete them
+		"job": _active_recipe_index,
+		"job_elapsed": _craft_elapsed,
+		"hp": (get_node("Health") as Health).health if has_node("Health") else max_health,
 	}
 
 func load_state(data: Dictionary) -> void:
@@ -295,4 +334,11 @@ func load_state(data: Dictionary) -> void:
 	var autos: Array = data.get("auto", [])
 	for i in _auto_recipes.size():
 		_auto_recipes[i] = bool(autos[i]) if i < autos.size() else false
+	if has_node("Health"):
+		(get_node("Health") as Health).health = clampf(float(data.get("hp", max_health)), 1.0, max_health)
+	var job := int(data.get("job", -1))
+	if job >= 0 and job < recipes.size():
+		_active_recipe_index = job
+		_craft_duration = maxf(recipes[job].process_time, FactoryClock.TICK)
+		_craft_elapsed = float(data.get("job_elapsed", 0.0))
 	changed.emit()

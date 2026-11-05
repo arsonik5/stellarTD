@@ -81,7 +81,7 @@ func toggle() -> void:
 		_refresh_all()
 		_show_detail("")
 		UiKit.pop_in(_frame.root)
-		QuestManager.notify_action("open_inventory")
+		GameEvents.act("open_inventory")
 
 func close() -> void:
 	if not visible:
