@@ -1,0 +1,52 @@
+[gd_resource type="Resource" script_class="PlanetArchetype" format=3]
+
+[ext_resource type="Script" path="res://scripts/world/biome.gd" id="1_uqqkb"]
+[ext_resource type="Resource" path="res://data/biomes/frozen_wastes.tres" id="2_4r2lf"]
+[ext_resource type="Script" path="res://scripts/world/poi_spec.gd" id="3_lsscb"]
+[ext_resource type="Script" path="res://scripts/world/scatter_set.gd" id="4_ftnop"]
+[ext_resource type="Script" path="res://scripts/world/planet_archetype.gd" id="5_ewe0s"]
+[ext_resource type="Script" path="res://scripts/world/terrain_recipe.gd" id="6_m8yu4"]
+
+[sub_resource type="Resource" id="Resource_88mvp"]
+script = ExtResource("3_lsscb")
+
+[sub_resource type="Resource" id="Resource_0q281"]
+script = ExtResource("3_lsscb")
+poi_type = "crash_site"
+display_name = "Crash Site"
+weight = 0.8
+sink_m = 1.1
+
+[sub_resource type="Resource" id="Resource_7kxvf"]
+script = ExtResource("4_ftnop")
+density = 0.006
+tint = Color(0.85, 0.9, 1, 1)
+clump_strength = 0.85
+
+[sub_resource type="Resource" id="Resource_gj4hi"]
+script = ExtResource("6_m8yu4")
+crag_amplitude_m = 3.0
+swell_amplitude_m = 2.5
+crater_amplitude_mult = 1.5
+slope_erosion = 0.85
+altitude_erosion = 0.3
+canyon_enabled = true
+canyon_feature_m = 900.0
+canyon_depth_m = 18.0
+canyon_width = 0.018
+canyon_sharpness = 5.0
+canyon_coverage = 0.7
+
+[resource]
+script = ExtResource("5_ewe0s")
+display_name = "Frozen"
+kind = "frozen"
+terrain = SubResource("Resource_gj4hi")
+biomes = Array[ExtResource("1_uqqkb")]([ExtResource("2_4r2lf")])
+palette = PackedColorArray(0.82, 0.88, 0.95, 1, 0.55, 0.62, 0.72, 1, 0.6, 0.85, 1, 1)
+ground_tint = Color(0.9, 0.96, 1.08, 1)
+ambient_ground_share = 0.55
+scatter = SubResource("Resource_7kxvf")
+pois = Array[ExtResource("3_lsscb")]([SubResource("Resource_88mvp"), SubResource("Resource_0q281")])
+poi_min_spacing_m = 900.0
+cold = 0.8

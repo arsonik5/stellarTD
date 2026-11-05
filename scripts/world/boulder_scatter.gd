@@ -113,7 +113,13 @@ const SLOPE_FALLOFF_DEGREES := 7.0
 ##
 ## `mask` is the TALUS mask from the erosion bake - see MASK_THRESHOLD for why
 ## that one and not hydraulic deposition.
-static func build(radius: float, mask: Image, up_mode: int) -> VoxelInstancer:
+## `rules` = the archetype's ScatterSet (null = ScatterSet.legacy(), the pre-W5 talus-only placement).
+## `slope` = the erosion bake's slope mask, used for the broken-edge term; `seed_value` decorrelates bodies.
+static func build(radius: float, mask: Image, up_mode: int, rules: ScatterSet = null, slope: Image = null,
+		seed_value: int = 0) -> VoxelInstancer:
+	if rules == null:
+		rules = ScatterSet.legacy()
+		slope = null
 	var library := VoxelInstanceLibrary.new()
 	var added := 0
 	for i in ROCKS.size():
@@ -125,7 +131,7 @@ static func build(radius: float, mask: Image, up_mode: int) -> VoxelInstancer:
 		item.lod_index = BOULDER_LOD
 		item.mesh = mesh
 		item.cast_shadow = RenderingServer.SHADOW_CASTING_SETTING_ON
-		item.material_override = _tinted_material(mesh)
+		item.material_override = _tinted_material(mesh, rules.tint)
 		# Convex hull per instance so the player collides with the rock instead
 		# of walking through it. Cheap relative to the LOD 0 gate above, which
 		# already keeps instance count down to what's near the camera.
@@ -134,7 +140,7 @@ static func build(radius: float, mask: Image, up_mode: int) -> VoxelInstancer:
 			item.collision_layer = 1
 			item.collision_mask = 1
 			item.collision_shapes = [hull, Transform3D.IDENTITY]
-		item.generator = _make_generator(radius, mask, i, _base_scale(mesh))
+		item.generator = _make_generator(radius, mask, i, _base_scale(mesh), rules, slope, seed_value)
 		library.add_item(i + 1, item)
 		added += 1
 	if added == 0:
@@ -182,7 +188,7 @@ static func _base_scale(mesh: Mesh) -> float:
 ## glTF and is shared with anything else that loads the same asset, so writing
 ## to it would tint the source. albedo_color MULTIPLIES the albedo texture, so
 ## this darkens and cools the scan without touching its detail.
-static func _tinted_material(mesh: Mesh) -> Material:
+static func _tinted_material(mesh: Mesh, tint: Color = ALBEDO_TINT) -> Material:
 	if mesh.get_surface_count() == 0:
 		return null
 	var src := mesh.surface_get_material(0)
@@ -190,7 +196,7 @@ static func _tinted_material(mesh: Mesh) -> Material:
 		return null
 	var mat := src.duplicate()
 	if mat is BaseMaterial3D:
-		(mat as BaseMaterial3D).albedo_color = ALBEDO_TINT
+		(mat as BaseMaterial3D).albedo_color = tint
 	return mat
 
 static func _first_mesh(node: Node) -> Mesh:
@@ -207,12 +213,12 @@ static func _first_mesh(node: Node) -> Mesh:
 ## Each variant gets its own seed offset so the six do not all land in the same
 ## spots - otherwise every boulder in the world is a six-rock clump.
 static func _make_generator(radius: float, mask: Image, variant: int,
-		base_scale: float) -> VoxelInstanceGenerator:
+		base_scale: float, rules: ScatterSet, slope: Image, seed_value: int) -> VoxelInstanceGenerator:
 	var g := VoxelInstanceGenerator.new()
 	g.emit_mode = VoxelInstanceGenerator.EMIT_FROM_FACES
-	g.density = DENSITY
-	g.min_scale = base_scale * SIZE_MIN
-	g.max_scale = base_scale * SIZE_MAX
+	g.density = rules.density
+	g.min_scale = base_scale * rules.size_min
+	g.max_scale = base_scale * rules.size_max
 	# Quadratic: small rocks are far more common than large ones, which is true
 	# of every real scree field. A linear distribution gives an unnaturally even
 	# spread of sizes.
@@ -223,17 +229,137 @@ static func _make_generator(radius: float, mask: Image, variant: int,
 	# it; standing them all upright on sloping ground is the other obvious tell.
 	g.vertical_alignment = 1.0
 	g.offset_along_normal = SINK
-	g.min_slope_degrees = MIN_SLOPE_DEGREES
-	g.max_slope_degrees = MAX_SLOPE_DEGREES
+	g.min_slope_degrees = rules.min_slope_deg
+	g.max_slope_degrees = rules.max_slope_deg
 	g.min_slope_falloff_degrees = SLOPE_FALLOFF_DEGREES
 	g.max_slope_falloff_degrees = SLOPE_FALLOFF_DEGREES
 
 	if mask != null:
-		g.noise_graph = _mask_graph(radius, mask, variant)
+		if rules.edge_weight > 0.0 or rules.clump_strength > 0.0:
+			g.noise_graph = _rule_graph(radius, mask, slope, variant, rules, seed_value)
+		else:
+			g.noise_graph = _mask_graph(radius, mask, variant)
 		g.noise_dimension = VoxelInstanceGenerator.DIMENSION_3D
-		g.noise_threshold = MASK_THRESHOLD
-		g.noise_falloff = MASK_FALLOFF
+		g.noise_threshold = rules.threshold
+		g.noise_falloff = rules.falloff
 	return g
+
+## W5 placement score (see ScatterSet): max(talus * w_t, smoothstep(slope, a, b) * w_e) * clump * variant noise.
+## The clump field is a cellular-free trick: fbm at clump_m through a steep smoothstep, so rocks gather in clusters
+## with bare ground between them instead of a uniform sprinkle (open item 5).
+static func _rule_graph(radius: float, talus: Image, slope: Image, variant: int, rules: ScatterSet,
+		seed_value: int) -> VoxelGraphFunction:
+	var f := VoxelGraphFunction.new()
+	var x := f.create_node(VoxelGraphFunction.NODE_INPUT_X, Vector2(0, 0))
+	var y := f.create_node(VoxelGraphFunction.NODE_INPUT_Y, Vector2(0, 60))
+	var z := f.create_node(VoxelGraphFunction.NODE_INPUT_Z, Vector2(0, 120))
+	var score := _mul_c(f, _mask_value(f, x, y, z, radius, talus, Vector2(200, 0)), rules.talus_weight,
+		Vector2(400, 0))
+	if slope != null and rules.edge_weight > 0.0:
+		var sv := _mask_value(f, x, y, z, radius, slope, Vector2(200, 300))
+		var ss := f.create_node(VoxelGraphFunction.NODE_SMOOTHSTEP, Vector2(400, 300))
+		f.set_node_param(ss, 0, rules.edge_start)
+		f.set_node_param(ss, 1, rules.edge_full)
+		f.add_connection(sv[0], sv[1], ss, 0)
+		var edge := _mul_c(f, [ss, 0], rules.edge_weight, Vector2(500, 300))
+		var mx := f.create_node(VoxelGraphFunction.NODE_MAX, Vector2(600, 150))
+		f.add_connection(score[0], score[1], mx, 0)
+		f.add_connection(edge[0], edge[1], mx, 1)
+		score = [mx, 0]
+	if rules.clump_strength > 0.0:
+		var n := f.create_node(VoxelGraphFunction.NODE_FAST_NOISE_3D, Vector2(400, 500))
+		var noise := FastNoiseLite.new()
+		noise.seed = seed_value * 31 + 900
+		noise.frequency = 1.0 / maxf(rules.clump_m, 1.0)
+		noise.fractal_octaves = 2
+		f.set_node_param(n, 0, noise)
+		f.add_connection(x, 0, n, 0)
+		f.add_connection(y, 0, n, 1)
+		f.add_connection(z, 0, n, 2)
+		var ss := f.create_node(VoxelGraphFunction.NODE_SMOOTHSTEP, Vector2(500, 500))
+		f.set_node_param(ss, 0, -0.15)
+		f.set_node_param(ss, 1, 0.25)
+		f.add_connection(n, 0, ss, 0)
+		# clump = (1 - k) + k * smoothstep(noise): k = clump_strength
+		var k := _mul_c(f, [ss, 0], rules.clump_strength, Vector2(600, 500))
+		var base := _add_c(f, k, 1.0 - rules.clump_strength, Vector2(700, 500))
+		var m := f.create_node(VoxelGraphFunction.NODE_MULTIPLY, Vector2(800, 300))
+		f.add_connection(score[0], score[1], m, 0)
+		f.add_connection(base[0], base[1], m, 1)
+		score = [m, 0]
+	# Per-variant modulation so the six rock types do not co-locate (same as the legacy graph).
+	var vn := f.create_node(VoxelGraphFunction.NODE_FAST_NOISE_3D, Vector2(800, 600))
+	var vnoise := FastNoiseLite.new()
+	vnoise.seed = 7000 + variant * 131 + seed_value
+	vnoise.frequency = 0.004
+	vnoise.fractal_octaves = 2
+	f.set_node_param(vn, 0, vnoise)
+	f.add_connection(x, 0, vn, 0)
+	f.add_connection(y, 0, vn, 1)
+	f.add_connection(z, 0, vn, 2)
+	var modu := _add_c(f, _mul_c(f, [vn, 0], 0.45, Vector2(900, 600)), 1.0, Vector2(1000, 600))
+	var out_mul := f.create_node(VoxelGraphFunction.NODE_MULTIPLY, Vector2(1100, 300))
+	f.add_connection(score[0], score[1], out_mul, 0)
+	f.add_connection(modu[0], modu[1], out_mul, 1)
+	var out := f.create_node(VoxelGraphFunction.NODE_CUSTOM_OUTPUT, Vector2(1200, 300))
+	f.add_connection(out_mul, 0, out, 0)
+	return f
+
+## mask(direction) = sphere(radius) - heightmap(mask, radius, scale 1).
+## Sampled on the radius-shell (normalize(p) * radius): the heightmap lookup drifts with altitude, so a mask read
+## at the instance's own height is wrong on a world with hundreds of metres of relief (planet_graph_generator.gd
+## _sample_mask has the measurement).
+static func _mask_value(f: VoxelGraphFunction, x: int, y: int, z: int, radius: float, mask: Image,
+		pos: Vector2) -> Array:
+	var nrm := f.create_node(VoxelGraphFunction.NODE_NORMALIZE_3D, pos + Vector2(-300, 0))
+	f.add_connection(x, 0, nrm, 0)
+	f.add_connection(y, 0, nrm, 1)
+	f.add_connection(z, 0, nrm, 2)
+	var shell := []
+	for i in 3:
+		var c := f.create_node(VoxelGraphFunction.NODE_CONSTANT, pos + Vector2(-240, 60 * i))
+		f.set_node_param(c, 0, radius)
+		var m := f.create_node(VoxelGraphFunction.NODE_MULTIPLY, pos + Vector2(-180, 60 * i))
+		f.add_connection(nrm, i, m, 0)
+		f.add_connection(c, 0, m, 1)
+		shell.append(m)
+	x = shell[0]
+	y = shell[1]
+	z = shell[2]
+	var hm := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE_HEIGHTMAP, pos)
+	f.set_node_param(hm, 0, mask)
+	f.set_node_param(hm, 1, radius)
+	f.set_node_param(hm, 2, 1.0)
+	f.add_connection(x, 0, hm, 0)
+	f.add_connection(y, 0, hm, 1)
+	f.add_connection(z, 0, hm, 2)
+	var sp := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE, pos + Vector2(0, 100))
+	var r := f.create_node(VoxelGraphFunction.NODE_CONSTANT, pos + Vector2(-100, 160))
+	f.set_node_param(r, 0, radius)
+	f.add_connection(x, 0, sp, 0)
+	f.add_connection(y, 0, sp, 1)
+	f.add_connection(z, 0, sp, 2)
+	f.add_connection(r, 0, sp, 3)
+	var sub := f.create_node(VoxelGraphFunction.NODE_SUBTRACT, pos + Vector2(120, 50))
+	f.add_connection(sp, 0, sub, 0)
+	f.add_connection(hm, 0, sub, 1)
+	return [sub, 0]
+
+static func _mul_c(f: VoxelGraphFunction, v: Array, k: float, pos: Vector2) -> Array:
+	var c := f.create_node(VoxelGraphFunction.NODE_CONSTANT, pos + Vector2(-60, 40))
+	f.set_node_param(c, 0, k)
+	var m := f.create_node(VoxelGraphFunction.NODE_MULTIPLY, pos)
+	f.add_connection(v[0], v[1], m, 0)
+	f.add_connection(c, 0, m, 1)
+	return [m, 0]
+
+static func _add_c(f: VoxelGraphFunction, v: Array, k: float, pos: Vector2) -> Array:
+	var c := f.create_node(VoxelGraphFunction.NODE_CONSTANT, pos + Vector2(-60, 40))
+	f.set_node_param(c, 0, k)
+	var m := f.create_node(VoxelGraphFunction.NODE_ADD, pos)
+	f.add_connection(v[0], v[1], m, 0)
+	f.add_connection(c, 0, m, 1)
+	return [m, 0]
 
 ## A VoxelGraphFunction that evaluates to the given mask.
 ##

@@ -107,7 +107,15 @@ func _test_hash(p: Planet, map_key: String) -> void:
 		graph = p.terrain.generator as VoxelGeneratorGraph
 	var h := _surface_hash(p, graph)
 	var base := _load_baseline()
+	# The biome set is part of the key: an archetype that commits to different biomes changes the materials on
+	# purpose (W4), while the BAND code the legacy recipe guards stays held to its hash.
+	var biome_ids := []
+	if ResourceLoader.exists("res://scripts/world/planet_archetype.gd"):
+		for b in load("res://scripts/world/planet_archetype.gd").call("biomes_of", p.body):
+			biome_ids.append((b as Resource).resource_path.get_file().get_basename())
 	var key := "%s/%s" % [p.save_key(), map_key]
+	if not biome_ids.is_empty() and biome_ids != ["regolith_plains"]:
+		key += "/" + "+".join(biome_ids)
 	print("%s: legacy surface hash %d (key %s)" % [p.name, h, key])
 	if _record or not base.has(key):
 		base[key] = h
@@ -223,6 +231,41 @@ func _test_pois(p: Planet) -> void:
 	_check(sites.size() > 0, "%s: POI sites placed" % p.name)
 	if sites.size() > 1:
 		_check(min_d >= p.poi_min_spacing_m() * 0.999, "%s: POI spacing >= %.0f m" % [p.name, p.poi_min_spacing_m()])
+	# Determinism: a second call (cache cleared) gives the same sites.
+	var first: Vector3 = sites[0]["dir"]
+	p.set("_poi_sites_cache", [])
+	_check((p.poi_sites()[0]["dir"] as Vector3).is_equal_approx(first), "%s: POI sites are deterministic" % p.name)
+	# Streaming: park a stand-in viewer next to the nearest site and let the field run.
+	var field: PoiField = p.get("poi_field")
+	if field == null:
+		return
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if player == null:
+		return
+	var site: Dictionary = sites[0]
+	var ground := p.surface_radius_along(site["dir"]) * Planet.VOXEL_SCALE
+	player.set_physics_process(false)
+	player.global_position = p.global_position + (site["dir"] as Vector3) * (ground + 20.0)
+	field.set("_timer", 0.0)
+	field._process(0.0)
+	var live := get_tree().get_nodes_in_group("poi").filter(func(n) -> bool: return n.get_parent() == field)
+	_check(live.size() >= 1, "%s: POIs stream in near the viewer (%d live)" % [p.name, live.size()])
+	for n in live:
+		var node := n as Node3D
+		var dir := (node.global_position - p.global_position).normalized()
+		var g := p.surface_radius_along(dir) * Planet.VOXEL_SCALE
+		var off := node.global_position.distance_to(p.global_position) - g
+		_check(node.has_meta("poi_type") and node.has_meta("poi_id"), "%s: POI %s carries poi_type / poi_id" % [p.name, node.get_meta("poi_type", "?")])
+		_check(off < 0.5 and off > -3.0, "%s: POI %s sits on the ground (%.2f m)" % [p.name, node.get_meta("poi_type", "?"), off])
+		var up := node.global_transform.basis.y.normalized()
+		_check(up.dot(dir) > 0.999, "%s: POI %s stands on the local radial, not world Y" % [p.name, node.get_meta("poi_type", "?")])
+	# Streaming out: move far away and the instances are freed.
+	player.global_position = p.global_position - (site["dir"] as Vector3) * (p.radius_world() + 50.0)
+	field.set("_timer", 0.0)
+	field._process(0.0)
+	# (The far side has POIs of its own on a world this size, so check the ORIGINAL instances went, not a count.)
+	var gone := live.all(func(n) -> bool: return not is_instance_valid(n) or (n as Node).is_queued_for_deletion())
+	_check(gone, "%s: POIs stream out when the viewer leaves" % p.name)
 
 # --- helpers ----------------------------------------------------------------------------------------------------
 

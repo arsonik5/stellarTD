@@ -260,7 +260,14 @@ func _update_ambient() -> void:
 		return
 	var density: float = PlanetPhysics.get_air_density(player.global_position)
 	var t: float = clampf(density / AMBIENT_FULL_DENSITY, 0.0, 1.0)
-	_env.ambient_light_color = VACUUM_AMBIENT_COLOR.lerp(AIR_AMBIENT_COLOR, t)
+	var ambient := VACUUM_AMBIENT_COLOR.lerp(AIR_AMBIENT_COLOR, t)
+	# Palette harmony (design/05-planets.md W4): shadows are lit by sky AND by light bounced off the ground, so the
+	# ambient leans toward the body's own dust colour - a frozen moon's shadows go cold, a barren world's stay grey.
+	var near := PlanetPhysics.get_nearest_body(player.global_position)
+	var arch := PlanetArchetype.of(near.get("body") as CelestialBody) if near != null else null
+	if arch != null:
+		ambient = arch.ambient_tint(ambient)
+	_env.ambient_light_color = ambient
 	_env.ambient_light_energy = lerpf(VACUUM_AMBIENT_ENERGY, AIR_AMBIENT_ENERGY, t)
 	_log_ambient_once(density, t)
 

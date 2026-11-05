@@ -71,8 +71,12 @@ static func _builtin_styles() -> Dictionary:
 static func build(body: CelestialBody) -> Dictionary:
 	var styles: Dictionary = _builtin_styles()
 
+	# The archetype commits to its biomes and tints the whole ground with one colour (W4 palette harmony): every
+	# natural surface on the body shifts together, so dust, cliff and bedrock still read as one world.
+	var arch := PlanetArchetype.of(body)
+	var ground_tint := arch.ground_tint if arch != null else Color(1, 1, 1)
 	if body != null:
-		for biome: Biome in body.biomes:
+		for biome: Biome in PlanetArchetype.biomes_of(body):
 			if biome != null and biome.surface != null:
 				styles[biome.stone_material_index] = biome.surface
 		for ore: OreType in body.ore_types:
@@ -89,7 +93,9 @@ static func build(body: CelestialBody) -> Dictionary:
 		var style: SurfaceStyle = styles.get(i, fallback)
 		var tr := style.tint_roughness()
 		var ex := style.extra_params()
-		tint_rough.append(Vector4(tr.x, tr.y, tr.z, tr.d))
+		# Construction blocks are man-made: never tinted by the world.
+		var gt := ground_tint if i != VoxelMaterials.CONSTRUCTION_BLOCK else Color(1, 1, 1)
+		tint_rough.append(Vector4(tr.x * gt.r, tr.y * gt.g, tr.z * gt.b, tr.d))
 		extra.append(Vector4(ex.x, ex.y, ex.z, ex.d))
 		names.append(style.display_name if styles.has(i) else "-")
 		texture_names.append(style.texture_name)

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CelestialBody" load_steps=13 format=3]
+[gd_resource type="Resource" script_class="CelestialBody" load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/celestial_body.gd" id="1"]
 [ext_resource type="Resource" path="res://data/atmospheres/default_planet.tres" id="2"]
@@ -12,9 +12,11 @@
 [ext_resource type="Resource" path="res://data/biomes/frozen_wastes.tres" id="10"]
 [ext_resource type="Resource" path="res://data/biomes/sulfur_flats.tres" id="11"]
 [ext_resource type="Resource" path="res://data/biomes/crystal_fields.tres" id="12"]
+[ext_resource type="Resource" path="res://data/archetypes/barren_home.tres" id="arch"]
 
 [resource]
 script = ExtResource("1")
+archetype = ExtResource("arch")
 display_name = "Home"
 seed = 1
 radius = 20000.0

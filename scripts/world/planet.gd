@@ -238,6 +238,7 @@ func _ready() -> void:
 	_log_material_coverage()
 	_log_slope_profile()
 	_attach_edit_stream()
+	_spawn_poi_field()
 	is_terrain_ready = true
 	terrain_ready.emit()
 
@@ -419,6 +420,16 @@ func _measure_terrain_band(samples: int = 240) -> void:
 	# Margin on top of the worst sample: 240 directions cannot have hit the single
 	# highest peak on the planet, and undershooting is the expensive direction.
 	profile.measured_deviation_voxels = worst * 1.15 + 8.0
+	# Landform layers reach past the coarse relief - canyons below its floor, spires above its peaks - and are
+	# sparse enough that 240 probes can miss every one. The band must still contain them (a spire outside it is
+	# a spire with no collider), so their full extent is added rather than measured.
+	var recipe := TerrainRecipe.of(body)
+	var extra_m := 0.0
+	if recipe.canyon_enabled:
+		extra_m = maxf(extra_m, recipe.canyon_depth_m)
+	if recipe.spire_enabled:
+		extra_m = maxf(extra_m, recipe.spire_height_m * 1.6)
+	profile.measured_deviation_voxels += extra_m / VOXEL_SCALE
 	TerrainLog.write_fields("band", "%s: terrain band measured" % name, {
 		"directions_resolved": "%d / %d" % [found, samples],
 		"worst_deviation_vox": worst,
@@ -773,9 +784,13 @@ func _log_dust_coverage() -> void:
 func _spawn_boulders() -> void:
 	if not boulders_enabled:
 		return
+	var arch := PlanetArchetype.of(body)
+	var rules: ScatterSet = arch.scatter if arch != null and arch.scatter != null else null
+	if rules != null and not rules.enabled:
+		return
 	var instancer := BoulderScatter.build(
 		float(body.radius), _erosion_masks.get("talus"),
-		VoxelInstancer.UP_MODE_SPHERE)
+		VoxelInstancer.UP_MODE_SPHERE, rules, _erosion_masks.get("slope"), body.seed)
 	if instancer == null:
 		return
 	terrain.add_child(instancer)
@@ -976,6 +991,124 @@ func suggested_spawn_direction() -> Vector3:
 
 func radius_world() -> float:
 	return body.radius * VOXEL_SCALE
+
+# --- Points of interest (W5) ----------------------------------------------------------------------------------
+
+var poi_field: PoiField = null
+var _poi_sites_cache: Array = []
+
+func _spawn_poi_field() -> void:
+	var arch := PlanetArchetype.of(body)
+	if arch == null or arch.pois.is_empty():
+		return
+	poi_field = PoiField.new()
+	poi_field.name = "PoiField"
+	add_child(poi_field)
+	poi_field.setup(self)
+	TerrainLog.write_fields("poi", "%s: points of interest placed" % name, {
+		"sites": _poi_sites_cache.size(),
+		"min_spacing_m": poi_min_spacing_m(),
+	})
+
+func poi_min_spacing_m() -> float:
+	var arch := PlanetArchetype.of(body)
+	return arch.poi_min_spacing_m if arch != null else 1500.0
+
+## Every POI site on this body: [{dir: Vector3 (unit), spec: PoiSpec, yaw: float}], deterministic from the seed.
+##
+## A sphere-spots field with a hard minimum spacing: Fibonacci lattice points (even coverage, no pole pinch) at a
+## pitch of 1.6x the spacing, each jittered in its tangent plane by a seeded random up to 0.45 of the pitch, then a
+## greedy pass in seeded order that drops any site closer than the minimum to one already kept - so the spacing is
+## a GUARANTEE (planet_test checks it), and the jitter keeps it from reading as a grid. Neighbour checks go through
+## a spatial hash of cell = spacing, so a 20 km planet's ~2000 sites cost a few ms.
+func poi_sites() -> Array:
+	if not _poi_sites_cache.is_empty():
+		return _poi_sites_cache
+	var arch := PlanetArchetype.of(body)
+	if arch == null or arch.pois.is_empty():
+		return []
+	var rw := radius_world()
+	var spacing := maxf(arch.poi_min_spacing_m, 50.0)
+	var pitch := spacing * 1.6
+	var n := maxi(int(4.0 * PI * rw * rw / (pitch * pitch)), 1)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([body.seed, "poi"])
+	var total_w := 0.0
+	for spec: PoiSpec in arch.pois:
+		total_w += maxf(spec.weight, 0.0)
+	var order := range(n)
+	# Seeded shuffle so which of two close sites survives is random, not "lower index wins" (a latitude bias).
+	for i in range(n - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var t = order[i]
+		order[i] = order[j]
+		order[j] = t
+	var cells := {}
+	var kept: Array = []
+	for i: int in order:
+		var y := 1.0 - (float(i) + 0.5) / float(n) * 2.0
+		var rr := sqrt(maxf(1.0 - y * y, 0.0))
+		var th := float(i) * PI * (3.0 - sqrt(5.0))
+		var dir := Vector3(cos(th) * rr, y, sin(th) * rr).normalized()
+		var e := dir.cross(Vector3.UP if absf(dir.y) < 0.9 else Vector3.RIGHT).normalized()
+		var nn := dir.cross(e)
+		var jr := rng.randf() * 0.45 * pitch / rw
+		var ja := rng.randf() * TAU
+		dir = (dir + (e * cos(ja) + nn * sin(ja)) * jr).normalized()
+		var p := dir * rw
+		var c := Vector3i((p / spacing).floor())
+		var ok := true
+		for dx in range(-1, 2):
+			for dy in range(-1, 2):
+				for dz in range(-1, 2):
+					for other: Vector3 in cells.get(c + Vector3i(dx, dy, dz), []):
+						if other.angle_to(dir) * rw < spacing:
+							ok = false
+		if not ok:
+			continue
+		if not cells.has(c):
+			cells[c] = []
+		cells[c].append(dir)
+		var pick := rng.randf() * total_w
+		var chosen: PoiSpec = arch.pois[0]
+		for spec: PoiSpec in arch.pois:
+			pick -= maxf(spec.weight, 0.0)
+			if pick <= 0.0:
+				chosen = spec
+				break
+		kept.append({"dir": dir, "spec": chosen, "yaw": rng.randf() * TAU})
+	_poi_sites_cache = kept
+	return kept
+
+## Ground radius (voxels) along a unit direction, from the generator itself (bisection), so it is right before any
+## collider has streamed. -1 when the generator is not a graph.
+func surface_radius_along(dir: Vector3) -> float:
+	var g := terrain.generator as VoxelGeneratorGraph
+	if g == null:
+		return -1.0
+	var buf := VoxelBuffer.new()
+	buf.create(1, 1, 1)
+	var band := profile.max_deviation_voxels() + 80.0
+	var lo := body.radius - band
+	var hi := body.radius + band
+	for _i in 24:
+		var mid := (lo + hi) * 0.5
+		var q := dir * mid
+		g.generate_block(buf, Vector3i(roundi(q.x), roundi(q.y), roundi(q.z)), 0)
+		if buf.get_voxel_f(0, 0, 0, VoxelBuffer.CHANNEL_SDF) < 0.0:
+			lo = mid
+		else:
+			hi = mid
+	return (lo + hi) * 0.5
+
+## Materials planet_test expects to see on this body's surface: each biome's stone. The archetype commits to them.
+func expected_surface_materials() -> Array:
+	var out := []
+	for b in PlanetArchetype.biomes_of(body):
+		var biome := b as Biome
+		if biome != null and not out.has(biome.stone_material_index):
+			out.append(biome.stone_material_index)
+	return out
 
 ## How far out (world meters) this body's gravity/atmosphere actually
 ## reaches before true open space takes over - a few radii, not infinite,

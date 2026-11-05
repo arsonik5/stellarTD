@@ -1808,3 +1808,93 @@ The same build measured 22 fps and 120 fps in consecutive runs; the slow ones ra
 on the Intel iGPU. A "5x frame-rate regression" attributed to this terrain work
 was entirely that. **Read the `Using Device #N` line before believing an fps
 number** - and note `--gpu-index 1` was NVIDIA in one run and Intel in the next.
+
+## World pass - 2026-11-05 (design/05-planets.md W1-W5)
+
+Planets are now built from **data per world**, not per-planet code: `TerrainRecipe` (every band, gate and
+landform layer, in metres) inside a `PlanetArchetype` (recipe + biomes + palette + scatter rules + POI table +
+hazards), referenced by `CelestialBody.archetype`. Values live in `scripts/dev/make_archetypes.gd`, which writes
+`data/archetypes/*.tres` - the reason for every number is in that file, not lost in an inspector diff.
+
+### W1 - extraction proven bit-identical
+
+`TerrainRecipe.legacy()` is the generator as it was at commit ad29272. `scenes/dev/planet_test.tscn` hashes 24
+surface blocks (SDF + both material channels) per body; the hash was recorded on the ORIGINAL code, then the
+refactored generator reproduced it exactly: home 3963048574, moon 1219189082 (erosion map 2048 wide, see the CPU
+note below). Every later layer is built only when its recipe flag is on, so legacy() keeps the graph byte-equal.
+
+### The erosion masks were read at the wrong place - found by W3, fixed
+
+`_sample_mask` computes `sdf_sphere(R) - sdf_sphere_heightmap(img, R, 1)` and treats it as `img(direction)`.
+**It is not direction-only**: that difference is the image value near |p| = R and drifts away from it with
+altitude. On a 20 km home with ~1.6 km of relief the real ground sits hundreds of metres off R, so slope, dust,
+wear (and the new height field) were all read wrong at the surface. It surfaced because terraces - which read the
+height field - moved the ground by exactly 0.00 m over 400 directions while every intermediate node evaluated
+correctly at R (scripts/dev/mask_probe.gd, graph_node_probe.gd, recipe_probe.gd).
+
+Fix: `mask_on_shell` - masks are looked up at `normalize(p) * R` (one normalize + three multiplies shared by all
+masks). Effect of the fix ALONE on the home terrain (recipe_probe, 400 directions): 183 move, mean 0.87 m,
++13.8 / -10.0 m - the rock / crag / overhang gates now see the slope and dust they were designed around. This is
+very likely why open item 1 found that crags "fire almost never". `legacy()` keeps the old lookup for the hash.
+The boulder rule graph samples talus/slope on the shell too.
+
+### W2 - slope + altitude erosion
+
+Multipliers on the outcrop bands (crag, rock) from the coarse slope mask and height; swells and craters also fade
+on slopes (`flat_detail_slope_damp`). Grain is left alone (never a mirror). Measured with
+`scenes/dev/landform_ab.tscn` (3 flattest / steepest / lowest / highest of 160 directions, 60 m patches) BEFORE the
+mask fix: flats calmer (2 m slope p90 6.8 -> 6.0 deg, rms over 4 m 0.06 -> 0.05 m), steep ground unchanged
+(rms16 0.34 -> 0.33 m, p90 39.1 -> 38.9 deg). Modest on purpose and on this coarse map; re-measure on the full
+12.3 m map before raising it.
+
+### W3 - landform layers (all recipe-gated, all patch-gated)
+
+| Layer | Mechanism | Measured (recipe_probe, full coverage) |
+|---|---|---|
+| Terraces / mesas | coarse height quantised: `T(u) = round(u) + 0.5 smoothstep(0.5-w,0.5,v) - 0.5 (1 - smoothstep(-0.5,-0.5+w,v))`, `v = u - round(u)` (STEPIFY rounds - probed) | 359/400 directions move, +-19 m at a 24 m step |
+| Canyons | zero crossings of a warped low-frequency fbm: floor where abs(n) < width, walls to width (1 + 2/sharpness) | down to -47.8 m |
+| Spires | cellular distance on the direction = vertical columns; the shell grazes 3D feature points, so radius varies and spires are sparse by construction; tapered, capped by a regionally varied height | dense test: 204/400, up to +57.6 m |
+
+Spires and canyons extend the spawn / collision band (`_measure_terrain_band` adds their full extent - 240 probes
+can miss every spire).
+
+### W4 - archetypes and palette harmony
+
+- **Home = Barren**: regolith only, mesa highlands (~30%, above mid altitude), canyon systems (~35%), spire fields
+  (70 m cells in ~15%), ground a hair warmer than raw regolith, ambient 30% ground-coloured.
+- **Moon = Frozen**: frozen-wastes biome only (census: frozen 100%), cratered x1.5, strong slope erosion (smooth
+  ice), crevasse canyons (narrow 0.018, sheer 5.0, 18 m, ~70%: 2 m slope p99 71.6 deg), no mesas or spires, cold
+  ground tint and 55% cold ambient, sparse pale boulders, probes and crash sites only, hazard cold 0.8.
+- `SurfacePalette` multiplies every natural surface by the archetype's `ground_tint` (construction blocks
+  excepted); `world.gd` leans the ambient toward the dust colour (`PlanetArchetype.ambient_tint`). A sky tint for
+  the scattering pass is NOT built.
+
+### W5 - scatter rules and points of interest
+
+- **Boulders** (`ScatterSet`): score = max(talus x w, smoothstep(slope, 0.12, 0.32) x 0.85) x clump(60 m fbm) - debris
+  at the foot of slopes and along broken edges, in clusters, rare on smooth plains. `ScatterSet.legacy()` = the old
+  talus-only placement.
+- **POIs**: `Planet.poi_sites()` - Fibonacci lattice at 1.6x the spacing, seeded jitter, seeded-order greedy
+  rejection with a spatial hash, so the minimum spacing is a guarantee (home 777 sites, closest pair 1507 m >= 1500;
+  moon 28 sites, >= 900). `PoiField` instances them within 2.2 km and frees them past 3 km, on the ground from the
+  generator itself (works before colliders stream), standing on the local radial. Blockouts in
+  `scripts/world/poi_blockouts.gd`: Continuance probe (landed, transmitting beacon), crash site (half-buried pod,
+  scorch, debris downrange), crystal outcrop (glowing prisms + stained ground). Gameplay hooks: group "poi",
+  metas "poi_type", "poi_id", "poi_name"; `PoiField.consumed` for looted sites (saving it is gameplay's call).
+
+### Working on a CPU-only machine (this session's container)
+
+- No GPU: install Mesa lavapipe (`apt-get install mesa-vulkan-drivers`) and run with `--rendering-driver vulkan`
+  under `xvfb-run`, or `ErosionBaker` has no RenderingDevice and the game silently takes the NOISE shape path.
+- The full home map (10240 x 5120) is impractical to bake on 4 CPU cores. `--erosion-width=2048` (dev only,
+  `Planet.EROSION_WIDTH_OVERRIDE`) bakes a coarser map (~61 m/texel instead of 12.3) and caches it. Every number
+  and image in this section is from that map: same bands, coarser landforms.
+- Once the cache exists, headless runs (`--headless`) use the eroded path too - the cache is read before the
+  RenderingDevice is needed. recipe_probe / mask_probe / make_archetypes run headless.
+- `--legacy-world` makes every body use legacy() and no archetype: before/after captures from one build.
+- A new `class_name` script is invisible to `load(...).call(...)` and to type hints until `godot --import` has
+  re-scanned - planet_test's first baseline run failed on exactly that.
+
+Tools: planet_test (regression), landform_ab (W2 numbers), recipe_probe (does a layer move the ground?),
+landform_look (photograph each layer where it is strongest + nearest POI), mask_probe / graph_node_probe
+(node semantics), make_archetypes (writes the archetypes).

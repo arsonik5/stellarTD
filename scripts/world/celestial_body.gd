@@ -33,7 +33,11 @@ extends Resource
 ## the whole threat system reacts to, not a routine crafting ingredient.
 @export_range(0.0, 1.0) var ore_crystal_threshold: float = 0.55
 
-## Terrain character as data (W1). Null = the default recipe. A PlanetArchetype's recipe wins over this.
+@export_group("World character")
+## What this world IS (W4): terrain recipe, biomes, palette, scatter, points of interest. Null = default recipe,
+## the body's own biomes, legacy boulders, no POIs.
+@export var archetype: PlanetArchetype
+## Terrain character as data (W1). Null = the default recipe. The archetype's recipe wins over this.
 @export var terrain_recipe: TerrainRecipe
 
 @export_group("Shape - baked heightmap")

@@ -7,7 +7,7 @@ extends Resource
 ## Units are real metres / degrees / 0..1 shares, never voxels: the generator converts through the profile, so a
 ## recipe means the same thing on any planet size or voxel scale.
 ##
-## `TerrainRecipe.new()` is the CURRENT home recipe. `legacy()` is the generator exactly as it was before the
+## `TerrainRecipe.new()` is the current default (W2 erosion on, W3 layers off - archetypes switch those on). `legacy()` is the generator exactly as it was before the
 ## recipe existed (2026-11-05, commit ad29272): every later layer off. scenes/dev/planet_test.tscn holds the legacy
 ## recipe to a recorded hash, which is the proof the extraction changed nothing.
 
@@ -58,16 +58,22 @@ extends Resource
 @export var crater_rim_end := 1.35
 @export var crater_amplitude_mult := 1.0
 
+@export_group("Mask sampling")
+## Sample every erosion mask (slope, dust, wear, height) on the radius-shell rather than at the voxel's own radius.
+## The heightmap lookup drifts with altitude (measured 2026-11-05), so off-shell masks read wrong at the real
+## ground. True is correct; false reproduces the pre-fix generator (legacy()).
+@export var mask_on_shell := true
+
 @export_group("Slope + altitude erosion (W2, NMS-style)")
 ## 0..1. Damps the fine bands where the LANDFORM (coarse map) is gentle and keeps them where it is steep, beyond
 ## the per-band gates: a gentle meadow loses the leftover rock carpet. 0 = off.
-@export var slope_erosion := 0.0
+@export var slope_erosion := 0.7
 ## 0..1. Fine detail scales with altitude: low basins go calm (sediment), high ground goes sharp. 0 = off.
-@export var altitude_erosion := 0.0
+@export var altitude_erosion := 0.4
 ## Altitude (0..1 of the relief band) where altitude erosion is neutral (multiplier 1).
 @export var altitude_pivot := 0.45
 ## Swells and craters are damped on slopes too (they belong to flats); 0 = off.
-@export var flat_detail_slope_damp := 0.0
+@export var flat_detail_slope_damp := 0.5
 
 @export_group("Terraces / mesas (W3)")
 @export var terrace_enabled := false
@@ -110,6 +116,7 @@ extends Resource
 ## recorded hash.
 static func legacy() -> TerrainRecipe:
 	var r := TerrainRecipe.new()
+	r.mask_on_shell = false
 	r.slope_erosion = 0.0
 	r.altitude_erosion = 0.0
 	r.flat_detail_slope_damp = 0.0
@@ -122,7 +129,14 @@ static func legacy() -> TerrainRecipe:
 	return r
 
 ## The recipe a body uses: its archetype's, else its own, else the default.
+## Dev: `--legacy-world` on the command line makes every body use legacy() and no archetype, so "before" captures
+## come from the same build as "after" ones (scripts/dev/terrain_look.gd, landform_look.gd).
+static func legacy_world() -> bool:
+	return "--legacy-world" in OS.get_cmdline_user_args()
+
 static func of(body: CelestialBody) -> TerrainRecipe:
+	if legacy_world():
+		return legacy()
 	if body == null:
 		return TerrainRecipe.new()
 	var arch = body.get("archetype")

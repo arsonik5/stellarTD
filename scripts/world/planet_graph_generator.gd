@@ -344,6 +344,8 @@ static var _last_height01: Array = []
 
 ## W2 multiplier for the outcrop bands of the build in progress ([] = none).
 static var _detail_mult: Array = []
+## Debug only: make _build_terraces return one of its intermediate fields ("u", "k", "t", "delta", "gate").
+static var DEBUG_PART := ""
 ## Canyon cut (0..1) and spire SDF of the build in progress, for the material pass ([] = layer off).
 static var _last_canyon: Array = []
 static var _last_spire: Array = []
@@ -379,6 +381,17 @@ static func _sample_mask(f: VoxelGraphFunction, x: int, y: int, z: int,
 		image: Image, radius: float, pos: Vector2) -> Array:
 	if image == null:
 		return []
+	# Measured 2026-11-05 (scripts/dev/mask_probe.gd): sphere - heightmap is NOT direction-only. It is the image
+	# value only near |p| = radius and drifts off it with altitude, so a mask sampled at the real ground (hundreds
+	# of metres above or below the nominal radius on a 20 km world) read wrong - the terraces built on it moved
+	# nothing at all. With `mask_on_shell` the lookup is fed the direction projected onto the radius-shell, which
+	# makes the value exactly img(direction) at any altitude. Off in the legacy recipe, which reproduces the
+	# pre-fix generator for the hash test.
+	if _r != null and _r.mask_on_shell:
+		var sh := _shell_xyz(f, x, y, z, radius)
+		x = sh[0]
+		y = sh[1]
+		z = sh[2]
 	var hm := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE_HEIGHTMAP, pos)
 	f.set_node_param(hm, 0, image)
 	f.set_node_param(hm, 1, radius)
@@ -398,6 +411,32 @@ static func _sample_mask(f: VoxelGraphFunction, x: int, y: int, z: int,
 
 	return _clamp01(f, _sub(f, [sp, 0], [hm, 0], pos + Vector2(90, 30)),
 		pos + Vector2(160, 30))
+
+## Shell coordinates for mask lookups: normalize(p) * radius, built once per graph and radius and shared by every
+## mask (one normalize + three multiplies, not one per mask).
+static var _shell_cache: Dictionary = {}
+static var _shell_graph: VoxelGraphFunction = null
+
+static func _shell_xyz(f: VoxelGraphFunction, x: int, y: int, z: int, radius: float) -> Array:
+	if _shell_graph != f:
+		_shell_graph = f
+		_shell_cache = {}
+	var key := "%d_%d_%d_%.3f" % [x, y, z, radius]
+	if _shell_cache.has(key):
+		return _shell_cache[key]
+	var nrm := f.create_node(VoxelGraphFunction.NODE_NORMALIZE_3D, Vector2(-400, 3000))
+	f.add_connection(x, 0, nrm, 0)
+	f.add_connection(y, 0, nrm, 1)
+	f.add_connection(z, 0, nrm, 2)
+	var out := []
+	for i in 3:
+		var c := _const(f, radius, Vector2(-300, 3000 + i * 60))
+		var m := f.create_node(VoxelGraphFunction.NODE_MULTIPLY, Vector2(-200, 3000 + i * 60))
+		f.add_connection(nrm, i, m, 0)
+		f.add_connection(c[0], c[1], m, 1)
+		out.append(m)
+	_shell_cache[key] = out
+	return out
 
 static func build(body: CelestialBody, voxel_scale: float,
 		profile: PlanetProfile = null, cliff_rock: bool = true,
@@ -1087,10 +1126,13 @@ static func _build_craters(f: VoxelGraphFunction, body: CelestialBody,
 # The grain band is deliberately left alone: it is what stops a plain reading as a mirror.
 
 static func _clamp_range(f: VoxelGraphFunction, v: Array, lo: float, hi: float, pos: Vector2) -> Array:
+	# Min / max are INPUT PORTS on CLAMP (see _clamp01), not parameters.
 	var n := f.create_node(VoxelGraphFunction.NODE_CLAMP, pos)
 	f.add_connection(v[0], v[1], n, 0)
-	f.set_node_param(n, 0, lo)
-	f.set_node_param(n, 1, hi)
+	var a := _const(f, lo, pos + Vector2(-90, 40))
+	var b := _const(f, hi, pos + Vector2(-90, 80))
+	f.add_connection(a[0], a[1], n, 1)
+	f.add_connection(b[0], b[1], n, 2)
 	return [n, 0]
 
 static func _detail_multiplier(f: VoxelGraphFunction, slope01: Array, h01: Array, pos: Vector2) -> Array:
@@ -1165,6 +1207,12 @@ static func _build_terraces(f: VoxelGraphFunction, body: CelestialBody, norm: in
 			pos + Vector2(0, 160)),
 		_smoothstep(f, h01, _r.terrace_min_altitude, _r.terrace_min_altitude + 0.12, pos + Vector2(300, 200)),
 		pos + Vector2(540, 160))
+	match DEBUG_PART:
+		"u": return u
+		"t": return t
+		"delta": return delta
+		"gate": return gate
+		"k": return k
 	return _sub(f, sdf, _mul(f, delta, gate, pos + Vector2(600, 80)), pos + Vector2(660, 40))
 
 ## Canyons: where a low-frequency fbm crosses zero. Zero crossings of a smooth field are long, branching,
@@ -2050,7 +2098,7 @@ static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 		Vector2(1060, 800))
 
 	# --- biomes: one weight layer each ---
-	var biomes: Array = body.biomes
+	var biomes: Array = PlanetArchetype.biomes_of(body)
 	var row := 260.0
 	if biomes.is_empty():
 		_weight_out(f, GROUND_LAYER, surface, Vector2(1600, 420))
