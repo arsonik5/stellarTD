@@ -33,12 +33,15 @@ const FORMAT_VERSION := 10
 ## misses, so the gradient moved into the bake.
 const LAYERS := ["height", "flow", "wear", "deposition", "talus", "slope"]
 
-static func key(seed_value: int, width: int, height: int) -> String:
-	return "%s/v%d_s%d_%dx%d.bin" % [DIR, FORMAT_VERSION, seed_value, width, height]
+## `variant` names bake settings that differ from the defaults (a TerrainRecipe's bake multipliers), so two
+## recipes on one seed never share an entry. Empty for default settings, which keeps existing caches valid.
+static func key(seed_value: int, width: int, height: int, variant: String = "") -> String:
+	var v := "" if variant == "" else "_" + variant
+	return "%s/v%d_s%d_%dx%d%s.bin" % [DIR, FORMAT_VERSION, seed_value, width, height, v]
 
 ## Returns {"height": Image, "flow": Image, ...} or an empty Dictionary.
-static func load_entry(seed_value: int, width: int, height: int) -> Dictionary:
-	var path := key(seed_value, width, height)
+static func load_entry(seed_value: int, width: int, height: int, variant: String = "") -> Dictionary:
+	var path := key(seed_value, width, height, variant)
 	if not FileAccess.file_exists(path):
 		return {}
 	var f := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_ZSTD)
@@ -65,10 +68,10 @@ static func load_entry(seed_value: int, width: int, height: int) -> Dictionary:
 	return out
 
 static func save_entry(seed_value: int, width: int, height: int,
-		height_img: Image, masks: Dictionary) -> bool:
+		height_img: Image, masks: Dictionary, variant: String = "") -> bool:
 	DirAccess.make_dir_recursive_absolute(DIR)
 	_prune_old_versions()
-	var path := key(seed_value, width, height)
+	var path := key(seed_value, width, height, variant)
 	var f := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_ZSTD)
 	if f == null:
 		push_warning("ErosionCache: cannot write %s" % path)

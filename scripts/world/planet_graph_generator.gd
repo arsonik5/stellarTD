@@ -335,6 +335,19 @@ const ORBITAL_TEMP_SPREAD := 0.7
 ## The centre-direction ridge node from the most recent _build_height_offset
 ## call, so the slope mask can difference against the SAME node the height field
 ## used instead of building a second copy that could silently diverge.
+## The recipe of the build in progress (set at the top of build(), read by every band). Static because the band
+## builders are static functions; build() runs on the main thread and finishes before returning, so there is never
+## more than one in flight.
+static var _r: TerrainRecipe = TerrainRecipe.new()
+## Coarse-map height (0..1 of the relief band) of the build in progress, for altitude erosion and terraces.
+static var _last_height01: Array = []
+
+## W2 multiplier for the outcrop bands of the build in progress ([] = none).
+static var _detail_mult: Array = []
+## Canyon cut (0..1) and spire SDF of the build in progress, for the material pass ([] = layer off).
+static var _last_canyon: Array = []
+static var _last_spire: Array = []
+
 static var _last_ridge: Array = []
 
 ## Ground character from the most recent _build_eroded_shape call: how much this
@@ -389,9 +402,14 @@ static func _sample_mask(f: VoxelGraphFunction, x: int, y: int, z: int,
 static func build(body: CelestialBody, voxel_scale: float,
 		profile: PlanetProfile = null, cliff_rock: bool = true,
 		caves: bool = true, eroded: Image = null,
-		masks: Dictionary = {}) -> VoxelGeneratorGraph:
+		masks: Dictionary = {}, recipe: TerrainRecipe = null) -> VoxelGeneratorGraph:
 	if profile == null:
 		profile = PlanetProfile.derive(body, voxel_scale)
+	_r = recipe if recipe != null else TerrainRecipe.of(body)
+	_last_height01 = []
+	_detail_mult = []
+	_last_canyon = []
+	_last_spire = []
 	var g := VoxelGeneratorGraph.new()
 	var f: VoxelGraphFunction = g.get_main_function()
 
@@ -730,6 +748,20 @@ static func _build_eroded_shape(f: VoxelGraphFunction, body: CelestialBody,
 	var rocky := _rockiness(f, slope01, dust, Vector2(560, 1000))
 	_last_slope = slope01
 	_last_rocky = rocky
+	# Coarse-map height 0..1 of the relief band (the same image the shape node reads), for altitude erosion and
+	# terraces. Only built when a layer that needs it is on, so the legacy recipe's graph is unchanged.
+	var h01: Array = []
+	if _r.altitude_erosion > 0.0 or _r.terrace_enabled:
+		h01 = _sample_mask(f, x, y, z, eroded, body.radius, Vector2(200, 2400))
+		_last_height01 = h01
+	var base_sdf: Array = sdf
+
+	# --- W3 landform layers, on the coarse shape before any fine band --------------------------------------
+	sdf = _build_terraces(f, body, norm, profile, sdf, h01, Vector2(1300, 2400))
+	sdf = _build_canyons(f, body, norm, profile, sdf, Vector2(1300, 2800))
+
+	# --- W2 slope + altitude erosion: one multiplier for the outcrop bands ---------------------------------
+	_detail_mult = _detail_multiplier(f, slope01, h01, Vector2(1300, 3200))
 
 	sdf = _sub(f, sdf, _build_rock_relief(f, body, norm, profile, rocky, slope01,
 		Vector2(400, 1100)), Vector2(1100, 1200))
@@ -758,10 +790,10 @@ static func _build_eroded_shape(f: VoxelGraphFunction, body: CelestialBody,
 	# carry its voxel-scale conversion; the generator cannot read
 	# Planet.VOXEL_SCALE (circular preload, see the top of this file).
 	var swell_freq: float = maxf(profile.rock_freq
-		* (PlanetProfile.ROCK_FEATURE_M / SWELL_FEATURE_M), 0.5)
-	var swell_amp: float = profile.rock_amplitude 		* (SWELL_AMPLITUDE_M / PlanetProfile.ROCK_AMPLITUDE_M) * SWELL_AMPLITUDE_MULT
-	var swell_noise := _zn_noise(body.seed + 27, swell_freq, FRACTAL_FBM, 3, 2.13, 0.5,
-		0.0, _zn_warp(body.seed + 28, swell_freq * 0.5, 2, SWELL_WARP_FRACTION))
+		* (PlanetProfile.ROCK_FEATURE_M / _r.swell_feature_m), 0.5)
+	var swell_amp: float = profile.rock_amplitude 		* (_r.swell_amplitude_m / PlanetProfile.ROCK_AMPLITUDE_M) * SWELL_AMPLITUDE_MULT
+	var swell_noise: Resource = null if not _r.swell_enabled else _zn_noise(body.seed + 27, swell_freq, FRACTAL_FBM, 3, 2.13, 0.5,
+		0.0, _zn_warp(body.seed + 28, swell_freq * 0.5, 2, _r.swell_warp_fraction))
 	if swell_noise != null:
 		swell_noise.set("noise_type", 1) # TYPE_OPEN_SIMPLEX_2S
 		var sn := f.create_node(VoxelGraphFunction.NODE_FAST_NOISE_3D, Vector2(400, 1800))
@@ -771,13 +803,16 @@ static func _build_eroded_shape(f: VoxelGraphFunction, body: CelestialBody,
 		f.add_connection(norm, 2, sn, 2)
 		var swell := _mul(f,
 			_mul(f, [sn, 0], _const(f, swell_amp, Vector2(700, 1860)), Vector2(820, 1800)),
-			meadow, Vector2(900, 1800))
+			_flat_gate(f, meadow, slope01, Vector2(860, 1840)), Vector2(900, 1800))
 		sdf = _sub(f, sdf, swell, Vector2(1040, 1800))
 
-	sdf = _sub(f, sdf, _build_craters(f, body, norm, profile, meadow,
+	sdf = _sub(f, sdf, _build_craters(f, body, norm, profile, _flat_gate(f, meadow, slope01, Vector2(900, 1990)),
 		Vector2(400, 1950)), Vector2(1040, 1950))
 
 	sdf = _carve_overhangs(f, body, x, y, z, norm, profile, sdf, masks, rocky)
+
+	# Spires last: they stand on the finished ground and are not eroded by the bands.
+	sdf = _build_spires(f, body, norm, profile, sdf, base_sdf, Vector2(1300, 3600))
 	return sdf
 
 ## Everything the surface carries below the erosion map's resolution, as a
@@ -829,18 +864,18 @@ static func _build_rock_relief(f: VoxelGraphFunction, body: CelestialBody,
 	# ridged noise laying down parallel creases, but the clump gate below already
 	# breaks this band into separate outcrops, and a second warped field measured
 	# as the most expensive thing in the graph.
-	var crag_n := _noise_on(f, norm, body.seed + 41, freq_per_m / CRAG_FEATURE_M,
+	var crag_n: Array = [] if not _r.crag_enabled else _noise_on(f, norm, body.seed + 41, freq_per_m / _r.crag_feature_m,
 		Vector2(pos.x, row), FRACTAL_RIDGED, 2, 2.11, 0.55, 0.0)
-	var patch := _noise_on(f, norm, body.seed + 43, freq_per_m / CRAG_PATCH_M,
+	var patch := _noise_on(f, norm, body.seed + 43, freq_per_m / _r.crag_patch_m,
 		Vector2(pos.x, row + 200), FRACTAL_FBM, 2, 2.0, 0.5, 0.0)
 	if not crag_n.is_empty() and not patch.is_empty():
 		var clump := _smoothstep(f, _to01(f, patch, Vector2(pos.x + 200, row + 200)),
-			CRAG_PATCH_START, CRAG_PATCH_FULL, Vector2(pos.x + 300, row + 200))
+			_r.crag_patch_start, _r.crag_patch_full, Vector2(pos.x + 300, row + 200))
 		var faceted := _lerp_const(f, crag_n,
-			_stepify(f, crag_n, _const(f, 1.0 / CRAG_FACET_STEPS, Vector2(pos.x + 200, row + 60)),
+			_stepify(f, crag_n, _const(f, 1.0 / _r.crag_facet_steps, Vector2(pos.x + 200, row + 60)),
 				Vector2(pos.x + 260, row + 20)),
-			CRAG_FACET_BLEND, Vector2(pos.x + 340, row + 20))
-		var gate := _mul(f, clump, _smoothstep(f, rocky, CRAG_ROCKY_START, CRAG_ROCKY_FULL,
+			_r.crag_facet_blend, Vector2(pos.x + 340, row + 20))
+		var gate := _mul(f, clump, _smoothstep(f, rocky, _r.crag_rocky_start, _r.crag_rocky_full,
 			Vector2(pos.x + 300, row + 300)), Vector2(pos.x + 400, row + 250))
 		# And the ground must actually be STEEP. Rockiness alone also rises on
 		# flat scoured ground, and measured on a 6 degree meadow the crag band
@@ -848,11 +883,13 @@ static func _build_rock_relief(f: VoxelGraphFunction, body: CelestialBody,
 		# standing on exactly the ground that was supposed to be dust. Steep
 		# faces have slope01 at 1, so the rocky look there does not change.
 		if not slope01.is_empty():
-			gate = _mul(f, gate, _smoothstep(f, slope01, CRAG_SLOPE_START,
-				CRAG_SLOPE_FULL, Vector2(pos.x + 300, row + 360)),
+			gate = _mul(f, gate, _smoothstep(f, slope01, _r.crag_slope_start,
+				_r.crag_slope_full, Vector2(pos.x + 300, row + 360)),
 				Vector2(pos.x + 460, row + 300))
+		if not _detail_mult.is_empty():
+			gate = _mul(f, gate, _detail_mult, Vector2(pos.x + 500, row + 300))
 		total = _mul(f,
-			_mul(f, faceted, _const(f, CRAG_AMPLITUDE_M * CRAG_AMPLITUDE_MULT * vox_per_m,
+			_mul(f, faceted, _const(f, _r.crag_amplitude_m * CRAG_AMPLITUDE_MULT * vox_per_m,
 				Vector2(pos.x + 400, row + 60)), Vector2(pos.x + 460, row + 20)),
 			gate, Vector2(pos.x + 540, row + 20))
 	row += 400.0
@@ -864,13 +901,13 @@ static func _build_rock_relief(f: VoxelGraphFunction, body: CelestialBody,
 	# where no landform breaks them up - those read as ripples. A warp only
 	# breaks the alignment if it displaces by something near the feature
 	# wavelength; at the 0.18 default the creases still lined up.
-	var rock_n := _noise_on(f, norm, body.seed + 18, profile.rock_freq,
-		Vector2(pos.x, row), FRACTAL_RIDGED, 4, 2.17, 0.5, 0.0,
-		_zn_warp(body.seed + 19, profile.rock_freq * 0.45, 2, 0.55))
+	var rock_n: Array = [] if not _r.rock_enabled else _noise_on(f, norm, body.seed + 18, profile.rock_freq,
+		Vector2(pos.x, row), FRACTAL_RIDGED, _r.rock_octaves, 2.17, 0.5, 0.0,
+		_zn_warp(body.seed + 19, profile.rock_freq * 0.45, 2, _r.rock_warp))
 	if not rock_n.is_empty():
 		_last_ridge = rock_n
-		var steps: float = ROCK_FACET_STEPS_OVERRIDE if ROCK_FACET_STEPS_OVERRIDE > 0.0 else ROCK_FACET_STEPS
-		var blend: float = ROCK_FACET_BLEND_OVERRIDE if ROCK_FACET_BLEND_OVERRIDE >= 0.0 else ROCK_FACET_BLEND
+		var steps: float = ROCK_FACET_STEPS_OVERRIDE if ROCK_FACET_STEPS_OVERRIDE > 0.0 else _r.rock_facet_steps
+		var blend: float = ROCK_FACET_BLEND_OVERRIDE if ROCK_FACET_BLEND_OVERRIDE >= 0.0 else _r.rock_facet_blend
 		var faceted := _lerp_const(f, rock_n,
 			_stepify(f, rock_n, _const(f, 1.0 / maxf(steps, 0.5), Vector2(pos.x + 200, row + 60)),
 				Vector2(pos.x + 260, row + 20)),
@@ -884,18 +921,20 @@ static func _build_rock_relief(f: VoxelGraphFunction, body: CelestialBody,
 		# the band off; grain off changed nothing). The floor keeps a trace of
 		# break-up on flats so a plain is not polished.
 		var gate: Array = _mul(f, rocky,
-			_add(f, _const(f, ROCK_BAND_FLAT_FLOOR, Vector2(pos.x + 200, row + 160)),
-				_mul(f, _const(f, 1.0 - ROCK_BAND_FLAT_FLOOR, Vector2(pos.x + 200, row + 200)),
-					_smoothstep(f, slope01, CRAG_SLOPE_START, CRAG_SLOPE_FULL,
+			_add(f, _const(f, _r.rock_flat_floor, Vector2(pos.x + 200, row + 160)),
+				_mul(f, _const(f, 1.0 - _r.rock_flat_floor, Vector2(pos.x + 200, row + 200)),
+					_smoothstep(f, slope01, _r.crag_slope_start, _r.crag_slope_full,
 						Vector2(pos.x + 200, row + 240)),
 					Vector2(pos.x + 260, row + 220)),
 				Vector2(pos.x + 300, row + 180)),
 			Vector2(pos.x + 340, row + 140))
 		if ROCK_FORCE_GATE >= 0.0:
 			gate = _const(f, ROCK_FORCE_GATE, Vector2(pos.x + 300, row + 120))
+		elif not _detail_mult.is_empty():
+			gate = _mul(f, gate, _detail_mult, Vector2(pos.x + 380, row + 120))
 		var band := _mul(f,
 			_mul(f, faceted,
-				_const(f, profile.rock_amplitude * ROCK_AMPLITUDE_MULT,
+				_const(f, profile.rock_amplitude * ROCK_AMPLITUDE_MULT * _r.rock_amplitude_mult,
 					Vector2(pos.x + 400, row + 60)), Vector2(pos.x + 460, row + 20)),
 			gate, Vector2(pos.x + 540, row + 20))
 		total = band if total.is_empty() else _add(f, total, band, Vector2(pos.x + 620, row))
@@ -910,16 +949,16 @@ static func _build_rock_relief(f: VoxelGraphFunction, body: CelestialBody,
 	#
 	# At 2.6 m features on a 1 m voxel this is near the mesher's resolution and
 	# deliberately so - it is the finest shape the terrain can carry at all.
-	var grain_n := _noise_on(f, norm, body.seed + 45, freq_per_m / GRAIN_FEATURE_M,
+	var grain_n: Array = [] if not _r.grain_enabled else _noise_on(f, norm, body.seed + 45, freq_per_m / _r.grain_feature_m,
 		Vector2(pos.x, row), FRACTAL_FBM, 2, 2.19, 0.5, 0.0)
 	if not grain_n.is_empty():
 		var gate := _add(f,
-			_mul(f, rocky, _const(f, 1.0 - GRAIN_DUST_SHARE, Vector2(pos.x + 200, row + 120)),
+			_mul(f, rocky, _const(f, 1.0 - _r.grain_dust_share, Vector2(pos.x + 200, row + 120)),
 				Vector2(pos.x + 260, row + 100)),
-			_const(f, GRAIN_DUST_SHARE, Vector2(pos.x + 200, row + 160)),
+			_const(f, _r.grain_dust_share, Vector2(pos.x + 200, row + 160)),
 			Vector2(pos.x + 340, row + 100))
 		var band := _mul(f,
-			_mul(f, grain_n, _const(f, GRAIN_AMPLITUDE_M * GRAIN_AMPLITUDE_MULT * vox_per_m,
+			_mul(f, grain_n, _const(f, _r.grain_amplitude_m * GRAIN_AMPLITUDE_MULT * vox_per_m,
 				Vector2(pos.x + 400, row + 60)), Vector2(pos.x + 460, row + 20)),
 			gate, Vector2(pos.x + 540, row + 20))
 		total = band if total.is_empty() else _add(f, total, band, Vector2(pos.x + 620, row))
@@ -976,18 +1015,20 @@ static func _build_craters(f: VoxelGraphFunction, body: CelestialBody,
 	var vox_per_m: float = profile.rock_amplitude / PlanetProfile.ROCK_AMPLITUDE_M
 	var total: Array = []
 	var row := pos.y
-	for size in CRATER_SIZES:
+	if not _r.craters_enabled:
+		return _const(f, 0.0, pos)
+	for size in _r.crater_sizes:
 		var dist := _cellular_on(f, norm, body.seed + int(size[3]),
-			freq_per_m / float(size[0]), CRATER_CELL_JITTER, Vector2(pos.x, row))
+			freq_per_m / float(size[0]), _r.crater_cell_jitter, Vector2(pos.x, row))
 		if dist.is_empty():
 			continue
 		var t := _mul(f,
 			_add(f, dist, _const(f, 1.0, Vector2(pos.x + 120, row + 40)),
 				Vector2(pos.x + 180, row)),
-			_const(f, 1.0 / CRATER_RADIUS_CELLS, Vector2(pos.x + 180, row + 60)),
+			_const(f, 1.0 / _r.crater_radius_cells, Vector2(pos.x + 180, row + 60)),
 			Vector2(pos.x + 240, row))
-		var depth: float = float(size[1]) * vox_per_m * CRATER_AMPLITUDE_MULT
-		var rim_h: float = float(size[2]) * vox_per_m * CRATER_AMPLITUDE_MULT
+		var depth: float = float(size[1]) * vox_per_m * CRATER_AMPLITUDE_MULT * _r.crater_amplitude_mult
+		var rim_h: float = float(size[2]) * vox_per_m * CRATER_AMPLITUDE_MULT * _r.crater_amplitude_mult
 		var bowl := _mul(f,
 			_sub(f, _const(f, 1.0, Vector2(pos.x + 300, row + 40)),
 				_smoothstep(f, t, 0.0, 1.0, Vector2(pos.x + 300, row)),
@@ -996,8 +1037,8 @@ static func _build_craters(f: VoxelGraphFunction, body: CelestialBody,
 			Vector2(pos.x + 420, row))
 		var rim := _mul(f,
 			_sub(f,
-				_smoothstep(f, t, CRATER_RIM_START, 1.0, Vector2(pos.x + 300, row + 120)),
-				_smoothstep(f, t, 1.0, CRATER_RIM_END, Vector2(pos.x + 300, row + 180)),
+				_smoothstep(f, t, _r.crater_rim_start, 1.0, Vector2(pos.x + 300, row + 120)),
+				_smoothstep(f, t, 1.0, _r.crater_rim_end, Vector2(pos.x + 300, row + 180)),
 				Vector2(pos.x + 360, row + 150)),
 			_const(f, rim_h, Vector2(pos.x + 360, row + 210)),
 			Vector2(pos.x + 420, row + 150))
@@ -1035,6 +1076,168 @@ static func _build_craters(f: VoxelGraphFunction, body: CelestialBody,
 ##
 ## Returns a mask compared in SQUARED units, so no square root is needed: the
 ## smoothstep edges are squared once at build time instead.
+# --- W2: slope + altitude erosion -----------------------------------------------------------------------------
+#
+# No Man's Sky's two terrain "erosions" (Murray, GDC 2017) as multipliers on the outcrop bands, not as
+# derivative-damped octaves: the coarse landform already exists as the eroded map, so its slope mask and height
+# ARE the low octaves here, and the crag / rock bands are the high ones.
+#   slope:    detail survives where the landform is steep and fades where it is gentle - a meadow loses the
+#             leftover rock carpet the per-band gates let through (open item 2); a ridge keeps everything.
+#   altitude: sediment fills basins, wind strips peaks - low ground calm, high ground sharp (open item 1).
+# The grain band is deliberately left alone: it is what stops a plain reading as a mirror.
+
+static func _clamp_range(f: VoxelGraphFunction, v: Array, lo: float, hi: float, pos: Vector2) -> Array:
+	var n := f.create_node(VoxelGraphFunction.NODE_CLAMP, pos)
+	f.add_connection(v[0], v[1], n, 0)
+	f.set_node_param(n, 0, lo)
+	f.set_node_param(n, 1, hi)
+	return [n, 0]
+
+static func _detail_multiplier(f: VoxelGraphFunction, slope01: Array, h01: Array, pos: Vector2) -> Array:
+	var m: Array = []
+	if _r.slope_erosion > 0.0 and not slope01.is_empty():
+		# (1 - s) + s * slope: full detail on steep ground, (1 - s) of it on the flattest.
+		m = _add(f, _const(f, 1.0 - _r.slope_erosion, pos),
+			_mul(f, slope01, _const(f, _r.slope_erosion, pos + Vector2(0, 40)), pos + Vector2(60, 40)),
+			pos + Vector2(120, 20))
+	if _r.altitude_erosion > 0.0 and not h01.is_empty():
+		# 1 + 2a (h - pivot), clamped: neutral at the pivot, calmer below it, sharper above.
+		var alt := _clamp_range(f, _add(f, _const(f, 1.0, pos + Vector2(0, 120)),
+			_mul(f, _sub(f, h01, _const(f, _r.altitude_pivot, pos + Vector2(0, 160)), pos + Vector2(60, 160)),
+				_const(f, 2.0 * _r.altitude_erosion, pos + Vector2(0, 200)), pos + Vector2(120, 160)),
+			pos + Vector2(180, 140)), 0.15, 1.8, pos + Vector2(240, 140))
+		m = alt if m.is_empty() else _mul(f, m, alt, pos + Vector2(300, 80))
+	return m
+
+## Meadow-only detail (swells, craters) also fades on slopes when the recipe asks: a crater on a 30 degree
+## hillside reads as a dent, not a crater.
+static func _flat_gate(f: VoxelGraphFunction, meadow: Array, slope01: Array, pos: Vector2) -> Array:
+	if _r.flat_detail_slope_damp <= 0.0 or slope01.is_empty():
+		return meadow
+	return _mul(f, meadow, _sub(f, _const(f, 1.0, pos),
+		_mul(f, slope01, _const(f, _r.flat_detail_slope_damp, pos + Vector2(0, 40)), pos + Vector2(60, 40)),
+		pos + Vector2(120, 20)), pos + Vector2(180, 0))
+
+# --- W3: landform layers --------------------------------------------------------------------------------------
+
+## Voxels per metre, from the rock band's own numbers (the generator cannot read Planet.VOXEL_SCALE, see the top
+## of this file).
+static func _vox_per_m(profile: PlanetProfile) -> float:
+	return profile.rock_amplitude / PlanetProfile.ROCK_AMPLITUDE_M if profile.rock_amplitude > 0.0 else 1.0
+
+## A patch gate: low-frequency fbm through a smoothstep, so a layer covers about `coverage` of the planet in
+## connected regions of `patch_m` size, with soft edges.
+static func _patch_gate(f: VoxelGraphFunction, body: CelestialBody, norm: int, profile: PlanetProfile,
+		seed_off: int, patch_m: float, coverage: float, pos: Vector2) -> Array:
+	var radius_m: float = body.radius / _vox_per_m(profile)
+	var n := _noise_on(f, norm, body.seed + seed_off, maxf(radius_m / patch_m, 0.5), pos, FRACTAL_FBM, 3,
+		2.0, 0.5, 0.0)
+	if n.is_empty():
+		return _const(f, 1.0, pos)
+	# fbm sits mostly inside +-0.45: centre the edge where roughly `coverage` of the values pass it.
+	var edge := lerpf(0.45, -0.45, clampf(coverage, 0.0, 1.0))
+	return _smoothstep(f, n, edge - 0.08, edge + 0.08, pos + Vector2(160, 0))
+
+## Terraces / mesas: the coarse height quantised into treads and risers, inside patches and above an altitude.
+## STEPIFY ROUNDS (probed: scripts/dev/graph_node_probe.gd), so treads centre on whole steps and the riser sits
+## at the half step: T(u) = round(u) + 0.5 smoothstep(0.5 - w, 0.5, v) - 0.5 (1 - smoothstep(-0.5, -0.5 + w, v)),
+## v = u - round(u), which is continuous across every step.
+static func _build_terraces(f: VoxelGraphFunction, body: CelestialBody, norm: int, profile: PlanetProfile,
+		sdf: Array, h01: Array, pos: Vector2) -> Array:
+	if not _r.terrace_enabled or h01.is_empty() or profile.relief_voxels <= 0.0:
+		return sdf
+	var relief := profile.relief_voxels
+	var step01: float = maxf(_r.terrace_step_m * _vox_per_m(profile) / relief, 0.001)
+	var u := _mul(f, h01, _const(f, 1.0 / step01, pos), pos + Vector2(60, 0))
+	var k := _stepify(f, u, _const(f, 1.0, pos + Vector2(60, 40)), pos + Vector2(120, 0))
+	var v := _sub(f, u, k, pos + Vector2(180, 0))
+	var w: float = clampf(_r.terrace_riser * 0.5, 0.01, 0.49)
+	var up_half := _mul(f, _smoothstep(f, v, 0.5 - w, 0.5, pos + Vector2(240, -40)),
+		_const(f, 0.5, pos + Vector2(240, -80)), pos + Vector2(300, -40))
+	var down_half := _mul(f, _sub(f, _const(f, 1.0, pos + Vector2(240, 80)),
+		_smoothstep(f, v, -0.5, -0.5 + w, pos + Vector2(240, 40)), pos + Vector2(300, 60)),
+		_const(f, 0.5, pos + Vector2(240, 120)), pos + Vector2(360, 60))
+	var t := _sub(f, _add(f, k, up_half, pos + Vector2(360, 0)), down_half, pos + Vector2(420, 20))
+	# The surface moves from u to t (in steps); raising the surface by d lowers the SDF by d.
+	var delta := _mul(f, _sub(f, t, u, pos + Vector2(480, 0)), _const(f, step01 * relief, pos + Vector2(480, 40)),
+		pos + Vector2(540, 0))
+	var gate := _mul(f, _patch_gate(f, body, norm, profile, 71, _r.terrace_patch_m, _r.terrace_coverage,
+			pos + Vector2(0, 160)),
+		_smoothstep(f, h01, _r.terrace_min_altitude, _r.terrace_min_altitude + 0.12, pos + Vector2(300, 200)),
+		pos + Vector2(540, 160))
+	return _sub(f, sdf, _mul(f, delta, gate, pos + Vector2(600, 80)), pos + Vector2(660, 40))
+
+## Canyons: where a low-frequency fbm crosses zero. Zero crossings of a smooth field are long, branching,
+## non-intersecting curves - what a canyon system looks like from orbit. Floor where |n| < width, walls out to
+## width * (1 + 2 / sharpness); the surface drops by up to canyon_depth_m inside canyon fields.
+static func _build_canyons(f: VoxelGraphFunction, body: CelestialBody, norm: int, profile: PlanetProfile,
+		sdf: Array, pos: Vector2) -> Array:
+	if not _r.canyon_enabled:
+		return sdf
+	var vpm := _vox_per_m(profile)
+	var radius_m: float = body.radius / vpm
+	var freq: float = maxf(radius_m / _r.canyon_feature_m, 0.5)
+	var n := _noise_on(f, norm, body.seed + 81, freq, pos, FRACTAL_FBM, 3, 2.07, 0.45, 0.0,
+		_zn_warp(body.seed + 82, freq * 0.5, 2, 0.22))
+	if n.is_empty():
+		return sdf
+	var a := _abs(f, n, pos + Vector2(160, 0))
+	var outer: float = _r.canyon_width * (1.0 + 2.0 / maxf(_r.canyon_sharpness, 0.1))
+	var cut := _sub(f, _const(f, 1.0, pos + Vector2(220, 40)),
+		_smoothstep(f, a, _r.canyon_width, outer, pos + Vector2(220, 0)), pos + Vector2(280, 0))
+	var gate := _patch_gate(f, body, norm, profile, 83, _r.canyon_feature_m * 2.5, _r.canyon_coverage,
+		pos + Vector2(0, 160))
+	cut = _mul(f, cut, gate, pos + Vector2(340, 40))
+	_last_canyon = cut
+	var depth := _mul(f, cut, _const(f, _r.canyon_depth_m * vpm, pos + Vector2(340, 100)), pos + Vector2(400, 40))
+	return _add(f, sdf, depth, pos + Vector2(460, 0))
+
+## Spires: tapered rock columns standing along the local radial.
+##
+## Cellular DISTANCE sampled on the direction, in cells `spire_spacing_m` across: the distance to the nearest 3D
+## feature point is constant along each radial line, so `dist - radius` is a vertical column. The ground only
+## grazes those 3D points (probed for craters, cellular_dir_probe.gd), so a column appears only where a point sits
+## within `spire_radius_m` of the shell, with radius sqrt(r^2 - offset^2) - which is what makes spires sparse and
+## of varied girth for free. Height is measured above the coarse ground (`base_sdf` is height along the radial),
+## capped by a regionally varied top; a patch gate keeps them to spire fields.
+static func _build_spires(f: VoxelGraphFunction, body: CelestialBody, norm: int, profile: PlanetProfile,
+		sdf: Array, base_sdf: Array, pos: Vector2) -> Array:
+	if not _r.spire_enabled:
+		return sdf
+	var vpm := _vox_per_m(profile)
+	var radius_m: float = body.radius / vpm
+	var spacing_vox: float = _r.spire_spacing_m * vpm
+	var dist := _cellular_on(f, norm, body.seed + 91, radius_m / _r.spire_spacing_m, 1.0, pos)
+	if dist.is_empty():
+		return sdf
+	var h_vox: float = _r.spire_height_m * vpm
+	var top := _const(f, h_vox, pos + Vector2(0, 300))
+	var hvar := _noise_on(f, norm, body.seed + 93, maxf(radius_m / (_r.spire_spacing_m * 3.0), 0.5),
+		pos + Vector2(0, 240), FRACTAL_FBM, 2, 2.0, 0.5, 0.0)
+	if not hvar.is_empty():
+		top = _mul(f, top, _add(f, _const(f, 1.0, pos + Vector2(60, 260)),
+			_mul(f, hvar, _const(f, 0.6, pos + Vector2(60, 300)), pos + Vector2(120, 280)), pos + Vector2(180, 270)),
+			pos + Vector2(240, 280))
+	# 0 at the foot, 1 at the top.
+	var t := _clamp01(f, _div(f, base_sdf, top, pos + Vector2(300, 280)), pos + Vector2(360, 280))
+	# Lateral distance in voxels, minus a radius that tapers to 45% at the top.
+	var lat := _mul(f, _add(f, dist, _const(f, 1.0, pos + Vector2(60, 40)), pos + Vector2(120, 0)),
+		_const(f, spacing_vox, pos + Vector2(120, 40)), pos + Vector2(180, 0))
+	var r := _mul(f, _const(f, _r.spire_radius_m * vpm, pos + Vector2(240, 80)),
+		_sub(f, _const(f, 1.0, pos + Vector2(240, 120)),
+			_mul(f, t, _const(f, 0.55, pos + Vector2(240, 160)), pos + Vector2(300, 140)), pos + Vector2(360, 120)),
+		pos + Vector2(420, 80))
+	var side := _sub(f, lat, r, pos + Vector2(480, 40))
+	var cap := _sub(f, base_sdf, top, pos + Vector2(480, 200))
+	var spire := _bin(f, VoxelGraphFunction.NODE_MAX, side, cap, pos + Vector2(540, 100))
+	# Spire fields: outside the patch the column is pushed far outside the surface, so the union ignores it.
+	var gate := _patch_gate(f, body, norm, profile, 95, _r.spire_spacing_m * 12.0, _r.spire_density,
+		pos + Vector2(0, 400))
+	spire = _add(f, spire, _mul(f, _sub(f, _const(f, 1.0, pos + Vector2(540, 400)), gate, pos + Vector2(600, 400)),
+		_const(f, 1000.0, pos + Vector2(600, 440)), pos + Vector2(660, 400)), pos + Vector2(720, 160))
+	_last_spire = spire
+	return _bin(f, VoxelGraphFunction.NODE_MIN, sdf, spire, pos + Vector2(780, 0))
+
 static func _build_landform_slope(f: VoxelGraphFunction, body: CelestialBody,
 		x: int, y: int, z: int, profile: PlanetProfile, eroded: Image,
 		masks: Dictionary, pos: Vector2) -> Array:

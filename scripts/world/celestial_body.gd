@@ -33,6 +33,9 @@ extends Resource
 ## the whole threat system reacts to, not a routine crafting ingredient.
 @export_range(0.0, 1.0) var ore_crystal_threshold: float = 0.55
 
+## Terrain character as data (W1). Null = the default recipe. A PlanetArchetype's recipe wins over this.
+@export var terrain_recipe: TerrainRecipe
+
 @export_group("Shape - baked heightmap")
 ## Optional. When set, this body's LARGE-SCALE shape comes from a baked,
 ## eroded heightmap instead of from height_amplitude/detail_amplitude noise,

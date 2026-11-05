@@ -148,6 +148,10 @@ const FREQUENCY_REFERENCE_RADIUS := 8000.0
 static var EROSION_DENSITY_OVERRIDE: float = -1.0
 ## Test-only override for the base field's domain warp.
 static var EROSION_WARP_OVERRIDE: float = -1.0
+## Dev-only: bake the erosion map at this width instead of the ground-distance width (0 = off). A CPU-only
+## machine (software Vulkan) cannot bake the full 10240-wide home map in reasonable time; captures made with this
+## show the same bands on coarser landforms and must say so. Also set by `--erosion-width=N` on the command line.
+static var EROSION_WIDTH_OVERRIDE: int = 0
 
 ## Scattered rock geometry on the surface. Off for a body that should read as
 ## bare swept rock, and useful as an A/B switch when judging whether the
@@ -326,6 +330,12 @@ func _derive_profile() -> PlanetProfile:
 
 ## Graph when enabled and it builds; script generator otherwise. Falling back
 ## rather than erroring means a body the graph cannot yet express still loads.
+## A generator for this body with a different recipe, on the SAME eroded map and masks - for A/B measurement and
+## for planet_test's legacy-hash check. Not used by the game itself.
+func build_generator_with_recipe(recipe: TerrainRecipe) -> VoxelGeneratorGraph:
+	return GraphGenerator.build(body, VOXEL_SCALE, profile, cliff_rock_enabled, caves_enabled, _eroded_map,
+		_erosion_masks, recipe)
+
 func _make_generator() -> VoxelGenerator:
 	if use_graph_generator:
 		var g: VoxelGeneratorGraph = GraphGenerator.build(body, VOXEL_SCALE, profile, cliff_rock_enabled, caves_enabled, _eroded_map, _erosion_masks)
@@ -783,9 +793,16 @@ func _spawn_boulders() -> void:
 ## and clamped at both ends - a tiny asteroid does not need a megatexel map and
 ## nothing gets one larger than EROSION_MAX_WIDTH.
 func _erosion_width() -> int:
+	if EROSION_WIDTH_OVERRIDE <= 0:
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--erosion-width="):
+				EROSION_WIDTH_OVERRIDE = int(a.substr(16))
 	var circumference: float = TAU * radius_world()
 	var want := int(round(circumference / EROSION_METRES_PER_TEXEL / 8.0)) * 8
-	return clampi(want, 512, EROSION_MAX_WIDTH)
+	var natural := clampi(want, 512, EROSION_MAX_WIDTH)
+	if EROSION_WIDTH_OVERRIDE > 0:
+		return mini(natural, EROSION_WIDTH_OVERRIDE / 8 * 8)
+	return natural
 
 ## Bakes this body's eroded heightmap on the GPU.
 ##
@@ -804,6 +821,16 @@ func _bake_eroded_heightmap() -> Image:
 	var settings := ErosionBaker.Settings.new()
 	settings.seed = body.seed
 	settings.frequency *= maxf(radius_world() / FREQUENCY_REFERENCE_RADIUS, 0.05)
+	# The recipe's bake knobs (landmass count, droplet density, warp). Defaults leave the bake untouched and the
+	# cache key unchanged; anything else bakes, and caches, under its own variant key.
+	var recipe := TerrainRecipe.of(body)
+	settings.frequency *= recipe.bake_frequency_mult
+	settings.droplet_density *= recipe.bake_droplet_mult
+	if recipe.bake_warp >= 0.0:
+		settings.warp_strength = recipe.bake_warp
+	var variant := ""
+	if recipe.bake_frequency_mult != 1.0 or recipe.bake_droplet_mult != 1.0 or recipe.bake_warp >= 0.0:
+		variant = "f%.3f_d%.3f_w%.3f" % [recipe.bake_frequency_mult, recipe.bake_droplet_mult, recipe.bake_warp]
 	if EROSION_DENSITY_OVERRIDE >= 0.0:
 		settings.droplet_density = EROSION_DENSITY_OVERRIDE
 	if EROSION_WARP_OVERRIDE >= 0.0:
@@ -818,7 +845,7 @@ func _bake_eroded_heightmap() -> Image:
 
 	# Cache hit: the bake is 6x the pixels it used to be and is deterministic in
 	# the seed, so it is stored rather than repeated at every load.
-	var cached := ErosionCache.load_entry(body.seed, settings.width, settings.height)
+	var cached := ErosionCache.load_entry(body.seed, settings.width, settings.height, variant)
 	if not cached.is_empty():
 		_erosion_masks = {}
 		for k in cached:
@@ -827,7 +854,7 @@ func _bake_eroded_heightmap() -> Image:
 		TerrainLog.write_fields("erosion", "%s: eroded heightmap from cache" % name, {
 			"size": "%dx%d" % [settings.width, settings.height],
 			"metres_per_texel": TAU * radius_world() / float(settings.width),
-			"path": ErosionCache.key(body.seed, settings.width, settings.height),
+			"path": ErosionCache.key(body.seed, settings.width, settings.height, variant),
 		})
 		return cached["height"]
 	baker.progress.connect(_on_bake_progress)
@@ -837,7 +864,7 @@ func _bake_eroded_heightmap() -> Image:
 		return null
 	_erosion_masks = baker.last_masks
 	ErosionCache.save_entry(body.seed, settings.width, settings.height,
-		img, _erosion_masks)
+		img, _erosion_masks, variant)
 	if TerrainLog.enabled:
 		# Dump what the game actually baked, plus its height distribution. A map
 		# that looks right in isolation can still be applied with too little
