@@ -4,9 +4,9 @@ class_name ItemInfo
 ## Icons: ItemInfo.icon(id) returns data/icons/<id>.png when the icon baker has made one (see ux-bible "Icons"),
 ## otherwise null and the UI draws the category glyph.
 
-const CATEGORIES := ["structure", "production", "logistics", "defense", "vehicles", "material", "tool"]
+const CATEGORIES := ["structure", "production", "power", "logistics", "defense", "vehicles", "material", "tool"]
 const CATEGORY_NAMES := {
-	"structure": "Structure", "production": "Production", "logistics": "Logistics", "defense": "Defense",
+	"structure": "Structure", "production": "Production", "power": "Power", "logistics": "Logistics", "defense": "Defense",
 	"vehicles": "Vehicles", "material": "Materials", "tool": "Tools",
 }
 
@@ -23,6 +23,15 @@ const INFO := {
 	"basic_crafter": ["production", "Hand-fed workbench. Turns ore into the first parts."],
 	"smelter": ["production", "Melts ore into ingots. Needs a steady feed of ore."],
 	"constructor": ["production", "Builds parts from ingots - ammo, casings, ship parts."],
+	"deposit_drill": ["production", "Bores into the ground under it and collects the ore it cuts. Place it over a deposit."],
+	"crusher": ["production", "Crushes stone into gravel for concrete."],
+	"uplink": ["logistics", "Sends goods home to Earth and receives Directives. Feed it what the orders ask for."],
+	# power
+	"power_pole": ["power", "Carries power. Links to poles within 16 m and plugs in machines within 9 m."],
+	"burner_generator": ["power", "Burns coal or carbon for 30 kW. Only burns what the grid uses."],
+	"solar_panel": ["power", "12 kW from the star overhead. Fades at dusk, nothing at night."],
+	"battery_bank": ["power", "Stores spare power and gives it back when the grid runs short."],
+	"crystal_reactor": ["power", "300 kW from crystal cells. While it runs, it can be seen from orbit."],
 	# logistics
 	"chest": ["logistics", "Storage box. Pipes can fill it and empty it."],
 	"vacuum_pipe": ["logistics", "Carries items between machines. Lay it in straight runs; it bends itself at corners."],
@@ -77,6 +86,8 @@ const INFO := {
 	"circuit": ["material", "Circuit board. Machines that think: uplinks, sensors, robots."],
 	"gravel": ["material", "Crushed stone. Mixed into concrete."],
 	"concrete": ["material", "Concrete. Heavy foundations and the Continuance's colony orders."],
+	"alien_alloy": ["material", "Salvaged from alien wrecks. Light, absurdly strong; the labs on Earth want it."],
+	"wreck": ["defense", "A downed raider. Open it to salvage alien alloy."],
 	"crystal_cell": ["material", "Sealed crystal power cell. Earth wants these more than anything - and so do others."],
 	# tools
 	"mining_tool": ["tool", "Drill. Hold the trigger to cut the ground and collect ore."],

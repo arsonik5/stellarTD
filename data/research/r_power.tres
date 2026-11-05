@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ResearchNode" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/research_node.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "r_power"
+title = "Power Grid"
+description = "Poles, burner generators and batteries: machines run faster on power, and some need it."
+cost = {"engineering": 2}
+prerequisite_ids = Array[String]([])
+unlocks = Array[String](["power_pole", "burner_generator", "battery_bank"])

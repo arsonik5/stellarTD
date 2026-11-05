@@ -15,6 +15,10 @@ signal changed
 ## Structural health (design G1 / C6). Raids and bombardment damage buildings through the Health contract;
 ## at zero the building is destroyed WITHOUT refund (dismantling refunds, destruction does not).
 @export var max_health: float = 300.0
+## Power (design C10, PowerNetwork): kW drawn while working. 0 = not a power consumer. A machine with
+## needs_power = false still runs unplugged at its base speed; power boosts it (PowerNetwork.POWERED_BOOST).
+@export var power_draw: float = 0.0
+@export var needs_power: bool = false
 
 var _inventory: Array[Dictionary] = []
 var _modifiers: Array[String] = []
@@ -79,20 +83,75 @@ func set_highlighted(active: bool) -> void:
 	for mesh in _mesh_instances:
 		mesh.material_overlay = _highlight_material if active else null
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_update_work_anim()
+	_marker_timer -= delta
+	if _marker_timer <= 0.0:
+		_marker_timer = 0.5
+		_update_idle_marker()
+
+## Idle marker (design/04 "machine idle with reason"): an amber tag over a machine that WANTS to work and can't,
+## readable from across the base. "Idle" (nothing switched on) is a choice, not a problem, so it shows nothing.
+@export var marker_height := 2.4
+var _marker: Label3D
+var _marker_timer := 0.0
+
+func _update_idle_marker() -> void:
+	var reason := idle_reason()
+	var show := reason != "" and reason != "Idle"
+	if not show:
+		if _marker != null:
+			_marker.visible = false
+		return
+	if _marker == null:
+		_marker = Label3D.new()
+		_marker.name = "IdleMarker"
+		_marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_marker.no_depth_test = true
+		_marker.fixed_size = true
+		_marker.pixel_size = 0.0009
+		_marker.font_size = 22
+		_marker.outline_size = 6
+		_marker.modulate = UiTokens.WARN
+		_marker.outline_modulate = Color(0, 0, 0, 0.8)
+		_marker.visibility_range_end = 45.0
+		_marker.position = Vector3(0, marker_height, 0)
+		add_child(_marker)
+	_marker.text = "▲ " + reason.to_upper()
+	_marker.visible = true
+
+## One line for the machine panel header. Override for machines with richer state (drills, uplinks).
+func status_text() -> String:
+	if _active_recipe_index != -1:
+		return "WORKING"
+	var r := idle_reason()
+	return r.to_upper() if r != "" else "IDLE"
 
 func _on_factory_tick(dt: float) -> void:
 	if _active_recipe_index != -1:
 		_craft_elapsed += dt * work_speed
 		# small epsilon: 20 x 0.1 must finish a 2.0 s recipe on tick 20, not 21
-		if _craft_elapsed >= _craft_duration - 0.0001:
-			_finish_craft()
+		if _craft_elapsed < _craft_duration - 0.0001:
+			return
+		var overflow := _craft_elapsed - _craft_duration
+		_finish_craft()
+		# start the next job on the same tick, carrying the leftover time, so throughput is exactly
+		# 1 / process_time per second (a dead tick between jobs cost ~6% on a 1.5 s recipe)
+		if _try_start_auto():
+			_craft_elapsed = maxf(overflow, 0.0)
 		return
+	_try_start_auto()
+
+func _try_start_auto() -> bool:
 	for offset in recipes.size():
 		var index := (_last_auto_index + 1 + offset) % recipes.size()
 		if _auto_recipes[index] and process_recipe(index):
-			return
+			return true
+	return false
+
+## True while this machine would use power if it had it (PowerNetwork counts it into the grid's demand).
+func wants_power() -> bool:
+	return _active_recipe_index != -1 or (recipes.is_empty() and idle_reason() in ["", "No power"])
 
 ## Why this machine is not working right now, "" when it is (machine panels and the idle icon show this).
 func idle_reason() -> String:

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Directive" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/directive.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "d01_uplink"
+title = "Raise the Uplink"
+message = "Voyager, this is the Continuance. Your landing is confirmed and Earth is listening. Build an Uplink so we can receive what you send. Every crate you launch feeds someone."
+kind = 1
+item_ids = Array[String](["uplink"])
+amounts = Array[int]([1])
+prerequisite_ids = Array[String]([])
+reward_credit = 40
+reward_research = {"engineering": 1}

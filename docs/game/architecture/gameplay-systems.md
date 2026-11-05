@@ -288,6 +288,21 @@ climate field, both of which broke on a sphere for exactly that reason).
 
 ---
 
+### Extraction, power, progression, threat (G2-G4, built 2026-11-05)
+
+Code map - read the class header comments, they carry the tuning reasons:
+- `scripts/world/deposit_drill.gd` - automated bore. Advance rule: stay until the head centre voxel is <= 25%
+  solid (or 80 bites), then step 0.5 m. "Advance when a bite removes little" was tried and is WRONG: deep rock's
+  SDF must travel far before any volume counts as removed, so early bites remove ~0 and the head raced down a
+  needle paying nothing. Test: `scenes/dev/drill_test.tscn` (headless, real terrain, ~50 s).
+- `scripts/progression.gd` (autoload) - directives, research, credit; data in `data/directives`, `data/research`.
+- `scripts/world/uplink.gd` - deliveries and launches.
+- `scripts/power_network.gd` (autoload) + `scripts/world/power/*` - grids, generators, batteries, reactor.
+- `scripts/radiation_signature.gd` (autoload) - signature sum and tiers.
+- `scripts/world/threat_director.gd` + `scripts/world/enemies/*` - waves, raiders, drones, wrecks.
+- Terrain only exists near a viewer: a drill or crater far from the player pauses / does nothing (honest limit,
+  shown as "Terrain not loaded").
+
 ### UI / UX System
 
 **Current State:** Inventory UI, building UI, build tool, quest board, journal tech-tree, compact HUD. HUD auto-hides when any modal is open.

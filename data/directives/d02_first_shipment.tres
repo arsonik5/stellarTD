@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Directive" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/directive.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "d02_first_shipment"
+title = "First Shipment"
+message = "The foundries at Tromso are cold. Send iron and copper ingots and we can light one again."
+kind = 0
+item_ids = Array[String](["refined_material", "refined_copper_ingot"])
+amounts = Array[int]([20, 10])
+prerequisite_ids = Array[String](["d01_uplink"])
+reward_credit = 60
+reward_research = {"engineering": 1}

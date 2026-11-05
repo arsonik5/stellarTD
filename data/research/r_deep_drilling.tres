@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ResearchNode" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/research_node.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "r_deep_drilling"
+title = "Deep Drilling"
+description = "Automated drills that bore into a deposit and collect what they cut."
+cost = {"geology": 2}
+prerequisite_ids = Array[String]([])
+unlocks = Array[String](["deposit_drill"])

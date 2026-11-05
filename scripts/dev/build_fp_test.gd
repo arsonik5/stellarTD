@@ -116,7 +116,8 @@ func _physics_process(delta: float) -> void:
 			_check(_count("foundation") == before + 1, "left click places a foundation (%d -> %d)" % [before, _count("foundation")])
 		3:
 			if _t < 2.2: return
-			ui.call("_on_building_pressed", 10)   # Vacuum Pipe
+			ui.call("select_item", "vacuum_pipe")   # by id: menu indices move when buildings are added
+			ui.call("_on_building_pressed", ui.get("_selected_index"))
 			_look(-30, -22)
 			_step = 4
 		4:

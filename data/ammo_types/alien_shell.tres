@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="AmmoType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ammo_type.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+item_id = "alien_shell"
+display_name = "Orbital Shell"
+mass_kg = 20.0
+muzzle_velocity = 120.0
+caliber_m = 0.2
+drag_coefficient = 0.05
+damage = 70.0
+splash_radius = 7.0
+splash_damage_falloff = 0.6
+projectile_color = Color(1.0, 0.35, 0.9, 1)

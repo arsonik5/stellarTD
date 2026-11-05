@@ -54,6 +54,16 @@ const ITEM_DEFS_LIST := [
 	preload("res://data/items/gravel.tres"),
 	preload("res://data/items/concrete.tres"),
 	preload("res://data/items/crystal_cell.tres"),
+	preload("res://data/items/deposit_drill.tres"),
+	preload("res://data/items/crusher.tres"),
+	preload("res://data/items/uplink.tres"),
+	preload("res://data/items/power_pole.tres"),
+	preload("res://data/items/burner_generator.tres"),
+	preload("res://data/items/solar_panel.tres"),
+	preload("res://data/items/battery_bank.tres"),
+	preload("res://data/items/crystal_reactor.tres"),
+	preload("res://data/items/alien_alloy.tres"),
+	preload("res://data/items/wreck.tres"),
 ]
 
 var _item_defs: Dictionary = {}

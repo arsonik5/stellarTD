@@ -108,8 +108,24 @@ func _resolve_impact(result: Dictionary) -> void:
 				continue
 			if node.global_position.distance_to(hit_pos) <= splash_radius:
 				Health.deal(node, damage * splash_damage_falloff, dtype, self, hit_pos)
+	if has_meta("crater_radius"):
+		_crater(hit_pos, float(get_meta("crater_radius")))
 	_spawn_impact_flash(hit_pos)
 	queue_free()
+
+## Orbital shells dig: a sphere of terrain removed where they land (saved like any other dig).
+func _crater(at: Vector3, radius_m: float) -> void:
+	var terrain := PlanetPhysics.get_nearest_terrain(at)
+	if terrain == null:
+		return
+	var tool := terrain.get_voxel_tool()
+	var local := terrain.to_local(at)
+	var r := radius_m / maxf(terrain.scale.x, 0.0001)
+	if not tool.is_area_editable(AABB(local - Vector3.ONE * r, Vector3.ONE * r * 2.0)):
+		return
+	tool.set_channel(VoxelBuffer.CHANNEL_SDF)
+	tool.set_mode(VoxelTool.MODE_REMOVE)
+	tool.do_sphere(local, r)
 
 ## Brief self-removing flash, sized to the splash radius for a splash round
 ## (so the AOE reads visually) or a small fixed size for a direct-hit round.

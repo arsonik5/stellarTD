@@ -172,6 +172,11 @@ func _write_state(slot_id: String, data: Dictionary) -> bool:
 func begin_session(slot_id: String, state: Dictionary) -> void:
 	current_slot = slot_id
 	pending_state = state
+	# services do not depend on the world scene, so they take their state now; an absent key is a fresh game
+	for svc: String in SERVICES:
+		var node := get_node_or_null("/root/" + svc)
+		if node != null and node.has_method("load_state"):
+			node.load_state(state.get(svc.to_snake_case(), {}))
 	_playtime_base = float(state.get("playtime_sec", 0.0))
 	_session_start_ms = Time.get_ticks_msec()
 
@@ -208,6 +213,9 @@ func format_playtime(seconds: float) -> String:
 ## the item, instance its scene, restore its transform" for every type - no
 ## per-building save code and nothing to forget when a new building is added.
 const SAVEABLE_GROUP := "saveable"
+## Autoload services that join the save with save_state()/load_state(). A service missing from a save gets
+## load_state({}) - its fresh-game state - so new services never break old saves.
+const SERVICES := ["Progression", "PowerNetwork", "RadiationSignature"]
 const ITEM_ID_META := "save_item_id"
 
 func save_now() -> bool:
@@ -223,7 +231,14 @@ func save_now() -> bool:
 	state["playtime_sec"] = playtime_seconds()
 	state["inventory"] = Inventory.save_state()
 	state["quests"] = QuestManager.save_state()
+	for svc: String in SERVICES:
+		var node := get_node_or_null("/root/" + svc)
+		if node != null and node.has_method("save_state"):
+			state[svc.to_snake_case()] = node.save_state()
 	state["placed"] = _collect_placed(tree)
+	var threat := tree.get_first_node_in_group("threat_director")
+	if threat != null:
+		state["threat"] = threat.save_state()
 	state["ships"] = _collect_ships(tree)
 
 	var player := tree.get_first_node_in_group("player")
@@ -291,12 +306,16 @@ func apply_pending(tree: SceneTree) -> void:
 		Inventory.load_state(pending_state["inventory"])
 	if pending_state.has("quests"):
 		QuestManager.load_state(pending_state["quests"])
+
 	if pending_state.has("placed"):
 		_restore_placed(tree, pending_state["placed"])
 		# pipe chains are derived from geometry, not saved: rebuild them once every pipe is back
 		PipeSegment.relink_all.call_deferred(tree)
 	if pending_state.has("ships"):
 		_restore_ships(tree, pending_state["ships"])
+	var threat := tree.get_first_node_in_group("threat_director")
+	if threat != null and pending_state.has("threat"):
+		threat.load_state(pending_state["threat"])
 
 	var player := tree.get_first_node_in_group("player")
 	if player != null and player.has_method("load_state") and pending_state.has("player"):

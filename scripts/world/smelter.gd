@@ -8,4 +8,5 @@ const SmeltSteel: Recipe = preload("res://data/recipes/smelt_steel.tres")
 
 func _ready() -> void:
 	recipes = [SmeltIron, SmeltCopper, SmeltCoal, SmeltSilica, SmeltSteel]
+	power_draw = 15.0
 	super._ready()

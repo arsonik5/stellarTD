@@ -12,6 +12,8 @@ signal action(action_id: String, amount: int)
 ## The player's inventory gained / lost items (any cause: drill, pickup, take from machine, craft).
 signal item_added(item_id: String, amount: int)
 signal item_removed(item_id: String, amount: int)
+## Ore/stone actually cut out of the ground (hand drill or deposit drill). `source` = the drill.
+signal item_mined(item_id: String, amount: int, source: Node)
 ## A building, pipe or foundation was put into / taken out of the world by the player.
 signal building_placed(item_id: String, node: Node)
 signal building_removed(item_id: String, node: Node)
@@ -23,6 +25,15 @@ signal destroyed(target: Node, source: Node)
 ## Player life cycle.
 signal player_died(cause: String)
 signal player_respawned
+## The radiation signature jumped (launches, reactor start, drilling crystal). RadiationSignature decays it.
+signal signature_spike(amount: float, source: Node)
+## An Uplink fired a capsule with `amount` items.
+signal uplink_launched(amount: int, source: Node)
+## A raid is coming: where it will come from (world point on the horizon), seconds until it arrives, and what
+## is in it ({"gunship": n, "dropship": n, "spotter": n}).
+signal wave_warning(from_point: Vector3, eta: float, composition: Dictionary)
+## A raid wave arrived.
+signal wave_started(number: int, enemies: int)
 ## Scanner pinged; `ore_ids` = distinct ore types it found.
 signal scanned(ore_ids: Array)
 

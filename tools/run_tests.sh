@@ -7,7 +7,11 @@
 set -u
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
-TESTS=("systems" "build_fp" "vehicle" "pipe" "game")
+# OpenGL: on a machine without a GPU, Vulkan runs on llvmpipe and the real-planet suite crawls (measured: no
+# spawn in 10 min) while the OpenGL compatibility renderer gets through it in ~4 min. Override with RENDER=.
+RENDER="${RENDER:---rendering-driver opengl3}"
+HEADLESS_SUITES="systems drill"
+TESTS=("systems" "drill" "build_fp" "vehicle" "pipe" "game")
 [ $# -gt 0 ] && TESTS=("$@")
 RUN=()
 if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then
@@ -20,7 +24,12 @@ for t in "${TESTS[@]}"; do
   scene="res://scenes/dev/${t}_test.tscn"
   log="$LOGDIR/$t.log"
   start=$(date +%s)
-  timeout 600 "${RUN[@]}" "$GODOT" --path . "$scene" >"$log" 2>&1 &
+  : > "$log"   # truncate first: the parse-error watcher must never see the previous run's log
+  # suites that never look at the screen run --headless: no renderer at all, several times faster
+  case " $HEADLESS_SUITES " in
+    *" $t "*) timeout 600 "$GODOT" --headless --path . "$scene" >"$log" 2>&1 & ;;
+    *) timeout 600 "${RUN[@]}" "$GODOT" $RENDER --path . "$scene" >"$log" 2>&1 & ;;
+  esac
   pid=$!
   # a script that fails to load leaves the scene idling until the timeout: stop it as soon as that shows
   while kill -0 $pid 2>/dev/null; do

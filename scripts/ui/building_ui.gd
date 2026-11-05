@@ -130,12 +130,11 @@ func _process(_delta: float) -> void:
 	var p := _building.get_process_progress()
 	for i in _progress_bars.size():
 		_progress_bars[i].value = p if i == active else 0.0
-	if active >= 0 and p > 0.0:
-		_status.text = "◆  WORKING"
-		_status.add_theme_color_override("font_color", UiTokens.GOOD)
-	else:
-		_status.text = "IDLE"
-		_status.add_theme_color_override("font_color", UiTokens.TEXT_DIM)
+	# the header says what the machine is doing, or exactly why it is not (Building.status_text / idle_reason)
+	var reason := _building.idle_reason()
+	_status.text = ("◆  " if reason == "" and active >= 0 else "") + _building.status_text()
+	var col := UiTokens.GOOD if reason == "" and active >= 0 else (UiTokens.TEXT_DIM if reason in ["", "Idle"] else UiTokens.WARN)
+	_status.add_theme_color_override("font_color", col)
 
 func show_for(building: Building) -> void:
 	var inventory_ui := get_tree().get_first_node_in_group("inventory_ui")
@@ -332,6 +331,8 @@ func _on_auto_toggled(pressed: bool, index: int) -> void:
 func _refresh_extras() -> void:
 	for c in _extras.get_children():
 		c.queue_free()
+	if _building.has_method("build_ui_extras"):
+		_building.build_ui_extras(_extras, _refresh)
 	if _building is Turret:
 		var turret: Turret = _building
 		_extras.add_child(UiKit.section("Ammunition"))

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Directive" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/directive.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "d05_thinking"
+title = "Thinking Machines"
+message = "Robots will do the work you do now. They need circuits - a lot of them. Start the line."
+kind = 0
+item_ids = Array[String](["circuit", "steel_ingot"])
+amounts = Array[int]([12, 12])
+prerequisite_ids = Array[String](["d04_foundations"])
+reward_credit = 160
+reward_research = {"engineering": 3}

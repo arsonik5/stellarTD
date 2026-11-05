@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Directive" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/directive.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "d06_reason"
+title = "The Reason We Came"
+message = "Crystal. One cell powers a district for a year. We know what it attracts. Send it anyway - carefully."
+kind = 0
+item_ids = Array[String](["crystal_cell"])
+amounts = Array[int]([5])
+prerequisite_ids = Array[String](["d05_thinking"])
+reward_credit = 260
+reward_research = {"xeno": 1, "engineering": 2}

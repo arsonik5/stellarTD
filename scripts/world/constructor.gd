@@ -26,4 +26,5 @@ func _ready() -> void:
 	inventory_slots = 24
 	input_capacity = 60
 	output_capacity = 60
+	power_draw = 20.0
 	super._ready()

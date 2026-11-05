@@ -7,4 +7,5 @@ const SilicaGlassRecipe: Recipe = preload("res://data/recipes/refine_ore_silica.
 
 func _ready() -> void:
 	recipes = [IronIngotRecipe, CopperIngotRecipe, CarbonIngotRecipe, SilicaGlassRecipe]
+	power_draw = 5.0
 	super._ready()

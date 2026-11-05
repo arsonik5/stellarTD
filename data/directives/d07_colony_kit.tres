@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Directive" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/directive.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "d07_colony_kit"
+title = "Colony Kit"
+message = "This is it, Voyager. A full colony kit. When this lands, you will not be alone out there for much longer."
+kind = 0
+item_ids = Array[String](["circuit", "concrete", "crystal_cell"])
+amounts = Array[int]([25, 40, 10])
+prerequisite_ids = Array[String](["d06_reason"])
+reward_credit = 500
+reward_research = {"engineering": 4, "geology": 2}

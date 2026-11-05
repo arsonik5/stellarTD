@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ResearchNode" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/research_node.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "r_containment"
+title = "Containment"
+description = "Field dampers that hide your crystal from the dark. Expensive to run."
+cost = {"xeno": 2, "engineering": 3}
+prerequisite_ids = Array[String](["r_crystal_reactor"])
+unlocks = Array[String](["containment_field"])

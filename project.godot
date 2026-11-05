@@ -27,6 +27,8 @@ PlanetPhysics="*res://scripts/planet_physics.gd"
 RadiationSignature="*res://scripts/radiation_signature.gd"
 UiState="*res://scripts/ui_state.gd"
 QuestManager="*res://scripts/quest_manager.gd"
+Progression="*res://scripts/progression.gd"
+PowerNetwork="*res://scripts/power_network.gd"
 GameSettings="*res://scripts/settings.gd"
 UiSound="*res://scripts/ui/kit/ui_sound.gd"
 

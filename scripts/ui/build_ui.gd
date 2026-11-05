@@ -20,6 +20,14 @@ const BUILDABLE_RECIPES := [
 	preload("res://data/recipes/build_smelter.tres"),
 	preload("res://data/recipes/build_chest.tres"),
 	preload("res://data/recipes/build_constructor.tres"),
+	preload("res://data/recipes/build_deposit_drill.tres"),
+	preload("res://data/recipes/build_crusher.tres"),
+	preload("res://data/recipes/build_uplink.tres"),
+	preload("res://data/recipes/build_power_pole.tres"),
+	preload("res://data/recipes/build_burner_generator.tres"),
+	preload("res://data/recipes/build_solar_panel.tres"),
+	preload("res://data/recipes/build_battery_bank.tres"),
+	preload("res://data/recipes/build_crystal_reactor.tres"),
 	preload("res://data/recipes/build_vacuum_pipe.tres"),
 	preload("res://data/recipes/build_merger.tres"),
 	preload("res://data/recipes/build_splitter.tres"),
@@ -27,7 +35,7 @@ const BUILDABLE_RECIPES := [
 	preload("res://data/recipes/build_turret_cannon.tres"),
 	preload("res://data/recipes/build_ship_garage.tres"),
 ]
-const TABS := ["structure", "production", "logistics", "defense", "vehicles"]
+const TABS := ["structure", "production", "power", "logistics", "defense", "vehicles"]
 const CARD := Vector2(168, 148)
 
 var _selected_index := 0
@@ -119,9 +127,10 @@ func select_item(item_id: String) -> bool:
 			return true
 	return false
 
-## Hotbar slot -> recipe index. Slots 1-9 hold the first nine buildables until the player re-pins them
-## (pin = hover a card in the menu and press a number).
-var hotbar: Array[int] = [0, 6, 7, 8, 9, 10, 11, 12, 13]
+## Hotbar slot -> item id (ids, not menu indices, so adding a building to the menu never reshuffles the bar).
+## Pin = hover a card in the menu and press a number.
+var hotbar: Array[String] = ["metal_foundation", "basic_crafter", "smelter", "chest", "constructor",
+	"deposit_drill", "vacuum_pipe", "merger", "splitter"]
 
 func _input(event: InputEvent) -> void:
 	# pin: with the menu open, hovering a card and pressing 1-9 puts it in that hotbar slot
@@ -129,16 +138,14 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode >= KEY_1 and event.keycode <= KEY_9:
-		hotbar[event.keycode - KEY_1] = _hover
+		hotbar[event.keycode - KEY_1] = BUILDABLE_RECIPES[_hover].output_id
 		UiSound.play("confirm")
 		get_viewport().set_input_as_handled()
 
 func select_hotbar(slot: int) -> bool:
-	if slot < 0 or slot >= hotbar.size() or hotbar[slot] < 0 or hotbar[slot] >= BUILDABLE_RECIPES.size():
+	if slot < 0 or slot >= hotbar.size():
 		return false
-	_selected_index = hotbar[slot]
-	_refresh()
-	return true
+	return select_item(hotbar[slot])
 
 func get_selected_recipe() -> Recipe:
 	if _selected_index < 0 or _selected_index >= BUILDABLE_RECIPES.size():
@@ -163,6 +170,8 @@ func _show_tab(t: String) -> void:
 	_refresh()
 
 func _affordable(r: Recipe) -> bool:
+	if not Progression.is_buildable(r.output_id):
+		return false
 	for k in r.input_ids.size():
 		if Inventory.get_count(r.input_ids[k]) < r.input_amounts[k]:
 			return false
@@ -227,6 +236,8 @@ func _refresh() -> void:
 		b.modulate = Color(1, 1, 1, 1) if ok else Color(1, 1, 1, 0.55)
 		var cost := b.find_child("Cost", true, false) as Label
 		if cost != null:
+			var gate := Progression.gate_of(BUILDABLE_RECIPES[i].output_id)
+			cost.text = ("RESEARCH: " + gate.title.to_upper()) if gate != null else _cost_short(BUILDABLE_RECIPES[i])
 			cost.theme_type_variation = "DimLabel" if ok else "WarnLabel"
 	_refresh_detail()
 
@@ -249,6 +260,13 @@ func _refresh_detail() -> void:
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.custom_minimum_size.x = 230
 	_detail.add_child(d)
+	var gate := Progression.gate_of(r.output_id)
+	if gate != null:
+		_detail.add_child(UiKit.section("Locked"))
+		var g := UiKit.label("Needs research: %s (%s). Open the Journal (J) to research it." % [gate.title, _cost_text(gate.cost)], "WarnLabel")
+		g.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		g.custom_minimum_size.x = 230
+		_detail.add_child(g)
 	_detail.add_child(UiKit.section("Cost"))
 	for k in r.input_ids.size():
 		var it := Inventory.get_item_def(r.input_ids[k])
@@ -266,6 +284,28 @@ func _refresh_detail() -> void:
 		_detail.add_child(line)
 	_detail.add_child(UiKit.spacer(false))
 	_detail.add_child(UiKit.hint("LMB", "Pick and aim" if _affordable(r) else "Pick (not enough to place yet)"))
+
+static func _cost_text(cost: Dictionary) -> String:
+	var parts: Array[String] = []
+	for c: String in cost:
+		parts.append("%d %s" % [int(cost[c]), c])
+	return ", ".join(parts)
+
+## Why the selected building cannot be placed right now ("" = it can): the HUD says this instead of a silent red ghost.
+func placement_block_reason() -> String:
+	var r := get_selected_recipe()
+	if r == null:
+		return "Pick something to build (Q)"
+	var gate := Progression.gate_of(r.output_id)
+	if gate != null:
+		return "Locked - research %s first" % gate.title
+	var missing: Array[String] = []
+	for k in r.input_ids.size():
+		var short := r.input_amounts[k] - Inventory.get_count(r.input_ids[k])
+		if short > 0:
+			var it := Inventory.get_item_def(r.input_ids[k])
+			missing.append("%d %s" % [short, it.display_name if it != null else r.input_ids[k]])
+	return ("Missing " + ", ".join(missing)) if not missing.is_empty() else ""
 
 func _on_building_pressed(index: int) -> void:
 	_selected_index = index

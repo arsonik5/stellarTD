@@ -923,6 +923,7 @@ func _dig() -> void:
 	var paid := TerrainDrill.payout(_yield_carry, removed, scale * scale * scale)
 	for item_id: String in paid:
 		Inventory.add(item_id, paid[item_id])
+		GameEvents.item_mined.emit(item_id, paid[item_id], self)
 
 func _build() -> void:
 	if not Inventory.has_tool_equipped(MiningToolItem.id):
@@ -1072,7 +1073,7 @@ func _resolve_build_placement(raw_pos: Vector3, item: Item) -> Dictionary:
 			return {"transform": _foundation_snap_transform(neighbor, raw_pos, item.ghost_size.y), "valid": true}
 		var xf := _free_tangent_transform(raw_pos)
 		xf.origin -= xf.basis.y * (item.ghost_size.y * 0.5)
-		return {"transform": xf, "valid": _terrain_supports(raw_pos)}
+		return {"transform": xf, "valid": _terrain_supports(raw_pos), "reason": "Needs solid ground under it"}
 
 	var mount := FoundationNetwork.find_nearest(raw_pos, FOUNDATION_MOUNT_RADIUS)
 	if mount != null and not ("mountable" in mount and not mount.mountable):
@@ -1083,7 +1084,7 @@ func _resolve_build_placement(raw_pos: Vector3, item: Item) -> Dictionary:
 		return {"transform": Transform3D(final_basis, mount_pos), "valid": true}
 
 	var xf := _free_tangent_transform(raw_pos)
-	return {"transform": xf, "valid": _terrain_supports(raw_pos)}
+	return {"transform": xf, "valid": _terrain_supports(raw_pos), "reason": "Needs solid ground under it"}
 
 func _is_pipe_item(item: Item) -> bool:
 	return item != null and item.id in ["vacuum_pipe", "merger", "splitter"]
@@ -1310,14 +1311,13 @@ func _place_building() -> void:
 	# a separate _is_build_position_valid() re-check here).
 	var placement := _resolve_build_placement(_build_ghost.global_position, item)
 	if not placement.valid:
-		if feel != null:
-			feel.kick("deny")
-		UiSound.play("deny", 1.0, 0.25)
+		_deny_place(String(placement.get("reason", "Can't place here")))
 		return
 
-	for i in recipe.input_ids.size():
-		if Inventory.get_count(recipe.input_ids[i]) < recipe.input_amounts[i]:
-			return
+	var block: String = build_ui.placement_block_reason()
+	if block != "":
+		_deny_place(block)
+		return
 	for i in recipe.input_ids.size():
 		Inventory.try_remove(recipe.input_ids[i], recipe.input_amounts[i])
 
@@ -1887,3 +1887,12 @@ func _pick_what_i_look_at() -> void:
 	_set_dismantle(false)
 	on_build_picked()
 	UiSound.play("click")
+
+## Refused placement: kick, buzz, and say WHY on the HUD (design/04 "invalid place" row).
+func _deny_place(reason: String) -> void:
+	if feel != null:
+		feel.kick("deny")
+	UiSound.play("deny", 1.0, 0.25)
+	var hud := get_tree().get_first_node_in_group("compact_hud")
+	if hud != null and hud.has_method("toast"):
+		hud.toast(reason)

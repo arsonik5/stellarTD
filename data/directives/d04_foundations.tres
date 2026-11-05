@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Directive" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/directive.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "d04_foundations"
+title = "Foundations for a Colony"
+message = "The first colony ship needs somewhere to land. Prove you can make concrete and glass on site."
+kind = 0
+item_ids = Array[String](["concrete", "refined_silica"])
+amounts = Array[int]([20, 15])
+prerequisite_ids = Array[String](["d03_hardened"])
+reward_credit = 120
+reward_research = {"geology": 2}

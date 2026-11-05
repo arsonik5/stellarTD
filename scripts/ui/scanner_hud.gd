@@ -86,6 +86,11 @@ func scan_from(terrain: VoxelLodTerrain, origin: Vector3, ore_names: Dictionary)
 			"name": String(ore_names.get(h["material_index"], "unknown")),
 			"born": _elapsed,
 		})
+	var kinds := []
+	for c in _contacts:
+		if not kinds.has(c["name"]):
+			kinds.append(c["name"])
+	GameEvents.scanned.emit(kinds)
 	# Deliberately vague. A count would tell the player how much is left to find
 	# and turn the sweep into a checklist.
 	_flash("Scanner active" if not found.is_empty() else "No return")

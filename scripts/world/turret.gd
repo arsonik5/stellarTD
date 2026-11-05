@@ -116,7 +116,7 @@ func _physics_process(delta: float) -> void:
 	# better than one that ignores it entirely. Without a chosen round there's
 	# no muzzle velocity to solve a ballistic arc with, so aim flat at the
 	# target itself rather than computing a (meaningless) trajectory.
-	var aim_point: Vector3 = _compute_aim_point(_target.global_position, ammo) if ammo != null else _target.global_position
+	var aim_point: Vector3 = _compute_aim_point(_lead(_target, ammo), ammo) if ammo != null else _target.global_position
 	_aim_at(aim_point, delta)
 
 	if ammo != null and _fire_cooldown <= 0.0:
@@ -164,6 +164,20 @@ func _find_target() -> Node3D:
 ## ballistic reach even though it's within attack_range - the shot will
 ## fall short, which is honest given the chosen round can't actually get
 ## there, not a bug to hide).
+## Where a moving target will be when the round gets there (two passes of time-of-flight; raiders move at
+## ~30 m/s, so aiming at where they ARE misses by metres at range).
+func _lead(target: Node3D, ammo: AmmoType) -> Vector3:
+	var vel := Vector3.ZERO
+	if target is RigidBody3D:
+		vel = (target as RigidBody3D).linear_velocity
+	elif target is CharacterBody3D:
+		vel = (target as CharacterBody3D).velocity
+	var p := target.global_position
+	for i in 2:
+		var t := _muzzle.global_position.distance_to(p) / maxf(ammo.muzzle_velocity, 1.0)
+		p = target.global_position + vel * t
+	return p
+
 func _compute_aim_point(target_pos: Vector3, ammo: AmmoType) -> Vector3:
 	var up: Vector3 = global_transform.basis.y
 	var to_target := target_pos - _muzzle.global_position

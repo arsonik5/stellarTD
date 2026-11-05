@@ -30,6 +30,13 @@ var _action_box: VBoxContainer
 var _action_label: Label
 var _action_bar: ProgressBar
 var _toast: Label
+var _sig_box: VBoxContainer
+var _sig_label: Label
+var _sig_bar: ProgressBar
+var _raid_label: Label
+var _raid_eta := -1.0
+var _raid_from := Vector3.ZERO
+var _raid_comp: Dictionary = {}
 var _toast_time := 0.0
 var _o2_bar: ProgressBar
 var _o2_text: Label
@@ -57,6 +64,22 @@ func _ready() -> void:
 	Inventory.changed.connect(_on_inventory_changed)
 	GameSettings.changed.connect(func(_k: String) -> void: _refresh_hints())
 	GameEvents.damaged.connect(_on_damaged)
+	Progression.changed.connect(_refresh_quest)
+	RadiationSignature.changed.connect(_refresh_signature)
+	RadiationSignature.tier_changed.connect(func(old_t: int, new_t: int) -> void:
+		if new_t > old_t:
+			toast("SIGNATURE  ·  " + RadiationSignature.tier_name(), UiTokens.DANGER)
+			UiSound.play("warn"))
+	GameEvents.wave_warning.connect(func(from: Vector3, eta: float, comp: Dictionary) -> void:
+		_raid_eta = eta
+		_raid_from = from
+		_raid_comp = comp
+		UiSound.play("error"))
+	GameEvents.wave_started.connect(func(_n: int, _e: int) -> void:
+		_raid_eta = 0.0
+		_raid_hold = 6.0)
+	Progression.points_awarded.connect(_on_points)
+	Progression.directive_completed.connect(_on_directive_done)
 	GameEvents.player_died.connect(func(_c: String) -> void: _death_label.visible = true)
 	GameEvents.player_respawned.connect(func() -> void: _death_label.visible = false)
 	_last_counts = _counts()
@@ -64,6 +87,7 @@ func _ready() -> void:
 	_refresh_quest()
 	_refresh_hands()
 	_refresh_hints()
+	_refresh_signature()
 
 # --- building -------------------------------------------------------------------------------------------
 func _build() -> void:
@@ -125,6 +149,30 @@ func _build() -> void:
 	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_toast.modulate = Color(UiTokens.WARN, 0.0)
 	root.add_child(_toast)
+
+	# signature gauge (top right): how loud the base is, and the tier it puts you in
+	_sig_box = UiKit.vbox(3)
+	_sig_box.anchor_left = 1.0
+	_sig_box.anchor_right = 1.0
+	_sig_box.offset_left = -300
+	_sig_box.offset_right = -40
+	_sig_box.offset_top = 32
+	_sig_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_sig_box)
+	_sig_label = UiKit.label("", "HudCaption")
+	_sig_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_sig_box.add_child(_sig_label)
+	_sig_bar = UiKit.bar("LightBar", 2)
+	_sig_box.add_child(_sig_bar)
+	# raid warning (top centre): bearing relative to where you look, ETA, what is coming
+	_raid_label = UiKit.label("", "HudValue")
+	_raid_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_raid_label.offset_top = 36
+	_raid_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_raid_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_raid_label.modulate = UiTokens.DANGER
+	_raid_label.visible = false
+	root.add_child(_raid_label)
 
 	# objective (top left, Warframe's pinned-mission spot): a gold diamond, the goal, a 2 px progress line
 	var qpanel := UiKit.panel("HudPanel")
@@ -314,8 +362,9 @@ func _process(delta: float) -> void:
 	if _ship != null and is_instance_valid(_ship):
 		_update_ship()
 	_update_feed(delta)
+	_update_raid(delta)
 	_toast_time = maxf(_toast_time - delta, 0.0)
-	_toast.modulate = Color(UiTokens.WARN, clampf(_toast_time / 0.4, 0.0, 1.0))
+	_toast.modulate = Color(_toast_color, clampf(_toast_time / 0.4, 0.0, 1.0))
 	var prompt := get_tree().get_first_node_in_group("interact_prompt") as CanvasLayer
 	var want := 1.0 if prompt != null and prompt.visible else 0.0
 	if absf(want - _cross_open) > 0.001:
@@ -352,13 +401,65 @@ func _update_o2() -> void:
 	var ship: Ship = _player.get("_piloted_ship")
 	_ship_o2.text = "SHIP O2  %d s" % int(ship.oxygen_left()) if ship != null else ""
 
+func _refresh_signature() -> void:
+	var v := RadiationSignature.signature()
+	var t := RadiationSignature.tier()
+	_sig_box.visible = v > 0.05 or t > 0
+	_sig_label.text = "SIGNATURE  %.1f  ·  %s" % [v, RadiationSignature.tier_name()]
+	_sig_bar.value = clampf(v / RadiationSignature.next_threshold(), 0.0, 1.0)
+	_sig_bar.theme_type_variation = ["LightBar", "WarnBar", "WarnBar", "DangerBar", "DangerBar"][t]
+	_sig_label.modulate = [UiTokens.TEXT_DIM, UiTokens.WARN, UiTokens.WARN, UiTokens.DANGER, UiTokens.DANGER][t]
+
+var _raid_hold := 0.0
+var _raid_beep := 0.0
+
+## Raid banner: "RAID INBOUND · 2 GUNSHIPS · 38 s · ◀ 40°" - the bearing is relative to where the player looks,
+## measured in the local tangent plane (radial up), so "turn left 40 degrees" is literally true on any body.
+func _update_raid(delta: float) -> void:
+	if _raid_hold > 0.0:
+		_raid_hold -= delta
+		_raid_label.visible = true
+		_raid_label.text = "RAID ARRIVING  ·  DEFEND THE BASE"
+		if _raid_hold <= 0.0:
+			_raid_eta = -1.0
+		return
+	if _raid_eta < 0.0 or _player == null:
+		_raid_label.visible = false
+		return
+	_raid_eta = maxf(_raid_eta - delta, 0.0)
+	var parts := []
+	for k: String in ["gunship", "dropship", "spotter"]:
+		var n := int(_raid_comp.get(k, 0))
+		if n > 0:
+			parts.append("%d %s%s" % [n, k.to_upper(), "S" if n > 1 else ""])
+	var cam := get_viewport().get_camera_3d()
+	var bearing := ""
+	if cam != null:
+		var up := PlanetPhysics.get_up(cam.global_position)
+		var fwd := -cam.global_transform.basis.z
+		fwd = (fwd - up * fwd.dot(up)).normalized()
+		var to := _raid_from - cam.global_position
+		to = (to - up * to.dot(up)).normalized()
+		var ang := rad_to_deg(fwd.signed_angle_to(to, up))
+		bearing = ("◀ %d°" % roundi(absf(ang))) if ang > 5.0 else (("%d° ▶" % roundi(absf(ang))) if ang < -5.0 else "▲ AHEAD")
+	_raid_label.visible = true
+	_raid_label.text = "RAID INBOUND  ·  %s  ·  %d s  ·  %s" % [", ".join(parts), ceili(_raid_eta), bearing]
+	_raid_beep -= delta
+	if _raid_beep <= 0.0 and _raid_eta < 10.0:
+		_raid_beep = 1.0
+		UiSound.play("warn")
+
 func set_action_progress(fraction: float, text: String) -> void:
 	_action_box.visible = fraction > 0.0
 	_action_bar.value = clampf(fraction, 0.0, 1.0)
 	_action_label.text = text.to_upper()
 
-func toast(text: String) -> void:
+var _toast_color := UiTokens.WARN
+
+## One line of centre-screen feedback. Amber = refused / warning (default), mint = success.
+func toast(text: String, col: Color = UiTokens.WARN) -> void:
 	_toast.text = text
+	_toast_color = col
 	_toast_time = 2.5
 
 func _on_damaged(target: Node, amount: float, _type: String, _source: Node) -> void:
@@ -389,9 +490,10 @@ func _update_ship() -> void:
 func _refresh_quest() -> void:
 	var ids: Array = QuestManager.get_active_ids()
 	var panel := _quest_box.get_parent() as Control
-	panel.visible = not ids.is_empty()
 	if ids.is_empty():
+		_refresh_directive(panel)
 		return
+	panel.visible = true
 	var quest: Quest = QuestManager.get_def(ids[0])
 	if quest.title != _last_quest_title:
 		if _last_quest_title != "":
@@ -412,6 +514,50 @@ func _refresh_quest() -> void:
 		_quest_count.text = "%d / %d" % [cur, quest.target_amount]
 	if ids.size() > 1:
 		_quest_title.text += "   (+%d more)" % (ids.size() - 1)
+
+## After the tutorial the objective panel carries the Continuance's current Directive (milestone first).
+func _refresh_directive(panel: Control) -> void:
+	var open := Progression.open_directives()
+	panel.visible = not open.is_empty()
+	if open.is_empty():
+		return
+	var d: Dictionary = open[0]
+	if String(d.title) != _last_quest_title:
+		if _last_quest_title != "":
+			UiKit.pulse(panel)
+			UiSound.play("objective")
+			UiKit.pop_in(panel)
+		_last_quest_title = String(d.title)
+	var lines := []
+	var got := Progression.progress_of(d)
+	for i in d.item_ids.size():
+		var def := Inventory.get_item_def(d.item_ids[i])
+		lines.append("%s %d/%d" % [def.display_name if def else d.item_ids[i], mini(int(got.get(d.item_ids[i], 0)), int(d.amounts[i])), int(d.amounts[i])])
+	_quest_title.text = String(d.title) + ("   (+%d more)" % (open.size() - 1) if open.size() > 1 else "")
+	_quest_bar.visible = true
+	_quest_count.visible = true
+	var f := Progression.fraction_of(d)
+	if not is_equal_approx(f, _quest_bar.value):
+		_quest_bar.create_tween().set_ease(Tween.EASE_OUT).tween_property(_quest_bar, "value", f, 0.35)
+	_quest_count.text = "  ·  ".join(lines)
+
+func _on_points(category: String, amount: int, reason: String) -> void:
+	_feed_text("+%d %s DATA  ·  %s" % [amount, category.to_upper(), reason], UiTokens.ACCENT)
+
+func _on_directive_done(_id: String, title: String) -> void:
+	toast("DIRECTIVE COMPLETE  ·  " + title.to_upper(), UiTokens.GOOD)
+	UiSound.play("objective")
+
+## One line in the pickup feed that is not an item (research data, credit).
+func _feed_text(text: String, col: Color) -> void:
+	var l := UiKit.label(text, "HudCaption")
+	l.modulate = col
+	_feed.add_child(l)
+	_feed.move_child(l, 0)
+	var tw := l.create_tween()
+	tw.tween_interval(3.0)
+	tw.tween_property(l, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(l.queue_free)
 
 func _refresh_hands() -> void:
 	for side in _hands:

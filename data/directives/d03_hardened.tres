@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="Directive" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/directive.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "d03_hardened"
+title = "Hardened Supply"
+message = "Iron rusts in the rain we have now. Steel does not. Send steel and copper wire for the grid repairs."
+kind = 0
+item_ids = Array[String](["steel_ingot", "copper_wire"])
+amounts = Array[int]([15, 20])
+prerequisite_ids = Array[String](["d02_first_shipment"])
+reward_credit = 90
+reward_research = {"engineering": 2}

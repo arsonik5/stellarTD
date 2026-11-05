@@ -24,10 +24,28 @@ func _ready() -> void:
 	add_child(frame.root)
 	var row := UiKit.hbox(UiTokens.GAP_L)
 	(frame.body as Control).add_child(row)
+	# three pages share the left side: the tutorial tree, the Continuance's directives, the research tree
+	var left := UiKit.vbox(UiTokens.GAP)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(left)
+	var tabs := UiKit.hbox(6)
+	left.add_child(tabs)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size.y = 500
-	row.add_child(scroll)
+	scroll.custom_minimum_size.y = 460
+	left.add_child(scroll)
+	_directives_page = _page(left)
+	_research_page = _page(left)
+	_pages = {"Tutorial": scroll, "Directives": _directives_page.get_parent(), "Research": _research_page.get_parent()}
+	for page_name: String in _pages:
+		var b := UiKit.button(page_name)
+		b.toggle_mode = true
+		b.pressed.connect(func() -> void: show_page(page_name))
+		tabs.add_child(b)
+		_tab_buttons[page_name] = b
+	_points_label = UiKit.label("", "DimLabel")
+	tabs.add_child(UiKit.spacer())
+	tabs.add_child(_points_label)
 	_tree_canvas = Control.new()
 	scroll.add_child(_tree_canvas)
 	var dpanel := UiKit.panel("Well")
@@ -37,6 +55,100 @@ func _ready() -> void:
 	dpanel.add_child(_detail)
 	_build_tree()
 	QuestManager.changed.connect(_refresh_states)
+	Progression.changed.connect(_refresh_progression)
+	show_page("Tutorial")
+
+var _pages: Dictionary = {}
+var _tab_buttons: Dictionary = {}
+var _directives_page: VBoxContainer
+var _research_page: VBoxContainer
+var _points_label: Label
+var _page_name := "Tutorial"
+
+func _page(parent: Control) -> VBoxContainer:
+	var sc := ScrollContainer.new()
+	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.custom_minimum_size.y = 460
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	parent.add_child(sc)
+	var v := UiKit.vbox(UiTokens.GAP)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(v)
+	return v
+
+func show_page(page_name: String) -> void:
+	_page_name = page_name
+	for k: String in _pages:
+		(_pages[k] as Control).visible = k == page_name
+		(_tab_buttons[k] as Button).button_pressed = k == page_name
+	_refresh_progression()
+
+## Directives (open + done) and the research tree with Buy buttons.
+func _refresh_progression() -> void:
+	if _points_label == null:
+		return
+	_points_label.text = "GEOLOGY %d  ·  ENGINEERING %d  ·  XENO %d  ·  CREDIT %d" % [
+		int(Progression.points.geology), int(Progression.points.engineering), int(Progression.points.xeno), Progression.credit]
+	if not visible:
+		return
+	for c in _directives_page.get_children():
+		c.queue_free()
+	var open := Progression.open_directives()
+	if open.is_empty():
+		_directives_page.add_child(UiKit.label("The Continuance is waiting for you to finish setting up (Tutorial page).", "DimLabel"))
+	for d: Dictionary in open:
+		var card := UiKit.panel("Card")
+		var v := UiKit.vbox(4)
+		card.add_child(v)
+		v.add_child(UiKit.label(("STANDING ORDER  ·  " if d.standing else "DIRECTIVE  ·  ") + String(d.title).to_upper(), "HudLabel"))
+		var msg := UiKit.label(String(d.message), "DimLabel")
+		msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(msg)
+		var got := Progression.progress_of(d)
+		for i in d.item_ids.size():
+			var def := Inventory.get_item_def(d.item_ids[i])
+			var have := mini(int(got.get(d.item_ids[i], 0)), int(d.amounts[i]))
+			var verb := "Place" if int(d.kind) == Directive.Kind.PLACE else "Deliver"
+			v.add_child(UiKit.label("%s %s  %d / %d" % [verb, def.display_name if def else d.item_ids[i], have, int(d.amounts[i])],
+				"AccentLabel" if have >= int(d.amounts[i]) else "HudCaption"))
+		v.add_child(UiKit.label("Reward: %d credit" % int(d.reward_credit), "DimLabel"))
+		_directives_page.add_child(card)
+	var done := 0
+	for m in Progression.milestones():
+		if Progression.completed.has(m.id):
+			done += 1
+	_directives_page.add_child(UiKit.label("Milestones done: %d / %d" % [done, Progression.milestones().size()], "DimLabel"))
+	for c in _research_page.get_children():
+		c.queue_free()
+	for r: ResearchNode in Progression.research_nodes():
+		var card := UiKit.panel("Card")
+		var h := UiKit.hbox(UiTokens.GAP)
+		card.add_child(h)
+		var v := UiKit.vbox(2)
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(v)
+		var owned := Progression.bought.has(r.id)
+		v.add_child(UiKit.label(r.title.to_upper() + ("  ·  RESEARCHED" if owned else ""), "AccentLabel" if owned else "HudLabel"))
+		var desc := UiKit.label(r.description, "DimLabel")
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(desc)
+		var unl := []
+		for id in r.unlocks:
+			var def := Inventory.get_item_def(id)
+			unl.append(def.display_name if def else id)
+		var cost_parts := []
+		for c2: String in r.cost:
+			cost_parts.append("%d %s" % [int(r.cost[c2]), c2])
+		v.add_child(UiKit.label("Unlocks: %s   ·   Cost: %s" % [", ".join(unl), ", ".join(cost_parts)], "HudCaption"))
+		if not owned:
+			var b := UiKit.button("Research", func() -> void:
+				if Progression.buy(r.id):
+					UiSound.play("confirm")
+				else:
+					UiSound.play("deny"), "PrimaryButton")
+			b.disabled = not Progression.can_buy(r.id)
+			h.add_child(b)
+		_research_page.add_child(card)
 
 func is_open() -> bool:
 	return visible
@@ -51,6 +163,8 @@ func open() -> void:
 	visible = true
 	UiState.set_open("journal", true)
 	_refresh_states()
+	# after the tutorial the journal opens on what Earth wants now
+	show_page("Directives" if Progression.tutorial_done() and _page_name == "Tutorial" else _page_name)
 	# open on the current goal, not on the first quest ever
 	var active: Array = QuestManager.get_active_ids()
 	if not active.is_empty():

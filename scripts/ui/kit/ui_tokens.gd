@@ -41,7 +41,7 @@ const CAT := {
 	"logistics": Color("4fc3c0"),
 	"defense": Color("e5533d"),
 	"vehicles": Color("b49cf0"),
-	"power": Color("6fa8ff"),           # reserved, not in use yet
+	"power": Color("6fa8ff"),
 }
 
 # --- type: Saira (variable, ui/fonts/Saira-Variable.ttf, OFL) -----------------------------------------------

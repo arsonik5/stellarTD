@@ -184,6 +184,21 @@ No HUD element has a box. Text carries itself with a soft 1 px shadow and a fain
 The HUD hides completely while any screen is open (UiState). Nothing else may draw on screen in first person; new
 readouts go into one of these places or into a screen.
 
+### HUD additions (2026-11-05, G1-G4)
+- Bottom left, above SUIT O2: SUIT INTEGRITY (health) - caption, number, 2 px bar; good/warn/danger by fraction.
+- Damage: a red full-screen wash proportional to the hit, fading in ~1 s; death: screen to black + one centred
+  line ("SUIT FAILURE · RECOVERING AT LANDING SITE"), respawn after 2 s.
+- Top right: SIGNATURE value · tier name with a 2 px bar to the next tier; amber from NOTICED, red from CONTESTED.
+  Hidden while quiet and zero. A tier rise toasts the tier name in red.
+- Top centre: raid banner in red - "RAID INBOUND · 2 GUNSHIPS · 38 s · ◀ 40°" (bearing relative to view, in the
+  local tangent plane), beeping each second in the last 10 s; "RAID ARRIVING · DEFEND THE BASE" for 6 s.
+- Centre: hold-action bar under the crosshair (dismantle), one-line toast under it for refusals (amber) and
+  completions (mint), 2.5 s.
+- Objective panel: the tutorial quest; after the tutorial, the current Directive with every item's x/y.
+- Pickup feed also carries research data lines in the accent colour ("+1 GEOLOGY DATA · first Iron Ore").
+- In the world: an amber billboard "▲ MISSING INPUT" (etc.) over a machine that wants to work and can't, within
+  45 m. "Idle" (switched off) shows nothing.
+
 ## 7. Key hints
 
 - Starter hints (WASD, Shift, E, Tab, C, J, F) show at the bottom until the player has used that key once, then

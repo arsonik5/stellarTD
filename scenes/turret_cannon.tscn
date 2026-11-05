@@ -15,7 +15,7 @@ size = Vector3(1.5, 1.17, 1.5)
 script = ExtResource("1")
 compatible_ammo = Array[AmmoType]([ExtResource("2"), ExtResource("3")])
 ammo_per_shot = 1
-attack_range = 20.0
+attack_range = 80.0
 fire_interval = 1.6
 head_turn_speed = 4.0
 
