@@ -138,7 +138,7 @@ func _build() -> void:
 	hands.offset_bottom = -32
 	hands.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(hands)
-	# one compact panel: "L  Mining Tool" / "R  Build Tool", the hand letter in a key cap like every other label
+	# one compact panel: "LMB  Mining Tool" / "RMB  Build Tool", the hand letter in a key cap like every other label
 	var card := UiKit.panel("HudPanel")
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var v := UiKit.vbox(4)
@@ -146,7 +146,7 @@ func _build() -> void:
 	hands.add_child(card)
 	for side in ["left", "right"]:
 		var r := UiKit.hbox(UiTokens.GAP)
-		r.add_child(UiKit.keycap("L" if side == "left" else "R"))
+		r.add_child(UiKit.keycap("LMB" if side == "left" else "RMB"))   # the mouse button that uses this hand
 		var n := UiKit.label("", "HudLabel")
 		n.add_theme_font_size_override("font_size", 14)
 		r.add_child(n)

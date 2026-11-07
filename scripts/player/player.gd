@@ -144,6 +144,11 @@ func _ready() -> void:
 
 ## A tool taken out of the hand stops doing its job: the scanner's pulse and the build mode must not outlive it
 ## (the scanner kept "searching" on screen for 90 s after it was put away, and build mode stayed on with no tool).
+## True while the hand that owns the drill's mouse button still holds the Mining Tool.
+func _drill_in_hand() -> bool:
+	var side := "left" if _dig_button == MOUSE_BUTTON_LEFT else "right"
+	return Inventory.get_slot({"kind": "hand", "side": side}).item_id == MiningToolItem.id
+
 func _on_tools_changed() -> void:
 	var scanner_hud := get_tree().get_first_node_in_group("scanner_hud")
 	if scanner_hud != null and scanner_hud.has_method("set_active"):
@@ -303,22 +308,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.pressed:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			return
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			var was_spun := _dig_spun_up
-			_dig_held = event.pressed
-			if not event.pressed:
-				_reset_dig_hold()
-				if Inventory.has_tool_equipped(MiningToolItem.id) and (was_spun or _dig_hold_started):
-					UiSound.play("spindown", 1.0, 0.1)   # the drill winds down, whether or not it got up to speed
-			elif Inventory.has_tool_equipped(MiningToolItem.id):
-				UiSound.play("spinup", 1.0, 0.1)         # the wind-up whine is the feedback while it spins up
-				_dig_hold_started = true
-		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			var ship_item := _equipped_ship_item()
-			if ship_item != null:
-				_place_ship_item(ship_item)
-			else:
-				_build()
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+			_on_hand_button(event.button_index, event.pressed)
 
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		# rotate_object_local (not rotate_y/rotate_y works in the PARENT frame)
@@ -345,8 +336,51 @@ func _toggle_pause_menu() -> void:
 	if not menu.is_open():
 		menu.open()           # closing is the menu's own job: it runs while the tree is paused and takes Esc
 
+## THE tool rule (docs/game/tools.md): the left mouse button uses the tool in the LEFT hand, the right button the
+## tool in the RIGHT hand. What a press does depends only on what that hand holds:
+##   Mining Tool   hold to bore (spins up, then bites)
+##   Scanner       one ping per press
+##   Building Tool opens build mode (the build menu); in build mode LMB places, RMB leaves
+##   ship part     places it (ship cores and blocks)
+##   empty / other nothing - except RMB with a Mining Tool in the other hand, which lays a terrain block (the old
+##                 place-block action, kept for the "Lay a Block" quest)
+## Both hands are always live, so there is no hidden "which tool wins": put a tool in a hand (Tab, drag it in)
+## and that mouse button is that tool.
+func _on_hand_button(button: int, pressed: bool) -> void:
+	if not pressed:
+		if button == _dig_button:
+			var was_boring := _dig_spun_up or _dig_hold_started
+			_reset_dig_hold()
+			if was_boring:
+				UiSound.play("spindown", 1.0, 0.1)   # the drill winds down, whether or not it got up to speed
+		return
+	var side := "left" if button == MOUSE_BUTTON_LEFT else "right"
+	var tool_id: String = Inventory.get_slot({"kind": "hand", "side": side}).item_id
+	if tool_id == MiningToolItem.id:
+		_dig_held = true
+		_dig_button = button
+		_dig_hold_started = true
+		UiSound.play("spinup", 1.0, 0.1)             # the wind-up whine is the feedback while it spins up
+	elif tool_id == ScannerToolItem.id:
+		_scan_for_ore()
+	elif tool_id == BuildingToolItem.id:
+		if not _ui_input_on_cooldown():
+			_start_ui_input_cooldown()
+			_toggle_build_mode()
+	else:
+		var item := Inventory.get_item_def(tool_id) if tool_id != "" else null
+		if item != null and (item.is_ship_core or item.is_ship_block):
+			_place_ship_item(item)
+		elif button == MOUSE_BUTTON_RIGHT and Inventory.has_tool_equipped(MiningToolItem.id):
+			_build()
+		elif feel != null:
+			feel.kick("deny")                         # empty hand: a small no, so it never feels dead
+
+var _dig_button := 0                                 # the mouse button driving the drill (0 = none)
+
 func _reset_dig_hold() -> void:
 	_dig_held = false
+	_dig_button = 0
 	_dig_hold_time = 0.0
 	_dig_spun_up = false
 	_dig_tick_timer = 0.0
@@ -798,6 +832,8 @@ func _physics_process(delta: float) -> void:
 	_interact_was_down = interact_down
 
 	_dig_miss_cooldown = maxf(_dig_miss_cooldown - delta, 0.0)
+	if _dig_held and (_dig_button == 0 or not Input.is_mouse_button_pressed(_dig_button) or not _drill_in_hand()):
+		_reset_dig_hold()                    # a release the game never saw (menu opened, focus lost), or the drill left the hand
 	if _dig_held and not _inventory_open and not _is_journal_open():
 		_dig_hold_time += delta
 		if not _dig_spun_up and _dig_hold_time >= DIG_SPINUP_TIME:
@@ -867,9 +903,6 @@ func _dig() -> void:
 	# already the camera toggle), and it ignored the tool pattern this project
 	# already has. Equipping something and using it is the interaction the rest
 	# of the game is built on.
-	if Inventory.has_tool_equipped(ScannerToolItem.id):
-		_scan_for_ore()
-		return
 	if not Inventory.has_tool_equipped(MiningToolItem.id):
 		return
 

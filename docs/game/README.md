@@ -16,6 +16,7 @@ Load only the task topic.
 | Sky, atmosphere, weather | `architecture/atmosphere-weather.md` |
 | Factory, combat, vehicles, UI, save/load + menus | `architecture/gameplay-systems.md` |
 | How the game looks, opens, reads and feels (UI, HUD, menus, first-person feel) - follow it | `ux-bible.md` (evidence: `ux-log.md`) |
+| What each mouse button / hand / tool does (the one tool rule, full flow) | `tools.md` |
 | Patterns, tests, risks, references | `architecture/engineering.md` |
 
 `archive/` preserves former mixed documents; do not read it for ordinary work.
