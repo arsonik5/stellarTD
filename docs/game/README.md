@@ -20,3 +20,4 @@ Load only the task topic.
 | Patterns, tests, risks, references | `architecture/engineering.md` |
 
 `archive/` preserves former mixed documents; do not read it for ordinary work.
+- `architecture/terrain-lab.md` — terrain material/shape sandbox: findings and open decisions (2026-11-07)

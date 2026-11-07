@@ -55,6 +55,11 @@ uniform float height_blend : hint_range(0.0, 1.0) = 0.65;
 //   3 = triplanar blend axes  (rgb = x/y/z plane weights)
 //   4 = geometric normal
 //   5 = flat white            (isolates geometry: holes stay background)
+// Anti-tiling. 0 = off. 1 = each material is sampled a second time at a different scale and rotation, and the two
+// are mixed by a slow world-space mask, so the repeat of one tile is never visible across a slope (terrain lab
+// 2026-11-07: at a 2.5 m tile the repeat read as a grid from 20 m away). Costs a second set of texture fetches.
+uniform int antitile : hint_range(0, 1) = 0;
+uniform float antitile_scale = 0.37;
 uniform int debug_view : hint_range(0, 7) = 0;
 
 varying flat vec4 v_indices;
@@ -93,11 +98,39 @@ void vertex() {
 // is no consistent way to unwrap them. World-space projection is the standard
 // answer and has the useful property that edits (digging) produce correctly
 // textured new faces with no extra work.
-vec4 sample_material(int layer, vec3 rel, vec3 origin, vec3 blend, float tex_scale,
+vec4 sample_planes(int layer, vec3 uvw, vec3 blend, out vec4 nrm) {
+	vec4 ax = texture(tex_albedo, vec3(uvw.zy, float(layer)));
+	vec4 ay = texture(tex_albedo, vec3(uvw.xz, float(layer)));
+	vec4 az = texture(tex_albedo, vec3(uvw.xy, float(layer)));
+	vec4 nx = texture(tex_normal, vec3(uvw.zy, float(layer)));
+	vec4 ny = texture(tex_normal, vec3(uvw.xz, float(layer)));
+	vec4 nz = texture(tex_normal, vec3(uvw.xy, float(layer)));
+	nrm = nx * blend.x + ny * blend.y + nz * blend.z;
+	return ax * blend.x + ay * blend.y + az * blend.z;
+}
+
+vec4 sample_material(int layer, vec3 rel, vec3 origin, vec3 blend, float tex_scale, float tile_mix,
 		out vec3 nrm_ts, out float occ, out float height) {
 	float ts = max(tex_scale, 0.01);
 	// (rel + origin) / ts, with the big term reduced mod one tile first (exact: fmod loses nothing).
 	vec3 uvw = rel / ts + mod(origin, ts) / ts;
+	if (antitile == 1) {
+		vec4 n1;
+		vec4 a1 = sample_planes(layer, uvw, blend, n1);
+		// second sample: bigger tile, rotated ~37 degrees about every axis pair, offset
+		float ts2 = ts / antitile_scale;
+		vec3 uvw2 = rel / ts2 + mod(origin, ts2) / ts2;
+		const float c = 0.7986;
+		const float sn = 0.6018;
+		uvw2 = vec3(c * uvw2.x - sn * uvw2.z, uvw2.y, sn * uvw2.x + c * uvw2.z) + vec3(0.37, 0.11, 0.73);
+		vec4 n2;
+		vec4 a2 = sample_planes(layer, uvw2, blend, n2);
+		vec4 nrm = mix(n1, n2, tile_mix);
+		nrm_ts = vec3(nrm.rg * 2.0 - 1.0, 1.0);
+		occ = nrm.b;
+		height = nrm.a;
+		return mix(a1, a2, tile_mix);
+	}
 	// Each plane drops the axis it projects along.
 	vec2 uv_x = uvw.zy;
 	vec2 uv_y = uvw.xz;
@@ -133,10 +166,23 @@ void fragment() {
 	// sorts them, and a voxel genuinely straddling four materials is rare enough
 	// that losing the tail is invisible. This is the single biggest lever on
 	// the cost of this shader.
-	int i0 = int(v_indices.x);
-	int i1 = int(v_indices.y);
-	float w0 = w.x;
-	float w1 = w.y;
+	// The mesher does NOT order the four slots by weight (measured in the terrain lab: a voxel whose only weight was
+	// in slot 0 still rendered as slot 1's material), so the two strongest are picked here rather than assumed to be
+	// .x and .y. Reading .x/.y blindly showed whichever materials happened to land in the first two slots.
+	float ws[4] = float[](w.x, w.y, w.z, w.w);
+	float is[4] = float[](v_indices.x, v_indices.y, v_indices.z, v_indices.w);
+	int a = 0;
+	for (int k = 1; k < 4; k++) {
+		if (ws[k] > ws[a]) { a = k; }
+	}
+	int b = (a == 0) ? 1 : 0;
+	for (int k = 0; k < 4; k++) {
+		if (k != a && ws[k] > ws[b]) { b = k; }
+	}
+	int i0 = int(is[a]);
+	int i1 = int(is[b]);
+	float w0 = ws[a];
+	float w1 = ws[b];
 	// Re-normalise the pair so dropping the tail does not darken the surface.
 	float wsum2 = max(w0 + w1, 0.0001);
 	w0 /= wsum2;
@@ -166,8 +212,16 @@ void fragment() {
 	float occ1;
 	float h0;
 	float h1;
-	vec4 a0 = sample_material(i0, v_rel_pos, v_origin, blend, e0.w, n0, occ0, h0);
-	vec4 a1 = sample_material(i1, v_rel_pos, v_origin, blend, e1.w, n1, occ1, h1);
+	// slow world-space mask for anti-tiling: the albedo array itself, sampled huge, as a cheap noise
+	float tile_mix = 0.0;
+	if (antitile == 1) {
+		vec3 big = v_rel_pos / 23.0 + mod(v_origin, 23.0) / 23.0;
+		float m = texture(tex_albedo, vec3(big.xz * blend.y + big.zy * blend.x + big.xy * blend.z, 0.0)).g;
+		m += texture(tex_albedo, vec3(big.xz * 0.31 + 0.5, 1.0)).g;
+		tile_mix = smoothstep(0.55, 0.95, m);
+	}
+	vec4 a0 = sample_material(i0, v_rel_pos, v_origin, blend, e0.w, tile_mix, n0, occ0, h0);
+	vec4 a1 = sample_material(i1, v_rel_pos, v_origin, blend, e1.w, tile_mix, n1, occ1, h1);
 
 	// Height-aware blend: the material whose surface stands taller at this point
 	// wins the contested band, so a boundary follows cracks and grain instead of
