@@ -95,6 +95,19 @@ static func animate(targets: Variant, props: Dictionary, opts: Dictionary = {}) 
 				t.set_indexed(tr[0], _mix(tr[1], tr[2], e)), 0.0, 1.0, maxf(dur, 0.001))
 		if i == last_i and done.is_valid():
 			tw.tween_callback(done)
+		# An animation that ends at offset 0 leaves the control at its layout position, so forget the remembered rest
+		# position: the next time it animates, the container's CURRENT layout is the truth. Keeping a stale one is
+		# what stacked list rows on top of each other when the first animation ran before the layout had happened.
+		# (Hover moves end at a non-zero offset and keep it, so their return trip still knows where home is.)
+		for ax in ["x", "y"]:
+			if props.has(ax):
+				var pv: Variant = props[ax]
+				var end_v: float = float(pv[pv.size() - 1]) if pv is Array else float(pv)
+				if absf(end_v) < 0.001:
+					var mk: String = "_uimotion_base_" + ax
+					tw.tween_callback(func() -> void:
+						if is_instance_valid(t) and t.has_meta(mk):
+							t.remove_meta(mk))
 
 ## Resolve shorthands and [from, to] pairs into [path, from, to] tracks.
 static func _tracks(t: CanvasItem, props: Dictionary) -> Array:
