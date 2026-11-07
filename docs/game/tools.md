@@ -23,7 +23,9 @@ mouse press (mouse captured, not in a menu)
   hand holds ...
     Mining Tool    hold: wind-up (0.35 s: pose, rattle, whine) -> bites every 0.05 s, shove + dust + thud per bite
                    release: spin-down. Taking the drill out of the hand stops it.
-    Scanner        one ping per press (cooldown), pulse HUD shows while the scanner is in a hand
+    Scanner        press: ping + radar minigame (B-scope, sweep bar, traces). Wheel / 1-6 tune the ore, press again
+                   with a trace on the centre line = LOCK; then a marker + distance guide you. X closes the radar,
+                   X again drops the lock. Code: scripts/ui/scanner_hud.gd, scripts/world/ore_scanner.gd
     Building Tool  opens build mode (same as C): menu -> pick a building -> aim ->
                      LMB places (pipe: LMB start, LMB end), R / wheel rotate, G grid, B pipe angle,
                      Q menu, RMB leave (first RMB drops a started pipe)
@@ -38,3 +40,7 @@ other keys: C build mode (needs the Building Tool in any hand), E use, F lamp, T
 A new tool is an Item with `is_tool = true` plus one branch in `_on_hand_button`, a held model (viewmodel), a use kick,
 a deny kick and a HUD name. Never read "is the tool somewhere in a hand" to decide a mouse action: ask the hand that
 owns the button. Test: `scenes/dev/tool_flow_test.tscn` (headless).
+
+## Console (` or /)
+Empty input lists every command; typing narrows the list (items, hands, amounts too). Up/Down pick, Tab or click fills,
+PageUp/PageDown = history. `give`/`spawn`, `tools`, `ores`, `hand`, `clear`, `tp`, `o2`, `save`, `reload`.

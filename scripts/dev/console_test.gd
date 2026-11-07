@@ -15,6 +15,16 @@ func _ready() -> void:
 	fails += _check("clear iron", Inventory.get_count("ore_a") == 0 and Inventory.get_count("stone") == 7)
 	DevConsole.run("clear")
 	fails += _check("clear all", Inventory.get_count("stone") == 0)
+	DevConsole.run("spawn stone 3")
+	fails += _check("spawn = give", Inventory.get_count("stone") == 3)
+	DevConsole.run("ores 5")
+	fails += _check("ores gives every ore", Inventory.get_count("ore_a") == 5 and Inventory.get_count("ore_crystal") == 5)
+	DevConsole._field.text = ""
+	fails += _check("empty input suggests every command", DevConsole._build_suggestions().size() == DevConsole.COMMANDS.size())
+	DevConsole._field.text = "give "
+	fails += _check("'give ' suggests items", DevConsole._build_suggestions().size() > 10)
+	DevConsole._field.text = "gi"
+	fails += _check("'gi' narrows to give", DevConsole._build_suggestions().size() == 1)
 	DevConsole.run("items copper")
 	DevConsole.run("help")
 	DevConsole.run("bogus")

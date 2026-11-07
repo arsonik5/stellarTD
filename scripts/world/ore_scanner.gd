@@ -44,7 +44,7 @@ const GRID := 32
 ## about a sample, so 128 m rather than 32 m. For a readout that says "copper,
 ## 1.4 km, that way" it does not matter, and the deposits themselves are several
 ## hundred metres across.
-const SCAN_LOD := 7
+const SCAN_LOD := 6
 
 ## Minimum blend weight for a material to count as present. The mesher keeps
 ## four weighted materials per voxel; a trace of ore in a mostly-stone voxel is
@@ -57,10 +57,10 @@ const MIN_WEIGHT := 6  # of 15
 ## Comfortably above the 128 m sample spacing, so the samples within one
 ## deposit chain together into a single contact instead of the coarse grid
 ## splitting one deposit into several markers.
-const CLUSTER_M := 320.0
+const CLUSTER_M := 160.0
 
 ## Clusters smaller than this are grid-clipped edges rather than deposits.
-const MIN_SAMPLES := 2
+const MIN_SAMPLES := 1
 
 ## Contacts kept per ore type, nearest first.
 ##
@@ -69,7 +69,7 @@ const MIN_SAMPLES := 2
 ## pulse that draws nothing per contact, so the only cost of keeping more is a
 ## few dot products per frame - and a detector that responds to more of what is
 ## actually around the player is a better detector.
-const MAX_PER_ORE := 6
+const MAX_PER_ORE := 12
 
 ## Results: [{"material_index": int, "position": Vector3, "distance": float,
 ## "samples": int}], nearest first.
@@ -81,10 +81,10 @@ const MAX_PER_ORE := 6
 ## voxel, so an unfiltered scan came back with sixty "deposits" of biome stone
 ## and no ore at all.
 static func scan(terrain: VoxelLodTerrain, origin: Vector3,
-		ore_indices: Dictionary) -> Array:
+		ore_indices: Dictionary, lod: int = SCAN_LOD) -> Array:
 	if terrain == null or terrain.generator == null or ore_indices.is_empty():
 		return []
-	var step: int = 1 << SCAN_LOD
+	var step: int = 1 << lod
 	var span: int = GRID * step
 
 	var buffer := VoxelBuffer.new()
@@ -96,7 +96,7 @@ static func scan(terrain: VoxelLodTerrain, origin: Vector3,
 		int(floor(corner.x / step)) * step,
 		int(floor(corner.y / step)) * step,
 		int(floor(corner.z / step)) * step)
-	terrain.generator.generate_block(buffer, origin_voxels, SCAN_LOD)
+	terrain.generator.generate_block(buffer, origin_voxels, lod)
 
 	# Collect hits by material.
 	var hits := {}
@@ -127,7 +127,7 @@ static func scan(terrain: VoxelLodTerrain, origin: Vector3,
 	var out: Array = []
 	for idx in hits:
 		var found: Array = []
-		for centre in _cluster(hits[idx]):
+		for centre in _cluster(hits[idx], float(step) * 2.5):
 			# One stray sample is a deposit edge clipped by the grid, not a
 			# deposit. Requiring two keeps the readout to things worth walking to.
 			if centre["samples"] < MIN_SAMPLES:
@@ -159,7 +159,7 @@ static func scan(terrain: VoxelLodTerrain, origin: Vector3,
 ## the deposit comes back shattered into a dozen contacts. Single linkage lets a
 ## chain of adjacent samples hold together however long the chain gets, which is
 ## exactly what a deposit spread over many grid cells is.
-static func _cluster(points: Array) -> Array:
+static func _cluster(points: Array, link_m: float = CLUSTER_M) -> Array:
 	var clusters: Array = []
 	for p: Vector3 in points:
 		var joined := -1
@@ -168,7 +168,7 @@ static func _cluster(points: Array) -> Array:
 			var members: Array = clusters[i]["points"]
 			var near := false
 			for m: Vector3 in members:
-				if m.distance_to(p) < CLUSTER_M:
+				if m.distance_to(p) < link_m:
 					near = true
 					break
 			if near:

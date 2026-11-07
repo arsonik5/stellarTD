@@ -55,11 +55,16 @@ uniform float height_blend : hint_range(0.0, 1.0) = 0.65;
 //   3 = triplanar blend axes  (rgb = x/y/z plane weights)
 //   4 = geometric normal
 //   5 = flat white            (isolates geometry: holes stay background)
-uniform int debug_view : hint_range(0, 5) = 0;
+uniform int debug_view : hint_range(0, 7) = 0;
 
 varying flat vec4 v_indices;
 varying vec4 v_weights;
 varying vec3 v_world_pos;
+// World position split into a small part relative to the mesh block and the block's own world origin. The planet is
+// 20 km across, so a world position near 20000 only has ~2 mm of float precision: used directly as a texture
+// coordinate, that quantisation turns steep faces into stretched 'barcode' streaks. Kept apart, both parts stay exact.
+varying vec3 v_rel_pos;
+varying flat vec3 v_origin;
 varying vec3 v_world_normal;
 
 vec4 decode_8bit_vec4(float v) {
@@ -75,6 +80,8 @@ void vertex() {
 	v_indices = decode_8bit_vec4(CUSTOM1.x);
 	v_weights = decode_8bit_vec4(CUSTOM1.y) / 255.0;
 	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_rel_pos = mat3(MODEL_MATRIX) * VERTEX;
+	v_origin = MODEL_MATRIX[3].xyz;
 	v_world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
@@ -86,9 +93,11 @@ void vertex() {
 // is no consistent way to unwrap them. World-space projection is the standard
 // answer and has the useful property that edits (digging) produce correctly
 // textured new faces with no extra work.
-vec4 sample_material(int layer, vec3 wpos, vec3 blend, float tex_scale,
+vec4 sample_material(int layer, vec3 rel, vec3 origin, vec3 blend, float tex_scale,
 		out vec3 nrm_ts, out float occ, out float height) {
-	vec3 uvw = wpos / max(tex_scale, 0.01);
+	float ts = max(tex_scale, 0.01);
+	// (rel + origin) / ts, with the big term reduced mod one tile first (exact: fmod loses nothing).
+	vec3 uvw = rel / ts + mod(origin, ts) / ts;
 	// Each plane drops the axis it projects along.
 	vec2 uv_x = uvw.zy;
 	vec2 uv_y = uvw.xz;
@@ -134,7 +143,18 @@ void fragment() {
 	w1 /= wsum2;
 
 	// Triplanar axis weights from the geometric normal.
-	vec3 blend = pow(abs(v_world_normal), vec3(triplanar_sharpness));
+	// Two normals have to agree before a projection axis gets weight: the smoothed vertex normal AND the true face
+	// normal (from screen-space derivatives of the position). Where the mesher hands a steep cut wall or a LOD seam
+	// a bad vertex normal (pointing up on what is really a vertical face), the vertex normal alone picks the
+	// projection that runs ALONG the wall and the texture smears into 'barcode' streaks. The face normal cannot be
+	// wrong about which way the triangle faces, so it vetoes that.
+	vec3 face_n = abs(normalize(cross(dFdx(v_rel_pos), dFdy(v_rel_pos)) + vec3(0.000001)));
+	vec3 blend_v = pow(abs(v_world_normal), vec3(triplanar_sharpness));
+	vec3 blend_f = pow(face_n, vec3(triplanar_sharpness));
+	vec3 blend = blend_v * blend_f;
+	if (blend.x + blend.y + blend.z < 0.0001) {
+		blend = blend_f;
+	}
 	blend /= max(blend.x + blend.y + blend.z, 0.0001);
 
 	vec4 e0 = pal_extra[i0];
@@ -146,8 +166,8 @@ void fragment() {
 	float occ1;
 	float h0;
 	float h1;
-	vec4 a0 = sample_material(i0, v_world_pos, blend, e0.w, n0, occ0, h0);
-	vec4 a1 = sample_material(i1, v_world_pos, blend, e1.w, n1, occ1, h1);
+	vec4 a0 = sample_material(i0, v_rel_pos, v_origin, blend, e0.w, n0, occ0, h0);
+	vec4 a1 = sample_material(i1, v_rel_pos, v_origin, blend, e1.w, n1, occ1, h1);
 
 	// Height-aware blend: the material whose surface stands taller at this point
 	// wins the contested band, so a boundary follows cracks and grain instead of
@@ -194,7 +214,11 @@ void fragment() {
 			dbg = vec3(fract(fi * 0.37), fract(fi * 0.61 + 0.3), fract(fi * 0.13 + 0.7));
 		} else if (debug_view == 3) {
 			dbg = blend;
-		} else if (debug_view == 4) {
+		} else if (debug_view == 6) {
+				dbg = vec3(t, w1, h0);
+			} else if (debug_view == 7) {
+				dbg = vec3(a0.r, a1.r, 0.0);
+			} else if (debug_view == 4) {
 			dbg = v_world_normal * 0.5 + 0.5;
 		} else {
 			dbg = vec3(1.0);

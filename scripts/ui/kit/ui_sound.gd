@@ -13,7 +13,7 @@ const VOICES := 8
 const GAIN := {
 	"hover": -21.0, "click": -12.0, "confirm": -10.0, "back": -12.0, "open": -15.0, "close": -16.0,
 	"error": -10.0, "toggle_on": -13.0, "toggle_off": -13.0, "tick": -24.0, "place": -8.0, "deny": -11.0,
-	"pickup": -15.0, "objective": -9.0, "warn": -12.0, "mine_hit": -9.0, "spinup": -13.0, "spindown": -15.0,
+	"pickup": -15.0, "objective": -9.0, "warn": -12.0, "mine_hit": -9.0, "spinup": -13.0, "spindown": -15.0, "blip": -19.0,
 }
 
 var _streams := {}

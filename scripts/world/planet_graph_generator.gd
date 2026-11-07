@@ -280,14 +280,14 @@ const VEIN_WIDTH := 0.035
 ## Metres between ore deposit sites. Deposits are discrete and worth travelling
 ## to; this is the distance that decides whether prospecting is a journey or a
 ## formality.
-const DEPOSIT_SPACING_M := 1400.0
+const DEPOSIT_SPACING_M := 500.0
 ## Deposit radius, in the units Spots3D wants - which are NOT a plain sphere
 ## radius in metres, whatever the port name suggests. Measured against the
 ## generated buffer rather than derived: at 210 against a 1400 cell the field
 ## was empty (0 of 32768 samples, where a sphere model predicts ~460), and at
 ## 600 it filled 7%. Tuned by measurement, and the deposit spacing below is the
 ## number that actually controls how far apart deposits feel.
-const DEPOSIT_RADIUS_M := 600.0
+const DEPOSIT_RADIUS_M := 250.0
 const DEPOSIT_JITTER := 0.85
 ## How far each ore's region window is widened past its 1/n share, so sites
 ## carry two or three ores stacked by depth instead of exactly one.

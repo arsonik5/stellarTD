@@ -1720,6 +1720,13 @@ func _close_building_ui() -> void:
 ## to walk", and in build mode the camera is somewhere overhead.
 func _scan_for_ore() -> void:
 	_scan_anim_left = 1.5
+	var open_hud := get_tree().get_first_node_in_group("scanner_hud")
+	if open_hud != null and open_hud.call("is_radar_open"):
+		# Radar already up: the scanner button locks the trace on the centre line.
+		if feel != null:
+			feel.kick("scan")
+		open_hud.call("lock_press")
+		return
 	if feel != null and _scan_cooldown <= 0.0:
 		feel.kick("scan")
 	if _scan_cooldown > 0.0:
@@ -1741,9 +1748,11 @@ func _scan_for_ore() -> void:
 	# without it a scan reports the ground itself, since stone and bedrock share
 	# the same material channel.
 	var names := {}
+	var depths := {}
 	for ore in celestial.ore_types:
 		names[ore.material_index] = ore.id
-	hud.call("scan_from", terrain, global_position, names)
+		depths[ore.id] = Vector2(ore.depth_min, ore.depth_max)
+	hud.call("scan_from", terrain, global_position, names, depths)
 
 ## --- Held tool animation --------------------------------------------------
 ## The drill's chuck and bit spin while the trigger is held (and the tool shakes a little); the scanner's dish
