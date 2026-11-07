@@ -35,11 +35,66 @@ const TICK_INTERVAL := 0.05
 ## bore, so depth can only advance as fast as the whole face comes away.
 const BITE_BACKOFF := 0.5
 
-## Where to centre a bite for a raycast hit. `ray_dir_local` is the drill's
-## aim in the terrain's local grid space (rotate the world direction by the
-## inverse terrain basis - bodies can be rotated).
-static func bite_center(hit_position: Vector3i, ray_dir_local: Vector3, radius: float) -> Vector3:
-	return Vector3(hit_position) + Vector3(0.5, 0.5, 0.5) - ray_dir_local.normalized() * radius * BITE_BACKOFF
+## Where to centre a bite, given the EXACT surface point under the aim (surface_point()). `ray_dir_local` is the
+## drill's aim in the terrain's local grid space (rotate the world direction by the inverse terrain basis - bodies
+## can be rotated). Positions here are sample coordinates: measured with bite_aim_probe, do_sphere centres a cut
+## exactly on the integer index, so there is NO +0.5 voxel-centre offset (the old +0.5 put every bite half a voxel
+## up and sideways of the aim, and snapping the centre to whole voxels made the bore step in voxel jumps).
+static func bite_center(surface: Vector3, ray_dir_local: Vector3, radius: float) -> Vector3:
+	return surface - ray_dir_local.normalized() * radius * BITE_BACKOFF
+
+const SURFACE_STEP := 0.1       # voxels between SDF samples while marching the aim ray
+const SURFACE_WINDOW := 4       # voxels read around the hit voxel for the march
+
+## Where the aim ray meets the rock, as a float point in local grid (sample) coordinates. The voxel raycast only
+## says WHICH voxel was hit; biting at that voxel snaps the bore to the grid. This marches the ray through the SDF
+## (trilinear between samples) from open air to the first sample at or below zero and interpolates the crossing,
+## so the cut follows the crosshair continuously. Falls back to the hit voxel if the march finds nothing.
+static func surface_point(tool: VoxelTool, origin: Vector3, dir: Vector3, hit_index: Vector3i) -> Vector3:
+	var d := dir.normalized()
+	var h := Vector3(hit_index)
+	var w := SURFACE_WINDOW
+	var lo := hit_index - Vector3i(w, w, w)
+	var n := 2 * w + 1
+	var buf := VoxelBuffer.new()
+	buf.create(n, n, n)
+	tool.copy(lo, buf, 1 << VoxelBuffer.CHANNEL_SDF, false)
+	var t0 := maxf((h - origin).dot(d) - 2.5, 0.0)
+	var t := t0
+	var prev_t := t0
+	var prev_s := _sdf_at(buf, lo, n, origin + d * t0)
+	if prev_s > 1.0e8:
+		return h
+	if prev_s <= 0.0:
+		return origin + d * t0          # the ray starts inside rock: the surface is at the eye
+	while t < t0 + 6.0:
+		t += SURFACE_STEP
+		var s := _sdf_at(buf, lo, n, origin + d * t)
+		if s > 1.0e8:
+			return h
+		if s <= 0.0:
+			return origin + d * lerpf(prev_t, t, prev_s / (prev_s - s))
+		prev_t = t
+		prev_s = s
+	return h
+
+## Trilinear SDF at a float sample position; 1e9 when outside the copied window.
+static func _sdf_at(buf: VoxelBuffer, lo: Vector3i, n: int, p: Vector3) -> float:
+	var q := p - Vector3(lo)
+	if q.x < 0.0 or q.y < 0.0 or q.z < 0.0 or q.x >= n - 1 or q.y >= n - 1 or q.z >= n - 1:
+		return 1.0e9
+	var x0 := int(q.x)
+	var y0 := int(q.y)
+	var z0 := int(q.z)
+	var fx := q.x - x0
+	var fy := q.y - y0
+	var fz := q.z - z0
+	var c := VoxelBuffer.CHANNEL_SDF
+	var c00 := lerpf(buf.get_voxel_f(x0, y0, z0, c), buf.get_voxel_f(x0 + 1, y0, z0, c), fx)
+	var c10 := lerpf(buf.get_voxel_f(x0, y0 + 1, z0, c), buf.get_voxel_f(x0 + 1, y0 + 1, z0, c), fx)
+	var c01 := lerpf(buf.get_voxel_f(x0, y0, z0 + 1, c), buf.get_voxel_f(x0 + 1, y0, z0 + 1, c), fx)
+	var c11 := lerpf(buf.get_voxel_f(x0, y0 + 1, z0 + 1, c), buf.get_voxel_f(x0 + 1, y0 + 1, z0 + 1, c), fx)
+	return lerpf(lerpf(c00, c10, fy), lerpf(c01, c11, fy), fz)
 
 ## How far behind the eye a second ray may start when the first finds nothing.
 const RAY_RETRY_BACK := 1.5

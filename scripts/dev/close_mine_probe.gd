@@ -68,7 +68,7 @@ func _ready() -> void:
 				await get_tree().create_timer(TerrainDrill.TICK_INTERVAL).timeout
 				continue
 			var mi := TerrainDrill.dominant_material_at(tool, h.position)
-			var rem := TerrainDrill.bite(tool, TerrainDrill.bite_center(h.position, aim_local, radius), radius, TerrainDrill.strength_for(mi))
+			var rem := TerrainDrill.bite(tool, TerrainDrill.bite_center(Vector3(h.position), aim_local, radius), radius, TerrainDrill.strength_for(mi))
 			for k: int in rem:
 				total += rem[k]
 			await get_tree().create_timer(TerrainDrill.TICK_INTERVAL).timeout

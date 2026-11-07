@@ -85,7 +85,7 @@ func _bore(label: String, tool: VoxelTool, terrain: VoxelLodTerrain, sky: Vector
 		var mat := TerrainDrill.dominant_material_at(tool, hit.position)
 		var strength := forced_strength if forced_strength > 0.0 else TerrainDrill.strength_for(mat)
 		var u0 := Time.get_ticks_usec()
-		var removed := TerrainDrill.bite(tool, TerrainDrill.bite_center(hit.position, aim_local, radius), radius, strength)
+		var removed := TerrainDrill.bite(tool, TerrainDrill.bite_center(Vector3(hit.position), aim_local, radius), radius, strength)
 		var cost := Time.get_ticks_usec() - u0
 		bite_usec += cost
 		worst_usec = maxi(worst_usec, cost)

@@ -381,6 +381,7 @@ var _dig_button := 0                                 # the mouse button driving 
 func _reset_dig_hold() -> void:
 	_dig_held = false
 	_dig_button = 0
+	_dig_empty_bites = 0
 	_dig_hold_time = 0.0
 	_dig_spun_up = false
 	_dig_tick_timer = 0.0
@@ -921,9 +922,17 @@ func _dig() -> void:
 	var tool := _terrain.get_voxel_tool()
 	var material_index := TerrainDrill.dominant_material_at(tool, hit.position)
 	var radius := _local_radius(TerrainDrill.BORE_RADIUS_M)
-	var aim_local := _terrain.global_transform.basis.inverse() * -camera.global_transform.basis.z
-	var removed := TerrainDrill.bite(tool, TerrainDrill.bite_center(hit.position, aim_local, radius),
-		radius, TerrainDrill.strength_for(material_index))
+	var inv := _terrain.global_transform.affine_inverse()
+	var aim_local := (inv.basis * -camera.global_transform.basis.z).normalized()
+	# bite exactly where the crosshair meets the rock, not at the hit voxel: smooth, centred, follows the aim
+	var surface := TerrainDrill.surface_point(tool, inv * camera.global_position, aim_local, hit.position)
+	var center := TerrainDrill.bite_center(surface, aim_local, radius)
+	# a bite that removes nothing for a few ticks in a row (the face sits just outside the cut) pushes in deeper
+	# until something comes away, so the drill can never sit there spinning on a surface it can't reach
+	if _dig_empty_bites >= 3:
+		center += aim_local * radius * minf(0.25 * float(_dig_empty_bites - 2), 1.0)
+	var removed := TerrainDrill.bite(tool, center, radius, TerrainDrill.strength_for(material_index))
+	_dig_empty_bites = 0 if not removed.is_empty() else _dig_empty_bites + 1
 	var scale := _terrain.scale.x
 	var paid := TerrainDrill.payout(_yield_carry, removed, scale * scale * scale)
 	for item_id: String in paid:
@@ -931,6 +940,7 @@ func _dig() -> void:
 	_mine_feedback(hit, not removed.is_empty())
 
 var _dig_miss_cooldown := 0.0
+var _dig_empty_bites := 0
 var _dig_fx: CPUParticles3D = null
 
 ## Every bite answers: the drill shoves forward into the rock (feel.kick "mine"), a puff of dust flies off the face,
