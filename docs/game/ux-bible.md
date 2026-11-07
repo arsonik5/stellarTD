@@ -4,6 +4,13 @@ Locked in 2026-11-04 after Michael's call: "everything feels like a Unity MVP fr
 it, make it a cohesive experience ... lock it in early so later we don't get fuzzy". Everything built from now on
 follows this file. If something here is wrong, change it here first (with the date and why), then the code.
 
+**Update 2026-11-07 (Michael: the gold/hairline look was "very AI-ish"; wants minimal, modern, glass, Warframe
+elements).** Where this file says gold, hairline boxes, square corners, diamond rule or breadcrumb, the current
+truth is `ui_tokens.gd` + `build_theme.gd`: frosted glass sheets (light translucent fill, faint rim, soft shadow)
+over the blurred world, asymmetric corners (big top-left/bottom-right, near-square the others), ice-blue accent,
+a short accent bar under titles, no diamonds, no breadcrumbs, no explainer sentences. The rest (one system, motion,
+feedback, sound) stands. Console for testing: `` ` `` or `/` opens it (`scripts/dev/dev_console.gd`, `help`).
+
 The iteration log behind these decisions (what was tried, what failed, the screenshots) is `ux-log.md`.
 
 ## 1. The rules that everything else comes from

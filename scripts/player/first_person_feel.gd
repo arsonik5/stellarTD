@@ -48,6 +48,10 @@ var _kick_vel_p := Vector3.ZERO
 var _kick_vel_r := Vector3.ZERO
 var _equip := 1.0                  # 0 = just equipped (lowered), 1 = up
 var _shake := Vector3.ZERO
+var _lunge := 0.0                  # smoothed 0..1 toward _lunge_target
+var _lunge_target := 0.0
+var _windup := 0.0
+var _windup_target := 0.0
 var _time := 0.0
 var _last_step := 0
 
@@ -65,6 +69,14 @@ func add_look(rel: Vector2) -> void:
 ## Drill vibration etc. - a per-frame jitter the player script computes.
 func set_shake(v: Vector3) -> void:
 	_shake = v
+
+## 1 while the drill is boring: the tool pushes out toward the crosshair and stays there, like pressing into the rock.
+func set_lunge(v: float) -> void:
+	_lunge_target = v
+
+## 0..1 while the drill spins up: the tool draws back and tilts up a little, like bracing before it bites.
+func set_windup(v: float) -> void:
+	_windup_target = v
 
 func land(fall_speed: float) -> void:
 	if fall_speed < 2.0:
@@ -89,6 +101,12 @@ func kick(kind: String) -> void:
 			_kick(Vector3(0.012, 0, 0), Vector3(0, 0, 4.0))
 		"hit":
 			_kick(Vector3(0, -0.01, 0.025), Vector3(5.0, 0, 2.0))
+		"engage":
+			# the drill reaches speed and bites in: a hard shove forward
+			_kick(Vector3(0, 0.004, -0.06), Vector3(-5.0, 0, 0))
+		"mine":
+			# one bite: a short extra shove forward and a tiny random jolt, on top of the held lunge
+			_kick(Vector3(randf_range(-0.004, 0.004), randf_range(-0.003, 0.003), -0.022), Vector3(-1.5, 0, randf_range(-1.0, 1.0)))
 
 func _kick(p: Vector3, r_deg: Vector3) -> void:
 	_kick_vel_p += p * 22.0
@@ -152,11 +170,15 @@ func _process(delta: float) -> void:
 	var right := _player.global_transform.basis.x
 	var strafe := clampf(flat.dot(right) / 6.0, -1.0, 1.0)
 	var sprint_pos := Vector3(0.03, -0.06, 0.05) * _sprint_blend
-	var pos := _vm_rest.origin + sway + bob + idle + sprint_pos + _kick_pos + _shake
+	_lunge = lerpf(_lunge, _lunge_target, minf(delta * 12.0, 1.0))
+	_windup = lerpf(_windup, _windup_target, minf(delta * 14.0, 1.0))
+	var lunge_pos := Vector3(-0.015, 0.012, -0.12) * _lunge        # forward (-Z), a touch toward the crosshair
+	lunge_pos += Vector3(0.0, -0.01, 0.05) * _windup                # winding up: drawn back toward the player
+	var pos := _vm_rest.origin + sway + bob + idle + sprint_pos + _kick_pos + _shake + lunge_pos
 	pos.y -= (1.0 - e) * 0.28
 	pos.y += _land * 0.35
 	var rot := Vector3(
-		deg_to_rad(_look.y * VM_SWAY_ROT * sway_amt - 12.0 * _sprint_blend - (1.0 - e) * 25.0 + _kick_rot.x),
+		deg_to_rad(_look.y * VM_SWAY_ROT * sway_amt - 12.0 * _sprint_blend - (1.0 - e) * 25.0 + _kick_rot.x + 4.0 * _windup),
 		deg_to_rad(-_look.x * VM_SWAY_ROT * sway_amt + 22.0 * _sprint_blend + _kick_rot.y),
 		deg_to_rad(-strafe * VM_STRAFE_ROLL * sway_amt + _kick_rot.z))
 	var scale := _vm_rest.basis.get_scale()

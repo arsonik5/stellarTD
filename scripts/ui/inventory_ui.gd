@@ -37,7 +37,6 @@ func _ready() -> void:
 		s.mouse_entered.connect(_hover.bind(_hand_adapter, i))
 		hands.add_child(s)
 		_hand_slots.append(s)
-	hands.add_child(UiKit.label("Tools in hand\nare what you use.", "DimLabel"))
 
 	var store := UiKit.vbox(UiTokens.GAP)
 	row.add_child(store)
@@ -119,7 +118,7 @@ func _show_detail(id: String) -> void:
 	for c in _detail.get_children():
 		c.queue_free()
 	if id == "":
-		_detail.add_child(UiKit.label("Point at an item to see\nwhat it is for.", "DimLabel"))
+		_detail.add_child(UiKit.label("Select an item", "DimLabel"))
 		return
 	var item := Inventory.get_item_def(id)
 	var ib := Control.new()

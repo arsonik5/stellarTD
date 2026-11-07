@@ -57,6 +57,7 @@ const ORE_COLOURS := {
 }
 const DEFAULT_COLOUR := Color(0.55, 0.85, 0.75)
 
+var _active := true
 var _contacts: Array = []
 var _elapsed := 0.0
 var _status := ""
@@ -90,6 +91,15 @@ func scan_from(terrain: VoxelLodTerrain, origin: Vector3, ore_names: Dictionary)
 	# and turn the sweep into a checklist.
 	_flash("Scanner active" if not found.is_empty() else "No return")
 
+## False while the scanner is not in a hand: no pulse, no ring, no status text. Contacts are kept, so picking the
+## scanner up again within their lifetime shows the same sweep.
+func set_active(v: bool) -> void:
+	_active = v
+	if not v:
+		_signal = 0.0
+		_status = ""
+		_draw.queue_redraw()
+
 func _flash(text: String) -> void:
 	_status = text
 	_status_until = _elapsed + 3.0
@@ -106,6 +116,8 @@ func _process(delta: float) -> void:
 	var target := 0.0
 	var target_tint := DEFAULT_COLOUR
 	var cam := get_viewport().get_camera_3d()
+	if not _active:
+		cam = null   # scanner put away: nothing to detect, the signal fades to zero
 	if cam != null:
 		var eye := cam.global_position
 		var forward := -cam.global_transform.basis.z

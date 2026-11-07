@@ -131,7 +131,7 @@ func _process(_delta: float) -> void:
 	for i in _progress_bars.size():
 		_progress_bars[i].value = p if i == active else 0.0
 	if active >= 0 and p > 0.0:
-		_status.text = "◆  WORKING"
+		_status.text = "WORKING"
 		_status.add_theme_color_override("font_color", UiTokens.GOOD)
 	else:
 		_status.text = "IDLE"

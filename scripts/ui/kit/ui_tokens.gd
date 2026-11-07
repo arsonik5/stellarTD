@@ -5,32 +5,34 @@ class_name UiTokens
 ## Change a value here, then regenerate the theme:
 ##   godot --headless --path . --script res://scripts/dev/build_theme.gd
 ##
-## Direction (2026-11-04, Michael: "minimalistic in a warframe way", "more modern"): almost no boxes. Content floats
-## over a blurred, darkened world on faint translucent strips; thin light hairlines; Saira in thin, wide-spaced
-## capitals for titles; gold for selection, focus and values; the selected thing becomes a solid light plate.
+## Direction (2026-11-07, Michael: the 11-04 look was "very AI-ish"; wants minimal, modern, glass, Warframe elements):
+## frosted glass. Panels are light translucent sheets over the blurred world with a soft shadow and a faint rim;
+## corners are asymmetric (two big, two nearly square) like Warframe's cut panels; ice-blue accent instead of
+## gold; short accent bars instead of ornaments (no diamonds, no gradient rules, no "SUIT /" breadcrumbs);
+## titles are light capitals with modest tracking. The selected thing becomes a solid light plate.
 
 # --- surfaces: translucent, never opaque grey boxes ---------------------------------------------------------
 const INK := Color("04070a")                     # loading screen, behind the menus
-const PANEL := Color(0.016, 0.027, 0.039, 0.62)  # the rare real panel (detail panes, dropdowns)
-const STRIP := Color(1.0, 1.0, 1.0, 0.045)       # a row: settings line, recipe, save card
-const STRIP_HI := Color(1.0, 1.0, 1.0, 0.09)     # hovered row
-const WELL := Color(0.0, 0.0, 0.0, 0.34)         # slots
-const LINE := Color(0.925, 0.902, 0.847, 0.14)   # hairlines
-const LINE_HI := Color(0.925, 0.902, 0.847, 0.42)
-const SHADE := Color(0.016, 0.024, 0.035, 0.70)  # tint laid over the blurred world behind a screen
+const PANEL := Color(0.78, 0.88, 0.95, 0.10)  # the rare real panel (detail panes, dropdowns)
+const STRIP := Color(0.85, 0.93, 1.0, 0.075)       # a row: settings line, recipe, save card
+const STRIP_HI := Color(0.85, 0.93, 1.0, 0.16)     # hovered row
+const WELL := Color(0.02, 0.05, 0.08, 0.38)         # slots
+const LINE := Color(0.85, 0.94, 1.0, 0.16)   # hairlines
+const LINE_HI := Color(0.85, 0.94, 1.0, 0.50)
+const SHADE := Color(0.03, 0.06, 0.09, 0.42)  # tint laid over the blurred world behind a screen
 
 # --- text: warm off-white, never pure white ------------------------------------------------------------------
-const TEXT := Color("ece6d8")
-const TEXT_DIM := Color("8f989c")
-const TEXT_FAINT := Color("566066")
+const TEXT := Color("eef4f8")
+const TEXT_DIM := Color("9fb0ba")
+const TEXT_FAINT := Color("65767f")
 
 # --- signal ---------------------------------------------------------------------------------------------------
-const ACCENT := Color("d8b26a")                  # gold: selection, focus, values, progress, the crosshair ticks
-const ACCENT_DIM := Color("9c8350")              # gold captions
-const ACCENT_DEEP := Color(0.847, 0.698, 0.416, 0.16)   # gold wash behind selected/primary things
-const ACCENT_INK := Color("0b0e11")              # text on a gold or light plate
+const ACCENT := Color("8fdcf2")                  # ice blue: selection, focus, values, progress, the crosshair ticks
+const ACCENT_DIM := Color("6fb4c8")              # accent captions
+const ACCENT_DEEP := Color(0.56, 0.86, 0.95, 0.16)   # accent wash behind selected/primary things
+const ACCENT_INK := Color("0a1116")              # text on an accent or light plate
 const PLATE := TEXT                              # the solid light plate a selected item turns into
-const GOOD := Color("8fd0c6")                    # working / refilling / done (cool, so it never reads as gold)
+const GOOD := Color("8fe0a8")                    # working / refilling / done (green, never the blue accent)
 const WARN := Color("e3833a")                    # low, missing input
 const DANGER := Color("e04a3c")                  # empty, destructive
 
@@ -63,7 +65,9 @@ const GAP := 8
 const GAP_L := 16
 const PAD := 16
 const EDGE := 64             # screen margin: titles, nav and footer hints sit this far in from the edges
-const CHAMFER := 0           # square corners everywhere (Warframe-flat); kept for old callers
+const CORNER_BIG := 10      # glass panels: top-left and bottom-right radius
+const CORNER_SMALL := 2      # the other two corners
+const CHAMFER := 0           # kept for old callers
 const CHAMFER_S := 0
 const SLOT := 64
 const BUTTON_H := 36

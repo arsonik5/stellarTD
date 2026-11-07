@@ -27,6 +27,7 @@ UiState="*res://scripts/ui_state.gd"
 QuestManager="*res://scripts/quest_manager.gd"
 GameSettings="*res://scripts/settings.gd"
 UiSound="*res://scripts/ui/kit/ui_sound.gd"
+DevConsole="*res://scripts/dev/dev_console.gd"
 
 [display]
 

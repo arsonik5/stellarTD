@@ -86,7 +86,7 @@ func _build() -> void:
 	_quest_box = UiKit.vbox(5)
 	qpanel.add_child(_quest_box)
 	var qhead := UiKit.hbox(10)
-	qhead.add_child(UiKit.label("◆  OBJECTIVE", "HudCaption"))
+	qhead.add_child(UiKit.label("OBJECTIVE", "HudCaption"))
 	qhead.add_child(UiKit.spacer())
 	qhead.add_child(UiKit.hint("J", "Journal", true))
 	_quest_box.add_child(qhead)

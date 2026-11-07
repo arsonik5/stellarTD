@@ -88,22 +88,14 @@ static func hint_row(pairs: Array, on_hud: bool = false) -> HBoxContainer:
 		row.add_child(hint(p[0], p[1], on_hud))
 	return row
 
-## Thin gold rule with a diamond at its start - underlines every screen title (Warframe's ornament, kept to one).
+## Short accent bar then a faint hairline - underlines every screen title (one Warframe-style mark, no ornament).
 static func rule(width: float = 320.0) -> Control:
 	var r := Control.new()
-	r.custom_minimum_size = Vector2(width, 9)
+	r.custom_minimum_size = Vector2(width, 3)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	r.draw.connect(func() -> void:
-		var y := 4.5
-		var dm := PackedVector2Array([Vector2(0, y), Vector2(4.5, y - 4.5), Vector2(9, y), Vector2(4.5, y + 4.5)])
-		r.draw_colored_polygon(dm, UiTokens.ACCENT)
-		var w := r.size.x
-		var steps := 24
-		for i in steps:
-			var a := 1.0 - float(i) / steps
-			var x0 := 14.0 + (w - 14.0) * float(i) / steps
-			var x1 := 14.0 + (w - 14.0) * float(i + 1) / steps
-			r.draw_line(Vector2(x0, y), Vector2(x1, y), Color(UiTokens.ACCENT, 0.7 * a), 1.0))
+		r.draw_line(Vector2(0, 1.5), Vector2(r.size.x, 1.5), Color(UiTokens.LINE, 0.12), 1.0)
+		r.draw_rect(Rect2(0, 0, 44, 3), UiTokens.ACCENT))
 	return r
 
 ## Square inventory slot.
@@ -153,6 +145,7 @@ static func screen(title_text: String, hints: Array, _min_size: Vector2 = Vector
 	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(head)
 	var crumb_l := label(crumb.to_upper(), "CrumbLabel")
+	crumb_l.visible = false          # breadcrumbs ("SUIT /") were decoration: the title says where you are
 	head.add_child(crumb_l)
 	var trow := hbox(UiTokens.GAP_L + 4)
 	head.add_child(trow)

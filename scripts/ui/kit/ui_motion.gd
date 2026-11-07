@@ -80,7 +80,7 @@ static func animate(targets: Variant, props: Dictionary, opts: Dictionary = {}) 
 		for tr: Array in tracks:
 			t.set_indexed(tr[0], tr[1])
 		var key := "_uimotion_" + "_".join(props.keys()).replace(":", "_").replace("/", "_")
-		var old: Tween = t.get_meta(key, null)
+		var old: Tween = t.get_meta(key) if t.has_meta(key) else null
 		if old != null and old.is_valid():
 			old.kill()
 		var tw := t.create_tween()
@@ -273,7 +273,7 @@ static func keys(t: CanvasItem, prop: String, values: Array, duration: float, ea
 	var rel := prop in ["x", "y"]
 	var path := NodePath("position:" + prop) if rel else NodePath(prop)
 	var key := "_uimotion_keys_" + prop
-	var old: Tween = t.get_meta(key, null)
+	var old: Tween = t.get_meta(key) if t.has_meta(key) else null
 	if old != null and old.is_valid():
 		old.kill()
 		if rel:

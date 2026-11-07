@@ -41,6 +41,19 @@ const BITE_BACKOFF := 0.5
 static func bite_center(hit_position: Vector3i, ray_dir_local: Vector3, radius: float) -> Vector3:
 	return Vector3(hit_position) + Vector3(0.5, 0.5, 0.5) - ray_dir_local.normalized() * radius * BITE_BACKOFF
 
+## How far behind the eye a second ray may start when the first finds nothing.
+const RAY_RETRY_BACK := 1.5
+
+## Raycast for the drill that also works up close. A ray that starts inside rock (eye pressed into a wall, or
+## the camera dipping under the surface on a bob) or hugs it can report nothing, so the drill "did not work" at close
+## range. Retry from behind the eye, along the same line, which always starts in open air in front of the face.
+## `range_m` is world metres (see player.gd's _raycast()).
+static func raycast_close(tool: VoxelTool, from: Vector3, dir: Vector3, range_m: float) -> VoxelRaycastResult:
+	var hit := tool.raycast(from, dir, range_m, 0xFFFFFFFF)
+	if hit != null:
+		return hit
+	return tool.raycast(from - dir * RAY_RETRY_BACK, dir, range_m + RAY_RETRY_BACK, 0xFFFFFFFF)
+
 const ITEM_BY_MATERIAL := {
 	VoxelMaterials.STONE: "stone",
 	VoxelMaterials.STONE_FROZEN: "stone",

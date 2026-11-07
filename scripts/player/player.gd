@@ -39,7 +39,7 @@ const FOUNDATION_MOUNT_RADIUS := 1.3
 
 ## How long left-click must be held before the tool "spins up" and starts
 ## actually cutting, and how often it cuts again while held after that.
-const DIG_SPINUP_TIME := 0.2
+const DIG_SPINUP_TIME := 0.35
 
 const BuildRecipe: Recipe = preload("res://data/recipes/build_block.tres")
 const MiningToolItem: Item = preload("res://data/items/mining_tool.tres")
@@ -111,6 +111,7 @@ var _dig_held := false
 var _dig_hold_time := 0.0
 var _dig_spun_up := false
 var _dig_tick_timer := 0.0
+var _dig_hold_started := false
 
 ## Build mode: the player walks and looks as normal; the build menu (mouse free) opens on entry and on Q, and
 ## closes once a building is picked. While it is open the world gets no clicks.
@@ -132,6 +133,7 @@ func _ready() -> void:
 	_terrain = PlanetPhysics.get_nearest_terrain(global_position)
 	_spawn_resolved = false
 	Inventory.changed.connect(_update_viewmodel)
+	Inventory.changed.connect(_on_tools_changed)
 	feel = FirstPersonFeel.new()
 	feel.name = "Feel"
 	add_child(feel)
@@ -139,6 +141,15 @@ func _ready() -> void:
 	_build_lamp()
 	_update_viewmodel()
 	_refresh_hud()
+
+## A tool taken out of the hand stops doing its job: the scanner's pulse and the build mode must not outlive it
+## (the scanner kept "searching" on screen for 90 s after it was put away, and build mode stayed on with no tool).
+func _on_tools_changed() -> void:
+	var scanner_hud := get_tree().get_first_node_in_group("scanner_hud")
+	if scanner_hud != null and scanner_hud.has_method("set_active"):
+		scanner_hud.set_active(Inventory.has_tool_equipped(ScannerToolItem.id))
+	if _build_mode and not Inventory.has_tool_equipped(BuildingToolItem.id):
+		_toggle_build_mode()
 
 func _update_viewmodel() -> void:
 	# the held tool: one model per tool item (data/models/tools), shown in the first-person view
@@ -179,6 +190,8 @@ func _refresh_hud() -> void:
 	hud.set_mode_text("PLAYER", "")
 
 func _input(event: InputEvent) -> void:
+	if DevConsole.is_open:
+		return   # typing in the console must not trigger C/F/J/Tab etc.
 	if _piloted_ship != null:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			var ship_item := _equipped_ship_item()
@@ -232,6 +245,8 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if DevConsole.is_open:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F1:
 			get_tree().reload_current_scene()
@@ -289,9 +304,15 @@ func _unhandled_input(event: InputEvent) -> void:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			return
 		if event.button_index == MOUSE_BUTTON_LEFT:
+			var was_spun := _dig_spun_up
 			_dig_held = event.pressed
 			if not event.pressed:
 				_reset_dig_hold()
+				if Inventory.has_tool_equipped(MiningToolItem.id) and (was_spun or _dig_hold_started):
+					UiSound.play("spindown", 1.0, 0.1)   # the drill winds down, whether or not it got up to speed
+			elif Inventory.has_tool_equipped(MiningToolItem.id):
+				UiSound.play("spinup", 1.0, 0.1)         # the wind-up whine is the feedback while it spins up
+				_dig_hold_started = true
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			var ship_item := _equipped_ship_item()
 			if ship_item != null:
@@ -329,6 +350,7 @@ func _reset_dig_hold() -> void:
 	_dig_hold_time = 0.0
 	_dig_spun_up = false
 	_dig_tick_timer = 0.0
+	_dig_hold_started = false
 
 func _ui_input_on_cooldown() -> bool:
 	return Time.get_ticks_msec() / 1000.0 < _ui_input_cooldown_until
@@ -730,7 +752,7 @@ func _physics_process(delta: float) -> void:
 	var fall_speed := -_vertical_speed
 	if not is_on_floor():
 		_vertical_speed -= PlanetPhysics.get_gravity_accel(global_position).length() * delta
-	elif Input.is_physical_key_pressed(KEY_SPACE):
+	elif Input.is_physical_key_pressed(KEY_SPACE) and not DevConsole.is_open:
 		_vertical_speed = JUMP_VELOCITY
 		if feel != null:
 			feel.jump()
@@ -738,13 +760,14 @@ func _physics_process(delta: float) -> void:
 		_vertical_speed = 0.0
 
 	var input_dir := Vector2.ZERO
-	if Input.is_physical_key_pressed(KEY_W):
+	var typing := DevConsole.is_open
+	if Input.is_physical_key_pressed(KEY_W) and not typing:
 		input_dir.y -= 1.0
-	if Input.is_physical_key_pressed(KEY_S):
+	if Input.is_physical_key_pressed(KEY_S) and not typing:
 		input_dir.y += 1.0
-	if Input.is_physical_key_pressed(KEY_A):
+	if Input.is_physical_key_pressed(KEY_A) and not typing:
 		input_dir.x -= 1.0
-	if Input.is_physical_key_pressed(KEY_D):
+	if Input.is_physical_key_pressed(KEY_D) and not typing:
 		input_dir.x += 1.0
 	input_dir = input_dir.normalized()
 
@@ -774,11 +797,14 @@ func _physics_process(delta: float) -> void:
 			_hud_key("E")
 	_interact_was_down = interact_down
 
+	_dig_miss_cooldown = maxf(_dig_miss_cooldown - delta, 0.0)
 	if _dig_held and not _inventory_open and not _is_journal_open():
 		_dig_hold_time += delta
 		if not _dig_spun_up and _dig_hold_time >= DIG_SPINUP_TIME:
 			_dig_spun_up = true
 			_dig_tick_timer = TerrainDrill.TICK_INTERVAL # fire immediately once spun up
+			if feel != null and Inventory.has_tool_equipped(MiningToolItem.id):
+				feel.kick("engage")                       # up to speed: the drill snaps forward into the rock
 		if _dig_spun_up:
 			_dig_tick_timer += delta
 			if _dig_tick_timer >= TerrainDrill.TICK_INTERVAL:
@@ -813,7 +839,7 @@ func _raycast() -> VoxelRaycastResult:
 	# converts world-space from/dir to the terrain's LOCAL voxel-grid space
 	# internally and returns hit.position already in that local space - so
 	# DIG_RANGE (a world-meter distance) is correct to pass here unconverted.
-	return tool.raycast(from, dir, DIG_RANGE, 0xFFFFFFFF)
+	return TerrainDrill.raycast_close(tool, from, dir, DIG_RANGE)
 
 ## do_sphere()'s radius, unlike raycast()'s from/dir/distance, is NOT
 ## world-space - it's in the terrain's LOCAL voxel-grid units (confirmed via
@@ -849,6 +875,12 @@ func _dig() -> void:
 
 	var hit := _raycast()
 	if hit == null:
+		# nothing in reach: the drill spins on air, say so (rate-limited - this runs 20 times a second while held)
+		if _dig_miss_cooldown <= 0.0:
+			_dig_miss_cooldown = 0.5
+			UiSound.play("deny")
+			if feel != null:
+				feel.kick("deny")
 		return
 
 	# Hardness comes from what's under the crosshair; payout from everything
@@ -863,6 +895,50 @@ func _dig() -> void:
 	var paid := TerrainDrill.payout(_yield_carry, removed, scale * scale * scale)
 	for item_id: String in paid:
 		Inventory.add(item_id, paid[item_id])
+	_mine_feedback(hit, not removed.is_empty())
+
+var _dig_miss_cooldown := 0.0
+var _dig_fx: CPUParticles3D = null
+
+## Every bite answers: the drill shoves forward into the rock (feel.kick "mine"), a puff of dust flies off the face,
+## and a thud plays. A bite that removed nothing yet (hard rock not broken through) still gets the shove and a
+## quieter, higher tick so the player can tell the drill is working, not dead.
+func _mine_feedback(hit: VoxelRaycastResult, removed_something: bool) -> void:
+	if feel != null:
+		feel.kick("mine")
+	UiSound.play("mine_hit" if removed_something else "tick", 1.0 if removed_something else 1.4, 0.06)
+	if _dig_fx == null:
+		_dig_fx = CPUParticles3D.new()
+		_dig_fx.one_shot = true
+		_dig_fx.emitting = false
+		_dig_fx.amount = 10
+		_dig_fx.lifetime = 0.45
+		_dig_fx.explosiveness = 1.0
+		_dig_fx.direction = Vector3.UP
+		_dig_fx.spread = 70.0
+		_dig_fx.initial_velocity_min = 1.5
+		_dig_fx.initial_velocity_max = 3.5
+		_dig_fx.gravity = Vector3.ZERO
+		_dig_fx.scale_amount_min = 0.5
+		_dig_fx.scale_amount_max = 1.2
+		_dig_fx.color = Color(0.72, 0.66, 0.58, 1.0)
+		var m := SphereMesh.new()
+		m.radius = 0.035
+		m.height = 0.07
+		m.radial_segments = 6
+		m.rings = 3
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.vertex_color_use_as_albedo = true
+		m.material = mat
+		_dig_fx.mesh = m
+		get_tree().current_scene.add_child(_dig_fx)
+	var world_pos := _terrain.to_global(Vector3(hit.position) + Vector3(0.5, 0.5, 0.5))
+	var away := (camera.global_position - world_pos).normalized()
+	_dig_fx.global_position = world_pos
+	_dig_fx.direction = away
+	_dig_fx.restart()
+	_dig_fx.emitting = true
 
 func _build() -> void:
 	if not Inventory.has_tool_equipped(MiningToolItem.id):
@@ -1666,7 +1742,7 @@ func _tool_player(tool_name: String) -> AnimationPlayer:
 	var players := node.find_children("*", "AnimationPlayer", true, false)
 	return players[0] if not players.is_empty() else null
 
-func _run_tool_anim(tool_name: String, running: bool) -> void:
+func _run_tool_anim(tool_name: String, running: bool, speed: float = 1.0) -> void:
 	var p := _tool_player(tool_name)
 	if p == null:
 		return
@@ -1676,6 +1752,7 @@ func _run_tool_anim(tool_name: String, running: bool) -> void:
 			anim = a
 	if anim == "":
 		return
+	p.speed_scale = speed
 	if running:
 		if not p.is_playing():
 			p.get_animation(anim).loop_mode = Animation.LOOP_LINEAR
@@ -1687,16 +1764,22 @@ func _process_tool_anims(delta: float) -> void:
 	if viewmodel == null or not viewmodel.visible:
 		return
 	var drilling := _dig_held and Inventory.has_tool_equipped(MiningToolItem.id)
-	_run_tool_anim("MiningTool", drilling)
+	# 0 -> 1 over the spin-up, then stays 1 while held: drives the bit's speed, the shake and the wind-up pose
+	var spin := clampf(_dig_hold_time / DIG_SPINUP_TIME, 0.0, 1.0) if drilling else 0.0
+	_run_tool_anim("MiningTool", drilling, lerpf(0.2, 1.0, spin * spin))
 	_scan_anim_left = maxf(_scan_anim_left - delta, 0.0)
 	_run_tool_anim("ScannerTool", _scan_anim_left > 0.0)
 	_run_tool_anim("BuildTool", Inventory.has_tool_equipped(BuildingToolItem.id))
 	# drilling kicks: a small, fast shake of the held drill (the feel node places the tool, see first_person_feel.gd)
 	var shake := Vector3.ZERO
 	if drilling:
-		shake = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(0, 1)) * 0.004
+		# a stronger rattle while it winds up than once it is boring: the shake is the "it is working" signal
+		var amp := lerpf(0.0035, 0.007, spin) if not _dig_spun_up else 0.0045
+		shake = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(0, 1)) * amp
 	if feel != null:
 		feel.set_shake(shake)
+		feel.set_windup(spin if (drilling and not _dig_spun_up) else 0.0)
+		feel.set_lunge(1.0 if (drilling and _dig_spun_up) else 0.0)
 
 ## --- Suit oxygen -------------------------------------------------------------
 ## The suit carries SUIT_O2_MAX seconds of air and uses it outside. It refills near a Ship Garage (base life
