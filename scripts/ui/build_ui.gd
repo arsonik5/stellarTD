@@ -26,9 +26,10 @@ const BUILDABLE_RECIPES := [
 	preload("res://data/recipes/build_turret_gun.tres"),
 	preload("res://data/recipes/build_turret_cannon.tres"),
 	preload("res://data/recipes/build_ship_garage.tres"),
+	preload("res://data/recipes/build_oxygen_post.tres"),
 ]
 const TABS := ["structure", "production", "logistics", "defense", "vehicles"]
-const CARD := Vector2(168, 148)
+const CARD := Vector2(152, 148)
 
 var _selected_index := 0
 var _player: Node = null
@@ -72,7 +73,7 @@ func _ready() -> void:
 	scroll.add_child(_grid)
 	# detail
 	var dpanel := UiKit.panel("Well")
-	dpanel.custom_minimum_size.x = 270
+	dpanel.custom_minimum_size.x = 250
 	row.add_child(dpanel)
 	_detail = UiKit.vbox(UiTokens.GAP)
 	dpanel.add_child(_detail)

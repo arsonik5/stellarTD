@@ -44,3 +44,8 @@ owns the button. Test: `scenes/dev/tool_flow_test.tscn` (headless).
 ## Console (` or /)
 Empty input lists every command; typing narrows the list (items, hands, amounts too). Up/Down pick, Tab or click fills,
 PageUp/PageDown = history. `give`/`spawn`, `tools`, `ores`, `hand`, `clear`, `tp`, `o2`, `save`, `reload`.
+
+## Build placement
+With no foundation under it a building lies on the real ground (sampled under its footprint, tilted to it, lifted so it
+cannot sink). R turns it around the ground normal. G only snaps the position to a 1 m grid; it never changes tilt.
+Oxygen Post (Production tab): E plugs your suit in by hose, refills within 20 m, E again unplugs.

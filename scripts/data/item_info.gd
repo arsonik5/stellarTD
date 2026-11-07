@@ -22,6 +22,7 @@ const INFO := {
 	# production
 	"basic_crafter": ["production", "Hand-fed workbench. Turns ore into the first parts."],
 	"smelter": ["production", "Melts ore into ingots. Needs a steady feed of ore."],
+	"oxygen_post": ["production", "Plug your suit in with a hose (E) and breathe. Works within 20 m of the post."],
 	"constructor": ["production", "Builds parts from ingots - ammo, casings, ship parts."],
 	# logistics
 	"chest": ["logistics", "Storage box. Pipes can fill it and empty it."],

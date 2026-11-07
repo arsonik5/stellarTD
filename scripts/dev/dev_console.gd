@@ -266,11 +266,15 @@ func _refresh_suggestions() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.text = ("%s     %s" % [e["label"], e["desc"]]) if String(e["desc"]) != "" else String(e["label"])
 		b.add_theme_color_override("font_color", UiTokens.ACCENT if i == _sugg_i else UiTokens.TEXT_DIM)
-		if i == _sugg_i:
-			var hi := StyleBoxFlat.new()
-			hi.bg_color = UiTokens.ACCENT_DEEP
-			hi.set_content_margin_all(4)
-			b.add_theme_stylebox_override("normal", hi)
+		# every row gets the same box (margins and height), so the list does not jiggle as the selection moves
+		var row_box := StyleBoxFlat.new()
+		row_box.bg_color = UiTokens.ACCENT_DEEP if i == _sugg_i else Color(0, 0, 0, 0)
+		row_box.content_margin_left = 8
+		row_box.content_margin_right = 8
+		row_box.content_margin_top = 3
+		row_box.content_margin_bottom = 3
+		for st in ["normal", "hover", "pressed", "focus"]:
+			b.add_theme_stylebox_override(st, row_box)
 		b.pressed.connect(_apply_sugg.bind(i))
 		_sugg_box.add_child(b)
 	_scroll_to_selected.call_deferred()

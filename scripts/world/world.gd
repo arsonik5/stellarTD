@@ -61,6 +61,9 @@ func _add_scanner_hud() -> void:
 	hud.add_to_group("scanner_hud")
 	add_child(hud)
 
+func _add_suffocation_fx() -> void:
+	add_child(SuffocationFX.new())
+
 func _ready() -> void:
 	_configure_fixed_alpha_system()
 	# The sun's rotation is no longer authored here. Star.gd re-aims the light
@@ -70,6 +73,7 @@ func _ready() -> void:
 	_configure_sun_shadows()
 	_apply_starfield()
 	_add_scanner_hud()
+	_add_suffocation_fx()
 	if is_instance_valid(star):
 		star.sun_light = sun
 	if is_instance_valid(atmosphere_renderer):

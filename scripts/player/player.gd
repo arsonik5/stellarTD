@@ -813,7 +813,9 @@ func _physics_process(delta: float) -> void:
 		_hud_key("WASD")
 	if sprinting:
 		_hud_key("Shift")
-	var top := (SPRINT_SPEED if sprinting else SPEED) * (0.4 if suit_o2 <= 0.0 else 1.0)
+	var top := (SPRINT_SPEED if sprinting else SPEED) * (lerpf(0.4, 0.15, suffocation) if suit_o2 <= 0.0 else 1.0)
+	if dying:
+		top = 0.0
 	# Momentum instead of instant velocity: quick to start and stop on the ground, sluggish in the air.
 	_move_vel -= up * _move_vel.dot(up)                     # stay tangent as "up" turns over the sphere
 	var target := move_dir * top
@@ -1141,8 +1143,46 @@ func _resolve_build_placement(raw_pos: Vector3, item: Item) -> Dictionary:
 		var final_basis := Basis(mount_basis.y, _build_rotation) * mount_basis
 		return {"transform": Transform3D(final_basis, mount_pos), "valid": true}
 
-	var xf := _free_tangent_transform(raw_pos)
-	return {"transform": xf, "valid": _terrain_supports(raw_pos)}
+	return _ground_aligned_placement(raw_pos, item)
+
+## One ray straight "down" (local up reversed) through `p`, or null. Used to read the ground under a footprint.
+func _ground_hit(p: Vector3, up0: Vector3) -> Variant:
+	var q := PhysicsRayQueryParameters3D.create(p + up0 * 3.0, p - up0 * 10.0)
+	q.exclude = [get_rid()]
+	var h := get_world_3d().direct_space_state.intersect_ray(q)
+	return h.position if not h.is_empty() else null
+
+## A building with no foundation lies flat ON the ground, not on the sphere's ideal surface: the ground is sampled
+## under the footprint (centre + four edge points), the building is tilted to that plane (R still turns it around the
+## ground normal), and it is lifted so its base touches the highest sample - it can hover a little over a dip but
+## never sinks into a bump. Grid snapping (G) only moves the point the footprint is measured at.
+func _ground_aligned_placement(raw_pos: Vector3, item: Item) -> Dictionary:
+	var up0 := PlanetPhysics.get_up(raw_pos)
+	var ref := _tangent_basis_at(up0, -camera.global_transform.basis.z)
+	var half := 0.75 if item == null else maxf(item.ghost_size.x, item.ghost_size.z) * 0.5
+	var offs := [Vector2(0, 0), Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]
+	var pts: Array = []
+	for o: Vector2 in offs:
+		var h: Variant = _ground_hit(raw_pos + ref.x * o.x * half + ref.z * o.y * half, up0)
+		if h == null:
+			var fallback := _free_tangent_transform(raw_pos)
+			return {"transform": fallback, "valid": _terrain_supports(raw_pos)}
+		pts.append(h)
+	var n: Vector3 = ((pts[1] as Vector3) - (pts[2] as Vector3)).cross((pts[4] as Vector3) - (pts[3] as Vector3))
+	if n.length() < 0.0001:
+		n = up0
+	n = n.normalized()
+	if n.dot(up0) < 0.0:
+		n = -n
+	# never lean past ~50 degrees: a cliff face is not somewhere to stand a machine
+	if n.angle_to(up0) > deg_to_rad(50.0):
+		n = up0.slerp(n, deg_to_rad(50.0) / n.angle_to(up0))
+	var base: Vector3 = pts[0]
+	var lift := 0.0
+	for p: Vector3 in pts:
+		lift = maxf(lift, (p - base).dot(n))
+	var basis := Basis(n, _build_rotation) * _tangent_basis_at(n, -camera.global_transform.basis.z)
+	return {"transform": Transform3D(basis, base + n * lift), "valid": true}
 
 func _is_pipe_item(item: Item) -> bool:
 	return item != null and item.id in ["vacuum_pipe", "merger", "splitter"]
@@ -1338,11 +1378,11 @@ func _update_build_ghost() -> void:
 			_build_ghost.global_transform = _pipe_transform(pipe_end, pipe_end, true)
 		_build_ghost.visible = true
 		return
-	if not is_foundation and (_build_grid_snap or force_snap):
+	if not is_foundation and _build_grid_snap:
 		# Foundations get their own continuous edge-snap/free-tangent
 		# placement below - the old flat voxel-cell snap is a different,
 		# now-superseded concept for them specifically.
-		raw_pos = _snap_build_position(raw_pos, force_snap)
+		raw_pos = _snap_build_position(raw_pos)
 
 	var placement := _resolve_build_placement(raw_pos, item)
 	var is_valid: bool = placement.valid
@@ -1677,7 +1717,7 @@ func _update_interact_target() -> void:
 	if prompt == null:
 		return
 	if _targeted_building != null:
-		prompt.show_prompt("E", "Open " + _display_name_of(_targeted_building))
+		prompt.show_prompt("E", _targeted_building.call("prompt_text") if _targeted_building.has_method("prompt_text") else "Open " + _display_name_of(_targeted_building))
 	elif _targeted_cockpit != null:
 		prompt.show_prompt("E", "Take the controls" if _targeted_cockpit.sealed else "Take the driver seat")
 	else:
@@ -1859,6 +1899,73 @@ func _update_suit_o2(delta: float) -> void:
 				suit_o2 = minf(suit_o2 + SUIT_REFILL_RATE * delta, SUIT_O2_MAX)
 				refill = true
 				break
+	if not refill and o2_hose != null:
+		if not is_instance_valid(o2_hose) or global_position.distance_to(o2_hose.global_position) > OxygenPost.HOSE_LENGTH + 1.0:
+			disconnect_hose(true)          # walked too far: the hose pops out
+		else:
+			suit_o2 = minf(suit_o2 + SUIT_REFILL_RATE * delta, SUIT_O2_MAX)
+			refill = true
 	if not refill:
 		suit_o2 = maxf(suit_o2 - delta, 0.0)
 	o2_refilling = refill and suit_o2 < SUIT_O2_MAX
+	# Out of air: the clock runs. Air back (refill) winds it down fast. At the end of it you die.
+	if suit_o2 <= 0.0 and not refill:
+		if not dying:
+			o2_empty_time += delta
+			if o2_empty_time >= SUFFOCATE_SECONDS:
+				dying = true
+				dying_time = 0.0
+	elif not dying:
+		o2_empty_time = maxf(o2_empty_time - delta * 4.0, 0.0)
+	suffocation = clampf(o2_empty_time / SUFFOCATE_SECONDS, 0.0, 1.0)
+	if dying:
+		dying_time += delta
+		if dying_time >= 3.5:
+			_respawn_after_death()
+
+## The Oxygen Post the suit is plugged into, or null.
+var o2_hose: Node3D = null
+
+func connect_hose(post: Node3D) -> void:
+	if o2_hose != null and is_instance_valid(o2_hose):
+		o2_hose.call("set_connected", false)
+	o2_hose = post
+	post.call("set_connected", true)
+	UiSound.play("confirm")
+
+func disconnect_hose(snapped: bool = false) -> void:
+	if o2_hose != null and is_instance_valid(o2_hose):
+		o2_hose.call("set_connected", false)
+	o2_hose = null
+	UiSound.play("warn" if snapped else "back")
+
+## Seconds from the first empty breath to death.
+const SUFFOCATE_SECONDS := 25.0
+var o2_empty_time := 0.0
+## 0..1 progress towards suffocating (read by SuffocationFX).
+var suffocation := 0.0
+var dying := false
+var dying_time := 0.0
+
+## After the death fade: refill the suit and stand back at the landing spot. Inventory is kept.
+func _respawn_after_death() -> void:
+	dying = false
+	dying_time = 0.0
+	o2_empty_time = 0.0
+	suffocation = 0.0
+	suit_o2 = SUIT_O2_MAX
+	if _piloted_ship != null:
+		return          # in a ship: just give the air back
+	var body := PlanetPhysics.get_nearest_body(global_position) as Planet
+	if body == null:
+		return
+	var dir := body.suggested_spawn_direction()
+	if dir == Vector3.ZERO:
+		dir = (global_position - body.global_position).normalized()
+	global_position = body.global_position + dir * (body.radius_world() + body.max_relief_world() + 60.0)
+	_move_vel = Vector3.ZERO
+	_vertical_speed = 0.0
+	velocity = Vector3.ZERO
+	_spawn_from_save = false
+	_spawn_resolved = false
+	_spawn_wait_frames = 0

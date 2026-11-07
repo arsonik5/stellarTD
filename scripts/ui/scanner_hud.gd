@@ -23,14 +23,6 @@ const FADE_SECONDS := 2.2
 ## Re-scan the locked deposit finer when you get this close (metres, LOD of the re-scan).
 const REFINE := [[500.0, 4], [160.0, 3]]
 
-const ORE_COLOURS := {
-	"iron": Color(0.86, 0.55, 0.40),
-	"copper": Color(0.92, 0.58, 0.28),
-	"coal": Color(0.60, 0.63, 0.70),
-	"silica": Color(0.70, 0.87, 0.94),
-	"sulfur": Color(0.95, 0.87, 0.35),
-	"crystal": Color(0.72, 0.60, 0.96),
-}
 const DEFAULT_COLOUR := Color(0.55, 0.85, 0.75)
 
 var _active := true
@@ -217,6 +209,11 @@ static func fmt_dist(d: float) -> String:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
+	# The radar belongs to the world view. Any menu, inventory, console or build screen takes the screen over, so the
+	# radar shuts instead of floating on top of it. (Only locking, X, or putting the scanner away closes it otherwise.)
+	if _radar_open and (UiState.is_any_open() or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED):
+		_radar_open = false
+		_draw.queue_redraw()
 	var cam := _camera()
 	if _active and cam != null:
 		if _radar_open:
@@ -262,7 +259,9 @@ func _update_lock(delta: float, cam: Camera3D) -> void:
 			var best_d := INF
 			for h in OreScanner.scan(_terrain, pos, {idx: _lock["name"]}, lod):
 				var dd: float = (h["position"] as Vector3).distance_to(pos)
-				if dd < best_d and dd < float(1 << lod) * 20.0:
+				# Only ever the SAME deposit: a nearby different one would make the marker jump away from the
+				# trace that was locked.
+				if dd < best_d and dd < float(1 << lod) * 5.0:
 					best_d = dd
 					best = h["position"]
 			if best_d < INF:
@@ -295,7 +294,7 @@ func _on_draw() -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, 400.0, 18, col)
 
 func _ore_col(id: String) -> Color:
-	return ORE_COLOURS.get(id, DEFAULT_COLOUR)
+	return OrePalette.hud(id, DEFAULT_COLOUR)
 
 func _draw_radar(size: Vector2, font: Font) -> void:
 	var cam := _camera()

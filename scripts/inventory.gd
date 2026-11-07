@@ -17,6 +17,7 @@ const ITEM_DEFS_LIST := [
 	preload("res://data/items/building_tool.tres"),
 	preload("res://data/items/basic_crafter.tres"),
 	preload("res://data/items/sulfur.tres"),
+	preload("res://data/items/oxygen_post.tres"),
 	preload("res://data/items/smelter.tres"),
 	preload("res://data/items/chest.tres"),
 	preload("res://data/items/constructor.tres"),
