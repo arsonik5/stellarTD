@@ -9,6 +9,6 @@ texture_name = "bedrock"
 albedo_tint = Color(0.60,1.45,0.65, 1)
 roughness_scale = 0.8
 metallic = 0.0
-specular = 0.4
+specular = 0.5
 normal_strength = 1.0
 texture_scale_m = 3.0

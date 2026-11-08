@@ -96,66 +96,66 @@ void vertex() {
 	v_world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
-// One material sampled triplanar. Returns albedo.rgb / roughness in .a, and
-// writes the tangent-space-ish normal, occlusion and height through out params.
+// Tangent normal from the packed map (RG = XY), Z rebuilt.
+vec3 unpack_n(vec4 n) {
+	vec2 xy = n.rg * 2.0 - 1.0;
+	return vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
+}
+
+// One material sampled triplanar at one uv set. Returns albedo.rgb / roughness in .a; writes the WORLD normal and
+// occlusion / height.
 //
-// Triplanar rather than UVs because a voxel surface has no UV parameterisation
-// at all - Transvoxel emits arbitrary polygons from a density field, and there
-// is no consistent way to unwrap them. World-space projection is the standard
-// answer and has the useful property that edits (digging) produce correctly
-// textured new faces with no extra work.
-vec4 sample_planes(int layer, vec3 uvw, vec3 blend, out vec4 nrm) {
+// Each plane's tangent normal is turned into world space on that plane's own axes, THEN the planes are blended
+// ("whiteout" triplanar, Golus 2017). The old code blended the three tangent normals first and then added the result
+// to the world normal component by component; that mixed the planes' axes up, the detail mostly cancelled, and rock
+// lit like flat paint (2026-11-08: "no pbr/roughness still").
+// uv per plane: x plane = (z, y), y plane = (x, z), z plane = (x, y); the textures aren't mirrored, so no sign flips.
+vec4 sample_planes(int layer, vec3 uvw, vec3 blend, vec3 wn, out vec3 n_world, out vec2 occ_h) {
 	vec4 ax = texture(tex_albedo, vec3(uvw.zy, float(layer)));
 	vec4 ay = texture(tex_albedo, vec3(uvw.xz, float(layer)));
 	vec4 az = texture(tex_albedo, vec3(uvw.xy, float(layer)));
 	vec4 nx = texture(tex_normal, vec3(uvw.zy, float(layer)));
 	vec4 ny = texture(tex_normal, vec3(uvw.xz, float(layer)));
 	vec4 nz = texture(tex_normal, vec3(uvw.xy, float(layer)));
-	nrm = nx * blend.x + ny * blend.y + nz * blend.z;
+	vec3 tx = unpack_n(nx);
+	vec3 ty = unpack_n(ny);
+	vec3 tz = unpack_n(nz);
+	vec3 wx = vec3(abs(tx.z) * wn.x, tx.y + wn.y, tx.x + wn.z);
+	vec3 wy = vec3(ty.x + wn.x, abs(ty.z) * wn.y, ty.y + wn.z);
+	vec3 wz = vec3(tz.x + wn.x, tz.y + wn.y, abs(tz.z) * wn.z);
+	n_world = normalize(wx * blend.x + wy * blend.y + wz * blend.z);
+	vec4 nb = nx * blend.x + ny * blend.y + nz * blend.z;
+	occ_h = nb.ba;
 	return ax * blend.x + ay * blend.y + az * blend.z;
 }
 
-vec4 sample_material(int layer, vec3 rel, vec3 origin, vec3 blend, float tex_scale, float tile_mix,
-		out vec3 nrm_ts, out float occ, out float height) {
+vec4 sample_material(int layer, vec3 rel, vec3 origin, vec3 blend, vec3 wn, float tex_scale, float tile_mix,
+		out vec3 n_world, out float occ, out float height) {
 	float ts = max(tex_scale, 0.01);
 	// (rel + origin) / ts, with the big term reduced mod one tile first (exact: fmod loses nothing).
 	vec3 uvw = rel / ts + mod(origin, ts) / ts;
+	vec3 n1;
+	vec2 oh1;
+	vec4 a1 = sample_planes(layer, uvw, blend, wn, n1, oh1);
 	if (antitile == 1) {
-		vec4 n1;
-		vec4 a1 = sample_planes(layer, uvw, blend, n1);
 		// second sample: bigger tile, rotated ~37 degrees about every axis pair, offset
 		float ts2 = ts / antitile_scale;
 		vec3 uvw2 = rel / ts2 + mod(origin, ts2) / ts2;
 		const float c = 0.7986;
 		const float sn = 0.6018;
 		uvw2 = vec3(c * uvw2.x - sn * uvw2.z, uvw2.y, sn * uvw2.x + c * uvw2.z) + vec3(0.37, 0.11, 0.73);
-		vec4 n2;
-		vec4 a2 = sample_planes(layer, uvw2, blend, n2);
-		vec4 nrm = mix(n1, n2, tile_mix);
-		nrm_ts = vec3(nrm.rg * 2.0 - 1.0, 1.0);
-		occ = nrm.b;
-		height = nrm.a;
+		vec3 n2;
+		vec2 oh2;
+		vec4 a2 = sample_planes(layer, uvw2, blend, wn, n2, oh2);
+		n_world = normalize(mix(n1, n2, tile_mix));
+		occ = mix(oh1.x, oh2.x, tile_mix);
+		height = mix(oh1.y, oh2.y, tile_mix);
 		return mix(a1, a2, tile_mix);
 	}
-	// Each plane drops the axis it projects along.
-	vec2 uv_x = uvw.zy;
-	vec2 uv_y = uvw.xz;
-	vec2 uv_z = uvw.xy;
-
-	vec4 ax = texture(tex_albedo, vec3(uv_x, float(layer)));
-	vec4 ay = texture(tex_albedo, vec3(uv_y, float(layer)));
-	vec4 az = texture(tex_albedo, vec3(uv_z, float(layer)));
-	vec4 alb = ax * blend.x + ay * blend.y + az * blend.z;
-
-	vec4 nx = texture(tex_normal, vec3(uv_x, float(layer)));
-	vec4 ny = texture(tex_normal, vec3(uv_y, float(layer)));
-	vec4 nz = texture(tex_normal, vec3(uv_z, float(layer)));
-	vec4 nrm = nx * blend.x + ny * blend.y + nz * blend.z;
-
-	nrm_ts = vec3(nrm.rg * 2.0 - 1.0, 1.0);
-	occ = nrm.b;
-	height = nrm.a;
-	return alb;
+	n_world = n1;
+	occ = oh1.x;
+	height = oh1.y;
+	return a1;
 }
 
 void fragment() {
@@ -226,8 +226,9 @@ void fragment() {
 		m += texture(tex_albedo, vec3(big.xz * 0.31 + 0.5, 1.0)).g;
 		tile_mix = smoothstep(0.55, 0.95, m);
 	}
-	vec4 a0 = sample_material(i0, v_rel_pos, v_origin, blend, e0.w, tile_mix, n0, occ0, h0);
-	vec4 a1 = sample_material(i1, v_rel_pos, v_origin, blend, e1.w, tile_mix, n1, occ1, h1);
+	vec3 wn = v_world_normal;
+	vec4 a0 = sample_material(i0, v_rel_pos, v_origin, blend, wn, e0.w, tile_mix, n0, occ0, h0);
+	vec4 a1 = sample_material(i1, v_rel_pos, v_origin, blend, wn, e1.w, tile_mix, n1, occ1, h1);
 
 	// Height-aware blend: the material whose surface stands taller at this point
 	// wins the contested band, so a boundary follows cracks and grain instead of
@@ -248,7 +249,7 @@ void fragment() {
 	float t = smoothstep(-blend_edge, blend_edge, d);
 
 	vec4 albedo_rough = mix(a0, a1, t);
-	vec3 nrm_ts = normalize(mix(n0, n1, t));
+	vec3 n_mat = normalize(mix(n0, n1, t));
 	float occ = mix(occ0, occ1, t);
 
 	vec3 tint = mix(pal_tint_rough[i0].rgb, pal_tint_rough[i1].rgb, t);
@@ -265,15 +266,8 @@ void fragment() {
 	float macro = texture(tex_albedo, vec3(v_world_pos.xz / macro_scale, float(i0))).r;
 	float macro_mul = mix(1.0 - macro_strength * 0.5, 1.0 + macro_strength * 0.5, macro);
 
-	// Triplanar normals: rotate each plane's tangent normal into world space by
-	// swizzling, then blend. Whiteout blending (adding the geometric normal)
-	// keeps detail from cancelling on slopes.
-	vec3 wn = v_world_normal;
-	vec3 n_world = normalize(vec3(
-		nrm_ts.z * sign(wn.x) * blend.x + wn.x,
-		nrm_ts.y * blend.y + wn.y,
-		nrm_ts.x * sign(wn.z) * blend.z + wn.z));
-	n_world = normalize(mix(wn, n_world, normal_strength));
+	// Detail normal (already in world space, see sample_planes), scaled per material.
+	vec3 n_world = normalize(mix(wn, n_mat, normal_strength));
 
 	if (debug_view != 0) {
 		vec3 dbg = vec3(0.0);
@@ -302,9 +296,14 @@ void fragment() {
 		AO = 1.0;
 		NORMAL = normalize((VIEW_MATRIX * vec4(v_world_normal, 0.0)).xyz);
 	} else {
-	ALBEDO = albedo_rough.rgb * tint * macro_mul;
-	ROUGHNESS = clamp(albedo_rough.a * rough_scale, 0.04, 1.0);
-	METALLIC = metallic;
+	vec3 alb = albedo_rough.rgb * tint * macro_mul;
+	ALBEDO = alb;
+	// Raised grains a touch smoother than the crevices (worn, catches light); crevices stay matte.
+	float h = mix(h0, h1, t);
+	ROUGHNESS = clamp(albedo_rough.a * rough_scale * mix(1.08, 0.86, h), 0.04, 1.0);
+	// Metal ores: only the bright grains are metal (flecks), the matrix around them stays rock.
+	float lum = dot(albedo_rough.rgb, vec3(0.299, 0.587, 0.114));
+	METALLIC = metallic * smoothstep(0.42, 0.72, lum);
 	SPECULAR = specular;
 	AO = occ;
 	AO_LIGHT_AFFECT = 0.5;

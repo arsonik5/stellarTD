@@ -9,6 +9,6 @@ texture_name = "regolith"
 albedo_tint = Color(0.95, 0.94, 0.92, 1)
 roughness_scale = 1.0
 metallic = 0.0
-specular = 0.18
+specular = 0.4
 normal_strength = 1.0
 texture_scale_m = 3.0

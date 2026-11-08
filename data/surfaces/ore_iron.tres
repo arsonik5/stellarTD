@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 display_name = "iron ore"
-texture_name = "bedrock"
-albedo_tint = Color(0.80,0.90,1.05, 1)
+texture_name = "ore_iron"
+albedo_tint = Color(1.55, 1.55, 1.6, 1)
 roughness_scale = 0.8
-metallic = 0.0
-specular = 0.4
-normal_strength = 1.0
+metallic = 0.75
+specular = 0.5
+normal_strength = 1.2
 texture_scale_m = 3.0

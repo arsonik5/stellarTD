@@ -37,7 +37,7 @@ static func _builtin_styles() -> Dictionary:
 	bedrock.texture_name = "bedrock"
 	bedrock.albedo_tint = Color(0.62, 0.62, 0.66)
 	bedrock.texture_scale_m = 3.0
-	bedrock.specular = 0.25
+	bedrock.specular = 0.45
 
 	var cliff := SurfaceStyle.new()
 	cliff.display_name = "Cliff Rock"
@@ -47,7 +47,7 @@ static func _builtin_styles() -> Dictionary:
 	# not at hand scale.
 	cliff.texture_scale_m = 8.0
 	cliff.normal_strength = 1.3
-	cliff.specular = 0.3
+	cliff.specular = 0.45
 
 	var block := SurfaceStyle.new()
 	block.display_name = "Block"
