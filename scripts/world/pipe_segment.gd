@@ -57,6 +57,44 @@ func forward() -> Vector3i:
 func flow_dir() -> Vector3:
 	return -global_transform.basis.z.normalized()
 
+## --- Ports, in 3D (any orientation on a round planet) ---
+## Where items enter / leave this piece, on the base plane (same plane as get_connection_points()). A plain pipe
+## has one of each; the merger and splitter override these. Neighbours are found by matching ports in world space,
+## not by stepping world-axis grid cells around world Y, which only worked where planet up happened to be +Y.
+const PORT_TOL := 0.3
+
+func input_ports() -> Array[Vector3]:
+	var cps := get_connection_points()
+	return [cps[0]]
+
+func output_ports() -> Array[Vector3]:
+	var cps := get_connection_points()
+	return [cps[cps.size() - 1]]
+
+## The pipe piece (not self) with an input port (want_input) or output port within PORT_TOL of `point`.
+func _piece_with_port_near(point: Vector3, want_input: bool) -> PipeSegment:
+	for n in get_tree().get_nodes_in_group("pipe"):
+		var p := n as PipeSegment
+		if p == null or p == self or not is_instance_valid(p):
+			continue
+		for q in (p.input_ports() if want_input else p.output_ports()):
+			if q.distance_to(point) < PORT_TOL:
+				return p
+	return null
+
+## What receives items from the output port at `port` (direction `outward`): a pipe piece whose input is there, or
+## a building whose footprint is just past it.
+func _receiver_at(port: Vector3, outward: Vector3) -> Node:
+	var p := _piece_with_port_near(port, true)
+	if p != null:
+		return p
+	return _building_at(port + outward * 0.4 + global_transform.basis.y * 0.3)
+
+## Outward direction of a port: from this piece's centre on the base plane to the port.
+func _outward(port: Vector3) -> Vector3:
+	var d := port - global_position
+	return d.normalized() if d.length() > 0.01 else flow_dir()
+
 func _is_modular() -> bool:
 	return has_node("Body") and $Body.find_child("*SupportPost", true, false) != null
 
@@ -280,9 +318,14 @@ func _try_advance() -> void:
 	elif _is_modular():
 		target = _building_at(output_point() + flow_dir() * 0.4)
 		if target == null:
+			target = _piece_with_port_near(output_ports()[0], true)      # a merger/splitter at the outlet
+		if target == null:
 			target = PipeNetwork.get_node_at(_cell_of(output_point() + flow_dir() * 0.4))
 	else:
-		target = PipeNetwork.get_node_at(grid_pos + forward())
+		var port: Vector3 = output_ports()[0]
+		target = _receiver_at(port, _outward(port))
+		if target == null:
+			target = PipeNetwork.get_node_at(grid_pos + forward())    # old saves laid on the flat grid
 	if target == null:
 		return
 	var moved := false
@@ -302,7 +345,10 @@ func _try_pull_from_input_side() -> void:
 	if _is_modular():
 		source = _building_at(input_point() - input_dir() * 0.4)
 	else:
-		source = PipeNetwork.get_node_at(grid_pos - forward())
+		var port: Vector3 = input_ports()[0]
+		source = _building_at(port + _outward(port) * 0.4 + global_transform.basis.y * 0.3)
+		if source == null:
+			source = PipeNetwork.get_node_at(grid_pos - forward())
 	if source == null or not (source is Building):
 		return
 	var building: Building = source

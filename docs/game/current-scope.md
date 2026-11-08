@@ -8,4 +8,4 @@ Built past this line and now in scope to maintain: ships, and save/load
 (main menu, slots, terrain edit deltas, world state - see
 `architecture/gameplay-systems.md`).
 
-Known boundary: foundation placement follows local surface orientation; pipe/merger/splitter cardinal-direction math is still world-Y-based.
+Foundation placement follows local surface orientation. Pipes, mergers and splitters connect by matching their ports in 3D (2026-11-08; checked upright, on its side and tilted by `scenes/dev/junction_test.tscn`), so they work anywhere on the planet.
