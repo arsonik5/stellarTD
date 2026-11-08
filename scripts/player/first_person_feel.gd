@@ -52,6 +52,7 @@ var _lunge := 0.0                  # smoothed 0..1 toward _lunge_target
 var _lunge_target := 0.0
 var _windup := 0.0
 var _windup_target := 0.0
+var _cam_shake := 0.0              # metres of camera jitter (the cutter buzzing in the hand), set every frame
 var _time := 0.0
 var _last_step := 0
 
@@ -77,6 +78,10 @@ func set_lunge(v: float) -> void:
 ## 0..1 while the drill spins up: the tool draws back and tilts up a little, like bracing before it bites.
 func set_windup(v: float) -> void:
 	_windup_target = v
+
+## A fine buzz of the view while a tool vibrates (camera offset, so it never fights the player's own look).
+func set_cam_shake(amount: float) -> void:
+	_cam_shake = amount
 
 func land(fall_speed: float) -> void:
 	if fall_speed < 2.0:
@@ -156,6 +161,8 @@ func _process(delta: float) -> void:
 	_camera.position = _cam_base + Vector3(side, step_dip + CAM_BOB_Y * amp * 0.5 + _land, 0.0)
 	_camera.rotation.z = deg_to_rad(sin(_phase * 0.5) * CAM_ROLL * amp)
 	_camera.fov = float(GameSettings.get_value("fov")) + SPRINT_FOV * _sprint_blend
+	_camera.h_offset = randf_range(-1.0, 1.0) * _cam_shake * bob_amt
+	_camera.v_offset = randf_range(-1.0, 1.0) * _cam_shake * bob_amt
 
 	# --- tool ------------------------------------------------------------------------------------------
 	_look = _look.lerp(_look_accum, minf(delta * 14.0, 1.0))

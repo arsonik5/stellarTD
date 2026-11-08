@@ -12,7 +12,10 @@ var _move_vel := Vector3.ZERO
 const MOUSE_SENSITIVITY := 0.0025
 const PITCH_LIMIT := 1.4
 
-const DIG_RANGE := 6.0
+## How far the drill bores. 6 m opened the hole 3 m in front of a hand drill that never came near it (2026-11-08):
+## a drill works close. 3.5 m reaches the ground from standing (about 2.3 m at 50 degrees down) with room to bore
+## ~1 m before you step in. (A drill that lunged a metre out of the hand to touch the rock looked worse.)
+const DIG_RANGE := 3.5
 ## World metres, but sized in VOXELS: this was 2.5 voxels at the old 0.4 m
 ## scale and is kept at the same voxel count under 1 m voxels. Bore size and
 ## rate live in TerrainDrill.
@@ -138,6 +141,10 @@ func _ready() -> void:
 	feel.name = "Feel"
 	add_child(feel)
 	feel.setup(self, camera, viewmodel)
+	_tool_fx = MiningToolFx.new()
+	_tool_fx.name = "MiningToolFx"
+	add_child(_tool_fx)
+	_tool_fx.setup(self, viewmodel.get_node("MiningTool"))
 	_build_lamp()
 	_update_viewmodel()
 	_refresh_hud()
@@ -169,6 +176,8 @@ func _update_viewmodel() -> void:
 		# turned a little in toward the crosshair so the player sees their sides, not their back ends
 		node.position = Vector3(-0.46 if hand == "left" else 0.0, 0.0, 0.0)
 		node.rotation = Vector3(0.0, -0.13 if hand == "left" else 0.13, 0.0)
+		node.set_meta("vm_base_pos", node.position)          # tool-specific motion (MiningToolFx) moves around this
+		node.set_meta("vm_base_rot", node.rotation)
 		shown = shown or node.visible
 	viewmodel.visible = shown   # first-person building keeps the build tool in hand
 	var held := "%s/%s" % [Inventory.get_slot({"kind": "hand", "side": "left"}).item_id, Inventory.get_slot({"kind": "hand", "side": "right"}).item_id]
@@ -358,10 +367,7 @@ func _toggle_pause_menu() -> void:
 func _on_hand_button(button: int, pressed: bool) -> void:
 	if not pressed:
 		if button == _dig_button:
-			var was_boring := _dig_spun_up or _dig_hold_started
-			_reset_dig_hold()
-			if was_boring:
-				UiSound.play("spindown", 1.0, 0.1)   # the drill winds down, whether or not it got up to speed
+			_reset_dig_hold()                      # the motor loop winds down by itself (MiningToolFx)
 		return
 	var side := "left" if button == MOUSE_BUTTON_LEFT else "right"
 	var tool_id: String = Inventory.get_slot({"kind": "hand", "side": side}).item_id
@@ -369,7 +375,6 @@ func _on_hand_button(button: int, pressed: bool) -> void:
 		_dig_held = true
 		_dig_button = button
 		_dig_hold_started = true
-		UiSound.play("spinup", 1.0, 0.1)             # the wind-up whine is the feedback while it spins up
 	elif tool_id == ScannerToolItem.id:
 		_scan_for_ore()
 	elif tool_id == BuildingToolItem.id:
@@ -1083,11 +1088,10 @@ func _dig() -> void:
 	var hit := _raycast()
 	if hit == null:
 		# nothing in reach: the drill spins on air, say so (rate-limited - this runs 20 times a second while held)
+		# nothing in reach: the beam reaches out to full range and fizzles (MiningToolFx); a quiet no now and then
 		if _dig_miss_cooldown <= 0.0:
-			_dig_miss_cooldown = 0.5
-			UiSound.play("deny")
-			if feel != null:
-				feel.kick("deny")
+			_dig_miss_cooldown = 1.0
+			UiSound.play("deny", 1.0, 0.5)
 		return
 
 	# Hardness comes from what's under the crosshair; payout from everything
@@ -1110,51 +1114,14 @@ func _dig() -> void:
 	var paid := TerrainDrill.payout(_yield_carry, removed, scale * scale * scale)
 	for item_id: String in paid:
 		Inventory.add(item_id, paid[item_id])
-	_mine_feedback(hit, not removed.is_empty())
+	if _tool_fx != null:
+		var at := _terrain.to_global(surface)
+		_tool_fx.bite(at, camera.global_position - at, material_index, not removed.is_empty(), VoxelMaterials.hardness_for(material_index))
 
 var _dig_miss_cooldown := 0.0
 var _dig_empty_bites := 0
-var _dig_fx: CPUParticles3D = null
-
-## Every bite answers: the drill shoves forward into the rock (feel.kick "mine"), a puff of dust flies off the face,
-## and a thud plays. A bite that removed nothing yet (hard rock not broken through) still gets the shove and a
-## quieter, higher tick so the player can tell the drill is working, not dead.
-func _mine_feedback(hit: VoxelRaycastResult, removed_something: bool) -> void:
-	if feel != null:
-		feel.kick("mine")
-	UiSound.play("mine_hit" if removed_something else "tick", 1.0 if removed_something else 1.4, 0.06)
-	if _dig_fx == null:
-		_dig_fx = CPUParticles3D.new()
-		_dig_fx.one_shot = true
-		_dig_fx.emitting = false
-		_dig_fx.amount = 10
-		_dig_fx.lifetime = 0.45
-		_dig_fx.explosiveness = 1.0
-		_dig_fx.direction = Vector3.UP
-		_dig_fx.spread = 70.0
-		_dig_fx.initial_velocity_min = 1.5
-		_dig_fx.initial_velocity_max = 3.5
-		_dig_fx.gravity = Vector3.ZERO
-		_dig_fx.scale_amount_min = 0.5
-		_dig_fx.scale_amount_max = 1.2
-		_dig_fx.color = Color(0.72, 0.66, 0.58, 1.0)
-		var m := SphereMesh.new()
-		m.radius = 0.035
-		m.height = 0.07
-		m.radial_segments = 6
-		m.rings = 3
-		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.vertex_color_use_as_albedo = true
-		m.material = mat
-		_dig_fx.mesh = m
-		get_tree().current_scene.add_child(_dig_fx)
-	var world_pos := _terrain.to_global(Vector3(hit.position) + Vector3(0.5, 0.5, 0.5))
-	var away := (camera.global_position - world_pos).normalized()
-	_dig_fx.global_position = world_pos
-	_dig_fx.direction = away
-	_dig_fx.restart()
-	_dig_fx.emitting = true
+## Beam, chips, dust, sparks, heat glow, the drill's own motion and its sound: scripts/player/mining_tool_fx.gd.
+var _tool_fx: MiningToolFx
 
 func _build() -> void:
 	if not Inventory.has_tool_equipped(MiningToolItem.id):
@@ -2139,16 +2106,11 @@ func _process_tool_anims(delta: float) -> void:
 	_scan_anim_left = maxf(_scan_anim_left - delta, 0.0)
 	_run_tool_anim("ScannerTool", _scan_anim_left > 0.0)
 	_run_tool_anim("BuildTool", Inventory.has_tool_equipped(BuildingToolItem.id))
-	# drilling kicks: a small, fast shake of the held drill (the feel node places the tool, see first_person_feel.gd)
-	var shake := Vector3.ZERO
-	if drilling:
-		# a stronger rattle while it winds up than once it is boring: the shake is the "it is working" signal
-		var amp := lerpf(0.0035, 0.007, spin) if not _dig_spun_up else 0.0045
-		shake = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(0, 1)) * amp
-	if feel != null:
-		feel.set_shake(shake)
-		feel.set_windup(spin if (drilling and not _dig_spun_up) else 0.0)
-		feel.set_lunge(1.0 if (drilling and _dig_spun_up) else 0.0)
+	# the drill's motion, beam, particles and sound live in MiningToolFx and move only the drill's own hand (the
+	# whole viewmodel used to shake and lunge, the build tool in the other hand with it)
+	if _tool_fx != null:
+		_tool_fx.update(delta, drilling, spin, drilling and _dig_spun_up, camera.global_position,
+				-camera.global_transform.basis.z, DIG_RANGE)
 
 ## --- Suit oxygen -------------------------------------------------------------
 ## The suit carries SUIT_O2_MAX seconds of air and uses it outside. It refills near a Ship Garage (base life

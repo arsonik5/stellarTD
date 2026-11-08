@@ -21,7 +21,10 @@ Tab -> inventory: drag a tool into a hand slot (hands take tools and ship parts 
 mouse press (mouse captured, not in a menu)
   hand = left for LMB, right for RMB
   hand holds ...
-    Mining Tool    hold: wind-up (0.35 s: pose, rattle, whine) -> bites every 0.05 s, shove + dust + thud per bite
+    Mining Tool    hold: wind-up (0.35 s: drawn back, rattle, motor whine rising) -> bites every 0.05 s within 3.5 m:
+                   the drill shoves 14 cm forward and turns its auger into the face, buzzes, knocks back a little per
+                   bite; chips in the rock's colour fall under gravity, dust drifts, sparks on hard rock; motor + grind
+                   loops (scripts/player/mining_tool_fx.gd). Only the drill's hand moves.
                    release: spin-down. Taking the drill out of the hand stops it.
     Scanner        press: ping + radar minigame (B-scope, sweep bar, traces). Wheel / 1-6 tune the ore, press again
                    with a trace on the centre line = LOCK; then a marker + distance guide you. X closes the radar,

@@ -1,13 +1,12 @@
-"""Mining Tool (first-person viewmodel, scripts/player/player.gd ViewmodelTool) - a hand-held rock cutter.
+"""Mining Tool (first-person viewmodel, scripts/player/player.gd ViewmodelTool) - a hand-held rock drill.
 Origin = the hand on the grip. Blender +Y = forward (Godot -Z, the camera's look direction), Z up. Real size (~0.4 m).
 
-What it does: the battery in the grip's foot powers a motor in the housing. The motor spins the cutter crown on the
-front of the emitter barrel; the emitter behind the crown's lens throws the bore field that cuts the rock up to 6 m
-away (the beam, chips, dust and heat glow are drawn in game: scripts/player/mining_tool_fx.gd). The coil band at the
-barrel's mouth glows as the emitter heats; the fins behind it shed that heat. The display on the rear cap faces the
-player: charge and heat.
-Chain: battery -> grip -> housing (motor) -> barrel (emitter) -> crown hub (spindle) -> crown ring + teeth.
-Moving group 'Crown' spins about the barrel axis ('Working' loop). Wear is baked at tool scale (kit.WEAR_SCALE)."""
+What it does: the battery in the grip's foot powers the motor in the housing; the gearbox in the nose turns the
+spindle, which turns the chuck and the long auger bit. The carbide tip breaks the rock, the flutes carry the cuttings
+back out. The fins shed the heat of boring; the display on the rear cap faces the player (charge). In game the drill
+pushes forward into the face while it bores (scripts/player/mining_tool_fx.gd): chips, dust, sparks on hard rock.
+Chain: battery -> grip -> housing (motor) -> nose (gearbox) -> bearing -> chuck -> bit (core, flutes, tip).
+Moving group 'Bit' spins about the nose axis ('Working' loop). Wear is baked at tool scale (kit.WEAR_SCALE)."""
 import os, sys, math
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import kit
@@ -60,36 +59,40 @@ bolts("RearCapBolt", (0, YR - 0.008, MZ), '-Y', 0.029, 4, r=0.0028, h=0.003, sta
 box("Display", (0.034, 0.002, 0.024), (0, YR - 0.008 - 0.0005, MZ + 0.002), STAT, bevel=0.0)
 part("Display", "display: charge and emitter heat, faces the user", "RearCap", "inset")
 
-# --- emitter barrel, heat-sink fins, coil ----------------------------------------------------------------------------
-BR, BY0, BY1 = 0.03, YF, 0.22
-cyl("Barrel", BR, BY1 - BY0, (0, (BY0 + BY1) / 2, MZ), SEC, seg=48, axis='Y', bevel=0.002)
-part("Barrel", "emitter barrel: the bore emitter sits inside", "Housing", "welded")
-weld_ring("BarrelWeld", (0, BY0, MZ), BR, axis='Y')
-for k in range(5):
-    tube(f"Fin{k}", 0.047, BR + 0.0002, 0.004, (0, 0.134 + k * 0.014, MZ), BARE, seg=48, axis='Y', bevel=0.0008)
-part("Fin", "emitter heat sink: sheds the emitter's heat", "Barrel", "seated")
-cyl("Coil", BR + 0.003, 0.012, (0, 0.207, MZ), HEAT, seg=48, axis='Y', bevel=0.001)
-part("Coil", "emitter coil: glows as the emitter heats", "Barrel", "inset")
-cyl("Lens", 0.0165, 0.016, (0, BY1 + 0.006, MZ), HEAT, seg=32, axis='Y', r2=0.011, bevel=0.0)
-part("Lens", "emitter lens: the bore field leaves here", "Barrel", "inset")
+# --- gearbox nose, heat-sink fins, front bearing ------------------------------------------------------------------
+NR, NY0, NY1 = 0.03, YF, 0.19
+cyl("Nose", NR, NY1 - NY0, (0, (NY0 + NY1) / 2, MZ), SEC, seg=48, axis='Y', bevel=0.002)
+part("Nose", "gearbox nose: the reduction gears to the spindle are inside", "Housing", "welded")
+weld_ring("NoseWeld", (0, NY0, MZ), NR, axis='Y')
+for k in range(4):
+    tube(f"Fin{k}", 0.044, NR + 0.0002, 0.004, (0, 0.132 + k * 0.014, MZ), BARE, seg=48, axis='Y', bevel=0.0008)
+part("Fin", "gearbox heat sink: sheds the heat of boring rock", "Nose", "seated")
+cyl("Bearing", 0.025, 0.012, (0, NY1 + 0.006 - 0.003, MZ), BARE, seg=48, axis='Y', bevel=0.001)
+part("Bearing", "front bearing: carries the spindle, pressed into the nose", "Nose", "inset")
 
-# --- spinning cutter crown -------------------------------------------------------------------------------------------
-with group("Crown"):
-    tube("CrownHub", 0.024, 0.0175, 0.012, (0, BY1 + 0.006, MZ), BARE, seg=48, axis='Y', bevel=0.0008)
-    tube("CrownRing", 0.045, 0.036, 0.018, (0, BY1 + 0.012 + 0.009 - 0.003, MZ), BARE, seg=48, axis='Y', bevel=0.001)
+# --- spinning chuck and auger bit ------------------------------------------------------------------------------------
+BY = NY1 + 0.009                                           # chuck back face (on the bearing)
+with group("Bit"):
+    cyl("Chuck", 0.022, 0.045, (0, BY + 0.0225, MZ), BARE, seg=32, axis='Y', r2=0.018, bevel=0.0015)
     for k in range(3):
-        a = k * 2 * math.pi / 3 + math.pi / 6
-        box(f"CrownSpoke{k}", (0.016, 0.008, 0.006), (math.cos(a) * 0.0302, BY1 + 0.008, MZ + math.sin(a) * 0.0302), BARE,
+        a = k * 2 * math.pi / 3
+        box(f"ChuckJaw{k}", (0.006, 0.03, 0.004), (math.cos(a) * 0.0195, BY + 0.03, MZ + math.sin(a) * 0.0195), RUB,
             bevel=0.0, rot=Matrix.Rotation(-a, 4, 'Y'))
-    RF = BY1 + 0.012 + 0.018 - 0.003                       # crown ring front face
-    for k in range(8):
-        a = k * 2 * math.pi / 8
-        box(f"Tooth{k}", (0.007, 0.012, 0.005), (math.cos(a) * 0.0405, RF + 0.004, MZ + math.sin(a) * 0.0405), BARE,
-            bevel=0.0005, rot=Matrix.Rotation(-a, 4, 'Y'))
-part("CrownHub", "crown hub: on the spindle, turns the crown", "Barrel", "pivot")
-part("CrownRing", "crown ring: carries the teeth round the lens", "CrownSpoke", "inset", joins=("CrownHub",))
-part("CrownSpoke", "spoke: joins the ring to the hub, leaves the lens clear", "CrownHub", "inset", joins=("CrownRing",))
-part("Tooth", "carbide tooth: chips the rock face the field has loosened", "CrownRing", "inset")
+    CY0, CY1 = BY + 0.03, 0.53
+    cyl("BitCore", 0.011, CY1 - CY0, (0, (CY0 + CY1) / 2, MZ), BARE, seg=16, axis='Y', bevel=0.0)
+    for f in range(2):
+        pts = []
+        for i in range(161):                                # two flutes: helices round the core, half a turn apart
+            t = i / 160
+            a = t * 2 * math.pi * 6 + f * math.pi
+            pts.append((math.cos(a) * 0.0165, 0.27 + t * 0.245, MZ + math.sin(a) * 0.0165))
+        pipe(f"BitFlute{f}", pts, 0.0072, BARE, fillet=0.0, seg=6, bevel=0.0)
+    cyl("BitTip", 0.017, 0.04, (0, CY1 + 0.02 - 0.004, MZ), BARE, seg=16, axis='Y', r2=0.0, bevel=0.0)
+part("Chuck", "chuck: grips the bit, turned by the spindle", "Bearing", "pivot")
+part("ChuckJaw", "chuck jaw: clamps the bit's shank", "Chuck", "inset")
+part("BitCore", "bit core: the shank and spine of the auger", "Chuck", "inset")
+part("BitFlute", "auger flute: carries the cuttings out of the bore", "BitCore", "inset")
+part("BitTip", "carbide tip: breaks the rock at the bottom of the bore", "BitCore", "inset")
 
-kit.finish("SM_MiningTool", pivots={"Crown": (0, BY1, MZ)}, bake_res=2048,
-           anims=[spin("Crown", 1, seconds=0.3)])
+kit.finish("SM_MiningTool", pivots={"Bit": (0, BY, MZ)}, bake_res=2048,
+           anims=[spin("Bit", 1, seconds=0.24)])

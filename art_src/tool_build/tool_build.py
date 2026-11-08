@@ -9,7 +9,8 @@ from kit import *
 from mathutils import Vector, Matrix
 
 kit.begin(kit.out_dir())
-kit.DUST_AMT = 0.2
+kit.DUST_AMT = 0.15
+kit.WEAR_SCALE = 0.12                                      # wear at tool size (see kit.WEAR_SCALE)
 grip = [(-0.017, -0.11), (0.017, -0.11), (0.02, 0.0), (0.016, 0.03), (-0.024, 0.03), (-0.026, 0.0)]
 profile("Grip", grip, (0, 0, 0), (1, 0, 0), 0.034, RUB, up=(0, 0, 1), bevel=0.003)
 part("Grip", "grip: the hand holds the tool here", "ground", "ground")
@@ -40,5 +41,5 @@ cyl("Lens", 0.02, 0.006, (0, 0.18 + 0.003, MZ), GLASS, seg=24, axis='Y', bevel=0
 part("Lens", "projector lens", "Barrel", "inset")
 cyl("LensGlow", 0.014, 0.002, (0, 0.18 - 0.0005, MZ), STAT, seg=24, axis='Y', bevel=0.0)
 part("LensGlow", "emitter behind the lens", "Barrel", "inset", joins=("Lens",))
-kit.finish("SM_BuildTool", pivots={f"Ring{k}": (0, y, MZ) for k, y in enumerate((0.12, 0.145, 0.17))}, bake_res=512,
+kit.finish("SM_BuildTool", pivots={f"Ring{k}": (0, y, MZ) for k, y in enumerate((0.12, 0.145, 0.17))}, bake_res=2048,
            anims=[spin("Ring0", 1, seconds=2.0), spin("Ring1", 1, seconds=2.0, turns=-1.0), spin("Ring2", 1, seconds=1.0)])

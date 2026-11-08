@@ -241,7 +241,8 @@ roll per stride; step length 1.9 m (3.2 steps/s walking, 5 sprinting: measured 4
 **Tools**: lag the aim (0.55 mm per pixel, capped 4.5 cm, plus a few degrees of yaw/pitch), figure-eight bob in step
 with the camera, lean 3 deg into strafes, lowered sprint carry pose (-12 deg pitch, +22 deg yaw), tiny breathing at
 rest, raise from below over 0.28 s when what you hold changes, and kicks: place (shove forward), scan (buck up),
-deny (small shake - invalid placement), hit, landing, jump. The drill vibrates while cutting.
+deny (small shake - invalid placement), hit, landing, jump. The drill's own motion (wind-up, shove into the face,
+buzz, knock-back per bite) moves only the drill's hand, never the other tool: MiningToolFx. It is a drill: no beams.
 **Framing**: tools at (0.22, -0.21, -0.46), scale 0.95, the left hand mirrored at -0.46 x, each turned 7.5 deg in
 toward the crosshair so you see their sides, not their back ends. A faint chest fill light keeps them readable at
 night; F is a helmet spot lamp.

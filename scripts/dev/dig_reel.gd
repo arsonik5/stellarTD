@@ -64,6 +64,11 @@ func _ready() -> void:
 		while (Time.get_ticks_msec() - t0) / 1000.0 < t:
 			await get_tree().process_frame
 		await _shot()
+		var fx: MiningToolFx = player.get("_tool_fx")
+		if fx != null:
+			var eye: Vector3 = player.camera.global_position
+			print("DIGREEL t=%.2f engaged=%s tip_eye=%.2f contact_eye=%.2f tip_contact=%.2f" % [t, fx.is_engaged(),
+					fx.bit_tip().distance_to(eye), fx.last_contact().distance_to(eye), fx.bit_tip().distance_to(fx.last_contact())])
 	while (Time.get_ticks_msec() - t0) / 1000.0 < hold:
 		await get_tree().process_frame
 	var up_ev := ev.duplicate()
