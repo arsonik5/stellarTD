@@ -50,9 +50,11 @@ Recommended: 256 px maps, 4 m tile, `antitile=1`.
 ### 4. Blending between materials
 Hard edges (one material per voxel) look clean but cut-out. A 4 m cross-fade with the current height-aware blend
 looks smudged and blocky at the edges (the 4-bit weights and the mesher's per-vertex indices step). What reads best
-in reference games is a **narrow, noisy edge**: transition over ~1 m, broken up by the height map. Not built yet;
-it is a shader change (sharper `height_blend`, noise on the transition) plus generator rules that keep fewer than
-three materials per spot (the four-slot limit, see terrain-generator.md "weight-slot problem").
+in reference games is a **narrow, noisy edge**: transition over ~1 m, broken up by the height map. Built 2026-11-08
+in the game shader: `blend_edge` 0.2 (band around the 50/50 point) and `blend_noise` 0.8 (two octaves, 2.3 m and
+9.7 m, from the two materials' own height maps, rotated so they don't repeat along the edge). One octave alone made
+a visibly repeating fringe. Shots `shots/edge_cmp*.png`. Still to do: generator rules that keep fewer than three
+materials per spot (the four-slot limit, see terrain-generator.md "weight-slot problem").
 
 ### 5. The 16-material limit
 Material ids are 4 bits, so **16 materials per planet**, not 16 in the game. The palette is per planet already
@@ -84,13 +86,18 @@ Lessons:
 - Carving must be a real signed distance combined with `max()`. The first version used a sentinel and produced
   shards everywhere.
 - Caves from a 3D noise threshold are shredded at 1 m voxels. Caves need to be **designed tunnels** (a path of
-  spheres/capsules from an entrance, SE2-style placed storage), not a noise level set.
+  spheres/capsules from an entrance, SE2-style placed storage), not a noise level set. Built 2026-11-08 for the
+  mountain prototype (`_build_cave`: 22 capsules, 6 m apart, ~15 degree descent, two 8.5 m chambers, flattened floor,
+  0.9 m wall noise): clean walls, no shards (`shots/cave1_*`). Where the path climbs out of a slope it opens a second
+  mouth, which reads fine.
 - Landforms that read best are the ones with one clear process (wind -> dunes, impacts -> craters, hard layers ->
   mesa benches). Matches the 2026-09-11 lesson: "terrain should read as landforms, not noise".
 
 ## Planet design: how 20-30 generated planets stay logical
 
-Proposed, not built. A planet is described by physical inputs, and everything else is derived from them, so a cold
+Prototype built 2026-11-08 in the lab (`lab_terrain_gen.gd` `derive()`, `biome=planet_<preset>`, presets coldmoon,
+hotdesert, icemountain). The same module set gives three clearly different places from inputs alone; shots
+`art_src/terrain_lab/shots/pl1_*`. Not in the game yet. A planet is described by physical inputs, and everything else is derived from them, so a cold
 planet gets ice and crevasses because it is cold, not because a dice roll said "ice biome":
 
     inputs:  star distance + star type -> temperature;  mass/radius -> gravity;  atmosphere (none/thin/thick);
@@ -109,9 +116,11 @@ in a fixed order. This is how No Man's Sky stays varied with a finite feature se
 overhangs and boulders as separate pieces instead of more noise.
 
 ## Decisions for Michael
-1. Lighting: drop the vertex-shading override for the terrain (and decide for models).
-2. Textures: 256 px PBR, 4 m tile, anti-tiling on.
+1. Lighting: DONE 2026-11-08. Per-pixel everywhere; models rebuilt without painted light.
+2. Textures: 256 px PBR, 4 m tile, anti-tiling on (anti-tiling now on by default in the game shader).
 3. Next lab step: narrow noisy blending, ore materials, a glacier ice texture, designed caves, and the planet-input
    model above on 2-3 planet types, before anything goes into the game.
-4. Image model: Qwen-Image 2.1 on furryass is blocked: furryass C: has 5.4 GB free, it needs ~11 GB plus headroom,
-   and its licence is research-only (outputs in a commercial game need a paid licence from Qwen).
+4. Image model: running since 2026-11-08 (Qwen-Image 2.1 on furryass, `qwen-image` skill; ComfyUI route for edits
+   and RGBA). Licence is research/non-commercial, which is fine: Stellar TD is not commercial (Michael).
+   Its normal maps look right but don't line up with the colour map, so normals stay derived
+   (`tools/bake_surface_textures.py`). Ore textures are generated with it (`art_src/terrain_lab/ore_raw/`).

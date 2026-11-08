@@ -49,9 +49,10 @@ anti_aliasing/quality/msaa_3d=2
 ; FXAA on top: MSAA does not touch shading aliasing, and procedural surface
 ; detail produces plenty of that.
 anti_aliasing/quality/screen_space_aa=1
-; PS2 look (docs/game/art-direction.md): per-vertex (Gouraud) lighting, like the sixth-gen consoles. Set to false
-; to go back to per-pixel lighting.
-shading/overrides/force_vertex_shading=true
+; Per-pixel lighting (Michael, 2026-11-07): low-res textures, modern lighting. The PS2-era per-vertex override was
+; on from 2026-11-04 and made normal maps and roughness invisible, which is most of why the ground looked cheap
+; (docs/game/architecture/terrain-lab.md). Set to true to go back to per-vertex (Gouraud) lighting.
+shading/overrides/force_vertex_shading=false
 
 [gui]
 

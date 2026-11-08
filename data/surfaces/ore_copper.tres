@@ -6,7 +6,7 @@
 script = ExtResource("1")
 display_name = "copper ore"
 texture_name = "bedrock"
-albedo_tint = Color(1.35,0.85,0.50, 1)
+albedo_tint = Color(1.50,0.85,0.45, 1)
 roughness_scale = 0.8
 metallic = 0.0
 specular = 0.4

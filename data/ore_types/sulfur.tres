@@ -1,6 +1,8 @@
-[gd_resource type="Resource" script_class="OreType" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="OreType" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/ore_type.gd" id="1"]
+
+[ext_resource type="Resource" path="res://data/surfaces/ore_sulfur.tres" id="2"]
 
 [resource]
 script = ExtResource("1")
@@ -10,3 +12,4 @@ depth_min = 48.0
 depth_max = 110.0
 base_threshold = 0.35
 noise_frequency = 0.08
+surface = ExtResource("2")

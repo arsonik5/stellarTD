@@ -43,6 +43,12 @@ uniform float triplanar_sharpness : hint_range(1.0, 16.0) = 6.0;
 // cross-fading. A linear crossfade between two rock textures looks like a
 // dissolve; letting the taller surface win makes the boundary follow the rock.
 uniform float height_blend : hint_range(0.0, 1.0) = 0.65;
+// Narrow, noisy material edges (terrain lab 2026-11-08). The generator's weights fade over metres, and a linear
+// cross-fade over that width looked smudged. The edge is squeezed into a band of +-blend_edge around the 50/50
+// point, and shifted by noise from the two materials' own height maps (2.3 m + 9.7 m), so it wanders like a real boundary.
+// blend_edge = 1.0, blend_noise = 0.0 is the old wide fade.
+uniform float blend_edge : hint_range(0.02, 1.0) = 0.2;
+uniform float blend_noise : hint_range(0.0, 1.0) = 0.8;
 
 // Diagnostic output. 0 = normal shading.
 //
@@ -58,7 +64,7 @@ uniform float height_blend : hint_range(0.0, 1.0) = 0.65;
 // Anti-tiling. 0 = off. 1 = each material is sampled a second time at a different scale and rotation, and the two
 // are mixed by a slow world-space mask, so the repeat of one tile is never visible across a slope (terrain lab
 // 2026-11-07: at a 2.5 m tile the repeat read as a grid from 20 m away). Costs a second set of texture fetches.
-uniform int antitile : hint_range(0, 1) = 0;
+uniform int antitile : hint_range(0, 1) = 1;
 uniform float antitile_scale = 0.37;
 uniform int debug_view : hint_range(0, 7) = 0;
 
@@ -227,7 +233,19 @@ void fragment() {
 	// wins the contested band, so a boundary follows cracks and grain instead of
 	// fading through a grey average.
 	float bias = (h0 * w0 - h1 * w1) * height_blend;
-	float t = clamp(w1 - w0 - bias, -1.0, 1.0) * 0.5 + 0.5;
+	float d = w1 - w0 - bias;
+	if (i0 != i1 && w1 > 0.001) {
+		// two octaves of the material's own height map: ~2.3 m grain + ~9.7 m wander, at odd scales and a rotation so
+		// neither lines up with the texture tile (a single octave repeated visibly along a straight boundary)
+		vec3 nb = v_rel_pos / 2.3 + mod(v_origin, 2.3) / 2.3;
+		vec2 p1 = nb.xz * blend.y + nb.zy * blend.x + nb.xy * blend.z;
+		p1 = vec2(0.83 * p1.x - 0.56 * p1.y, 0.56 * p1.x + 0.83 * p1.y);
+		vec3 nc = v_rel_pos / 9.7 + mod(v_origin, 9.7) / 9.7;
+		vec2 p2 = nc.xz * blend.y + nc.zy * blend.x + nc.xy * blend.z;
+		float nz = texture(tex_normal, vec3(p1, float(i0))).a + 1.6 * texture(tex_normal, vec3(p2 + 0.31, float(i1))).a;
+		d += (nz / 2.6 - 0.5) * blend_noise * 2.0;
+	}
+	float t = smoothstep(-blend_edge, blend_edge, d);
 
 	vec4 albedo_rough = mix(a0, a1, t);
 	vec3 nrm_ts = normalize(mix(n0, n1, t));

@@ -144,7 +144,9 @@ comes from:
   "the low res pass looks awful ... render full resolution but get the textures and models to be styled"). Fog was
   tried too and dropped: the atmosphere pass already gives the haze. The look lives in the assets, not in a
   screen filter.
-- **Lighting:** per-vertex (Gouraud), set with `rendering/shading/overrides/force_vertex_shading` in
-  project.godot. Changing it needs a restart.
-- **Textures:** baked at 512 px with the light painted in: lit from above, shaded underneath, darker in the gaps
-  (`PAINTED_LIGHT` in art_src/kit.py). Grey paint and the paint tool work the same as before.
+- **Lighting:** per-pixel since 2026-11-08 (Michael: low-res textures, modern lighting). The per-vertex (Gouraud)
+  override from 2026-11-04 hid normal maps and roughness and made the ground look cheap. Switch:
+  `rendering/shading/overrides/force_vertex_shading` in project.godot (needs a restart).
+- **Textures:** baked at 512 px. Wear, grime and cavity darkening stay baked in; the painted top-light
+  (`PAINTED_LIGHT` in art_src/kit.py) is off since 2026-11-08, because on top of real per-pixel light it doubled the
+  shading and made machines read near-black. Grey paint and the paint tool work the same as before.

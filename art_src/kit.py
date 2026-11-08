@@ -1244,7 +1244,7 @@ def _cycles_setup():
         pass
 
 
-PAINTED_LIGHT = True              # PS2 look: bake top-light + deep occlusion into the albedo (scripts/retro_look.gd)
+PAINTED_LIGHT = False             # was True for the per-vertex PS2 look; off since per-pixel lighting (2026-11-08): real light + painted light = double lighting, dark undersides
 DUST_AMT = 1.0                    # ship parts set this lower: they fly, they don't sit in regolith
 BARE_COL = (0.58, 0.58, 0.6)      # steel under the paint
 DUST_COL = (0.33, 0.29, 0.24)

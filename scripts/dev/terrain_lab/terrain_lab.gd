@@ -30,6 +30,9 @@ var tex_scale := 2.5
 ## "materials" = the 4 x 4 grid; any other value = a 192 m shape prototype of that planet type (lab_terrain_gen.gd)
 var biome := "materials"
 var antitile := 0
+## material edge: band half-width and noise (shader blend_edge / blend_noise); -1 = shader default
+var edge := -1.0
+var edge_noise := -1.0
 var _cam: Camera3D
 
 func _ready() -> void:
@@ -44,6 +47,8 @@ func _ready() -> void:
 			"scale": tex_scale = float(kv[1])
 			"biome": biome = kv[1]
 			"antitile": antitile = int(kv[1])
+			"edge": edge = float(kv[1])
+			"noise": edge_noise = float(kv[1])
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SHOTS))
 	_build_env()
 	_build_terrain()
@@ -135,6 +140,10 @@ func _build_terrain() -> void:
 	m.set_shader_parameter("pal_tint_rough", tint)
 	m.set_shader_parameter("pal_extra", extra)
 	m.set_shader_parameter("antitile", antitile)
+	if edge >= 0.0:
+		m.set_shader_parameter("blend_edge", edge)
+	if edge_noise >= 0.0:
+		m.set_shader_parameter("blend_noise", edge_noise)
 	t.material_override = m
 	t.max_view_distance = 512
 	add_child(t)
@@ -194,6 +203,26 @@ func _run_terrain() -> void:
 	_aim(Vector3(170, 8, 175), Vector3(90, 0, 80))
 	await get_tree().create_timer(4.0).timeout
 	await _shot("ground_b")
+	if biome == "mountain":
+		# the designed cave: its mouth from outside, then inside the first chamber with a lamp
+		var vt: VoxelTerrain = find_children("*", "VoxelTerrain", true, false)[0]
+		var pts: Array = vt.generator.get("_cave_pts")
+		var mouth: Vector3 = pts[0]
+		var into: Vector3 = (pts[2] - pts[0]).normalized()
+		_aim(mouth - into * 14.0 + Vector3(0, 4, 0), mouth + into * 4.0)
+		await get_tree().create_timer(4.0).timeout
+		await _shot("cave_mouth")
+		var lamp := SpotLight3D.new()
+		lamp.spot_range = 40.0
+		lamp.spot_angle = 50.0
+		lamp.light_energy = 4.0
+		_cam.add_child(lamp)
+		_aim(pts[7] + Vector3(0, 0.5, 0), pts[10])
+		await get_tree().create_timer(4.0).timeout
+		await _shot("cave_chamber")
+		_aim(pts[4] + Vector3(0, 0.3, 0), pts[6])
+		await get_tree().create_timer(3.0).timeout
+		await _shot("cave_tunnel")
 	print("LAB_DONE")
 	get_tree().quit()
 

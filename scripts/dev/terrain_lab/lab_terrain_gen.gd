@@ -8,12 +8,19 @@ extends VoxelGeneratorScript
 ##   desert   wind: dune ridges across one wind direction, mesas from hard rock layers (benches), dry crust flats
 ##   ice      glacier sheet cut by crevasses, fields of penitentes (ice spikes), clear ice on steep faces
 ##   volcanic cones and lava plains, dark ash on flats, fissures
-##   mountain eroded ridges, scree (gravel) on mid slopes, cliffs of bare rock, a cave mouth
+##   mountain eroded ridges, scree (gravel) on mid slopes, cliffs of bare rock, a designed cave (capsule path + chambers)
 ## Material indices refer to terrain_lab.gd SETS.
 
 const SIZE := 192.0
 
-var biome := "moon"
+var biome := "moon":
+	set(v):
+		biome = v
+		if v.begins_with("planet_"):
+			_proc = derive(PRESETS[v.substr(7)])
+			print("PLANET ", v, " -> ", _proc)
+		if v == "mountain" and _cave_pts.is_empty():
+			_build_cave()   # needs _height(), which depends on the biome
 var _n := FastNoiseLite.new()
 var _n2 := FastNoiseLite.new()
 var _cell := FastNoiseLite.new()
@@ -34,6 +41,131 @@ func _init() -> void:
 	_cave.frequency = 0.045
 	_cave.fractal_octaves = 2
 
+## Designed cave (replaces the 3D-noise tube, which shredded at 1 m voxels): a path of capsules from a mouth on the
+## mountain flank, descending ~15 degrees and turning gently, opening into two chambers. Built once from a fixed seed,
+## like a placed structure, then carved as a signed distance with a little wall noise.
+var _cave_pts: Array[Vector3] = []
+var _cave_rad: Array[float] = []
+var _cave_lo := Vector3.ZERO
+var _cave_hi := Vector3.ZERO
+
+func _build_cave() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var x := 70.0
+	var z := 60.0
+	var p := Vector3(x, _height(x, z) + 1.0, z)
+	var dir := Vector3(1.0, 0.0, 0.6).normalized()
+	for i in 22:
+		_cave_pts.append(p)
+		var r := 3.2 + rng.randf_range(-0.6, 0.8)
+		if i == 9 or i == 18:
+			r = 8.5                                  # chambers
+		elif i == 8 or i == 10 or i == 17 or i == 19:
+			r = 5.5
+		_cave_rad.append(r)
+		var yaw := rng.randf_range(-0.35, 0.35)
+		dir = Vector3(dir.x * cos(yaw) - dir.z * sin(yaw), 0.0, dir.x * sin(yaw) + dir.z * cos(yaw)).normalized()
+		var drop := -0.27 if i < 16 else -0.05
+		p += (dir + Vector3(0.0, drop, 0.0)).normalized() * 6.0
+	_cave_lo = _cave_pts[0]
+	_cave_hi = _cave_pts[0]
+	for q in _cave_pts:
+		_cave_lo = _cave_lo.min(q)
+		_cave_hi = _cave_hi.max(q)
+	_cave_lo -= Vector3.ONE * 12.0
+	_cave_hi += Vector3.ONE * 12.0
+
+## Signed distance to the cave (negative inside the air).
+func _cave_sdf(q: Vector3) -> float:
+	if q.x < _cave_lo.x or q.y < _cave_lo.y or q.z < _cave_lo.z or q.x > _cave_hi.x or q.y > _cave_hi.y or q.z > _cave_hi.z:
+		return INF
+	var best := INF
+	for i in _cave_pts.size() - 1:
+		var a: Vector3 = _cave_pts[i]
+		var b: Vector3 = _cave_pts[i + 1]
+		var ab := b - a
+		var t := clampf((q - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
+		var r := lerpf(_cave_rad[i], _cave_rad[i + 1], t)
+		var c := a + ab * t
+		var dv := q - c
+		dv.y *= 1.35                                 # a little flatter than round: a floor you can walk
+		best = minf(best, dv.length() - r)
+	return best + 0.9 * _n2.get_noise_3d(q.x * 2.0, q.y * 2.0, q.z * 2.0)
+
+# --- planet-input model -----------------------------------------------------------------------------------------
+## A planet is physical inputs; process strengths and materials are derived from them, never rolled separately.
+## (docs/game/architecture/terrain-lab.md "Planet design"). biome = "planet_<preset>" uses this.
+const PRESETS := {
+	# temp K, gravity g, atmosphere 0..1, volatiles 0..1, volcanism 0..1, age 0..1
+	"coldmoon": {"temp": 90.0, "gravity": 0.17, "atmo": 0.0, "volatiles": 0.6, "volcanism": 0.0, "age": 0.9},
+	"hotdesert": {"temp": 320.0, "gravity": 0.6, "atmo": 0.5, "volatiles": 0.05, "volcanism": 0.5, "age": 0.5},
+	"icemountain": {"temp": 210.0, "gravity": 1.1, "atmo": 0.8, "volatiles": 0.9, "volcanism": 0.1, "age": 0.3},
+}
+var _proc := {}
+
+## inputs -> process strengths 0..1 and a material palette [top, rock, steep]
+static func derive(pl: Dictionary) -> Dictionary:
+	var atmo: float = pl["atmo"]
+	var cold := clampf((273.0 - float(pl["temp"])) / 120.0, 0.0, 1.0)     # 0 at freezing, 1 at ~150 K
+	var proc := {
+		"impacts": clampf((1.0 - atmo * 1.5) * float(pl["age"]), 0.0, 1.0),     # no air to burn them up, old surface
+		"wind": clampf(atmo * (1.0 - float(pl["volatiles"]) * 0.6) * (1.0 - cold), 0.0, 1.0),
+		"ice": clampf(cold * float(pl["volatiles"]) * 1.3, 0.0, 1.0),
+		"volcanism": float(pl["volcanism"]),
+		"erosion": clampf(atmo * float(pl["volatiles"]) + (1.0 - float(pl["age"])) * 0.4, 0.0, 1.0),
+		# low gravity holds taller relief
+		"relief": clampf(1.0 / sqrt(maxf(float(pl["gravity"]), 0.1)), 0.6, 2.0),
+	}
+	# materials (indices into terrain_lab.gd SETS)
+	var top := 0                                                  # Ground091 regolith
+	var rock := 8                                                 # Rock035 basalt
+	var steep := 8
+	if proc["ice"] > 0.5:
+		top = 13; rock = 15; steep = 7                            # snow, ice, grey rock on the steepest faces
+	elif proc["wind"] > 0.3:
+		top = 1; rock = 11; steep = 11                            # sand, sandstone
+	elif proc["erosion"] > 0.5:
+		top = 5; rock = 7; steep = 10                             # scree, rock, cliff rock
+	if proc["volcanism"] > 0.4 and proc["ice"] < 0.5:
+		rock = 8                                                  # basalt under it all
+	proc["palette"] = [top, rock, steep]
+	return proc
+
+func _planet_height(x: float, z: float) -> float:
+	var p := _proc
+	var rel: float = p["relief"]
+	var h := 2.0 * _n.get_noise_2d(x, z) * rel
+	if p["erosion"] > 0.0:                                        # ridged ranges
+		var r := 1.0 - absf(_n.get_noise_2d(x * 0.8, z * 0.8))
+		h += float(p["erosion"]) * (22.0 * r * r * r - 7.0) * rel
+	if p["impacts"] > 0.0:
+		for c in [[60.0, 70.0, 26.0], [130.0, 120.0, 14.0], [150.0, 40.0, 8.0], [40.0, 150.0, 10.0], [100.0, 165.0, 5.0], [85.0, 30.0, 4.0], [20.0, 100.0, 6.0], [170.0, 90.0, 9.0]]:
+			h += float(p["impacts"]) * _crater(Vector2(x - c[0], z - c[1]).length(), c[2]) * rel
+	if p["wind"] > 0.0:
+		var w := x + 18.0 * _n.get_noise_2d(x * 0.6, z * 0.6)
+		var ph := fposmod(w / 22.0, 1.0)
+		var dune := (ph / 0.8) if ph < 0.8 else (1.0 - (ph - 0.8) / 0.2)
+		h += float(p["wind"]) * dune * 3.5 * (0.6 + 0.4 * _n2.get_noise_2d(x, z))
+	if p["volcanism"] > 0.0:
+		for c in [[70.0, 80.0, 40.0, 16.0], [150.0, 140.0, 22.0, 9.0]]:
+			var d := Vector2(x - c[0], z - c[1]).length()
+			h += float(p["volcanism"]) * (c[3] * maxf(0.0, 1.0 - d / c[2]) - c[3] * 0.45 * maxf(0.0, 1.0 - d / (c[2] * 0.18))) * rel
+	if p["ice"] > 0.0:
+		var field := smoothstep(0.0, 0.25, _n2.get_noise_2d(x * 0.5 + 40.0, z * 0.5))
+		h += float(p["ice"]) * field * maxf(0.0, 2.6 * (1.0 - _cell.get_noise_2d(x, z) * 1.6))
+	return h
+
+func _planet_carve(x: float, y: float, z: float, h: float) -> float:
+	var out := -INF
+	if _proc["ice"] > 0.4:                                        # crevasses, sparser than the ice prototype's maze
+		var c := absf(_n2.get_noise_2d(x * 0.7, z * 0.18)) * 30.0
+		out = maxf(out, -maxf(c - 1.2 * float(_proc["ice"]), (h - 10.0) - y))
+	if _proc["volcanism"] > 0.3:
+		var f := absf(_n2.get_noise_2d(x * 0.9 + 100.0, z * 0.3)) * 30.0
+		out = maxf(out, -maxf(f - 0.9 * float(_proc["volcanism"]), (h - 5.0) - y))
+	return out
+
 func _get_used_channels_mask() -> int:
 	return (1 << VoxelBuffer.CHANNEL_SDF) | (1 << VoxelBuffer.CHANNEL_INDICES) | (1 << VoxelBuffer.CHANNEL_WEIGHTS)
 
@@ -49,6 +181,8 @@ static func _crater(d: float, r: float) -> float:
 	return maxf(bowl, -0.22 * r) + rim
 
 func _height(x: float, z: float) -> float:
+	if not _proc.is_empty():
+		return _planet_height(x, z)
 	match biome:
 		"moon":
 			var h := 3.0 * _n.get_noise_2d(x, z) + 0.6 * _n2.get_noise_2d(x, z)
@@ -96,10 +230,12 @@ func _height(x: float, z: float) -> float:
 	return 0.0
 
 ## Carving as a proper signed distance (positive = air), combined with max(): crevasses and fissures are slots of a
-## given width and depth around the zero lines of a stretched noise; the cave is a tube where 3D noise is near zero.
+## given width and depth around the zero lines of a stretched noise; the cave is a designed capsule path (_build_cave).
 ## Returns -INF where nothing is carved. (The first version returned a -1 sentinel, which made a discontinuity the
 ## mesher turned into shards.)
 func _carve(x: float, y: float, z: float, h: float) -> float:
+	if not _proc.is_empty():
+		return _planet_carve(x, y, z, h)
 	match biome:
 		"ice":
 			var c := absf(_n2.get_noise_2d(x * 1.4, z * 0.35)) * 30.0        # ~metres to the crack line
@@ -109,13 +245,14 @@ func _carve(x: float, y: float, z: float, h: float) -> float:
 			var f := absf(_n2.get_noise_2d(x * 0.9 + 100.0, z * 0.3)) * 30.0
 			return -maxf(f - 0.9, (h - 5.0) - y)
 		"mountain":
-			var v := absf(_cave.get_noise_3d(x, y * 1.6, z)) * 22.0             # ~metres from the tube's centre
-			return -(v - 2.2)
+			return -_cave_sdf(Vector3(x, y, z))
 	return -INF
 
 # --- materials (indices into terrain_lab.gd SETS) -------------------------------------------------------------
 ## Returns [top material, rock under it, steep-face material].
 func _palette() -> Array:
+	if not _proc.is_empty():
+		return _proc["palette"]
 	match biome:
 		"moon": return [0, 8, 8]            # Ground091 regolith, Rock035 basalt
 		"desert": return [1, 11, 11]        # Ground097 sand, Rock061 sandstone
