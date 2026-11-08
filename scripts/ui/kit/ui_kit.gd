@@ -233,7 +233,11 @@ static func title_in(l: Label, from_spacing: int = 26) -> void:
 static func stagger(box: Control) -> void:
 	var rows: Array = []
 	for ch in box.get_children():
-		if ch is Control and (ch as Control).visible and not ch.is_queued_for_deletion():
+		# Rows freed with queue_free() stay in the container until the frame ends; take them out now so the
+		# container lays out only the new rows.
+		if ch.is_queued_for_deletion():
+			box.remove_child(ch)
+		elif ch is Control and (ch as Control).visible:
 			rows.append(ch)
 	UiMotion.animate(rows.slice(0, 16), {"opacity": [0.0, 1.0], "y": [12, 0]}, {"duration": 0.55, "delay": UiMotion.stagger(0.035), "easing": "outExpo"})
 

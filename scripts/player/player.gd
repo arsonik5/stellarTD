@@ -1307,9 +1307,8 @@ func _place_pipe(item: Item, start: Vector3, end: Vector3) -> bool:
 	var recipe: Recipe = build_ui.get_selected_recipe()
 	if recipe == null:
 		return false
-	for i in recipe.input_ids.size():
-		if Inventory.get_count(recipe.input_ids[i]) < recipe.input_amounts[i]:
-			return false
+	if not build_ui.can_pay(recipe):
+		return false
 	var is_junction := item.id != "vacuum_pipe"
 	# Plain pipes are laid on their centreline (0.45 m above the build plane). A pipe started on the end of an
 	# existing one continues from that pipe's centreline; if it turns, a knee takes one leg from each.
@@ -1319,8 +1318,7 @@ func _place_pipe(item: Item, start: Vector3, end: Vector3) -> bool:
 	var leg := 0.0 if is_junction else PipeSegment.knee_leg_for(upstream, c_start, c_end)
 	if leg < 0.0:
 		return false                                     # too sharp to bend, or no room for the bend
-	for i in recipe.input_ids.size():
-		Inventory.try_remove(recipe.input_ids[i], recipe.input_amounts[i])
+	build_ui.pay(recipe)
 	var instance: Node3D = item.building_scene.instantiate()
 	get_tree().current_scene.add_child(instance)
 	if instance is PipeSegment and not is_junction:
@@ -1414,11 +1412,8 @@ func _place_building() -> void:
 		UiSound.play("deny", 1.0, 0.25)
 		return
 
-	for i in recipe.input_ids.size():
-		if Inventory.get_count(recipe.input_ids[i]) < recipe.input_amounts[i]:
-			return
-	for i in recipe.input_ids.size():
-		Inventory.try_remove(recipe.input_ids[i], recipe.input_amounts[i])
+	if not build_ui.pay(recipe):                     # a carried copy first, else the materials
+		return
 
 	var instance: Node3D = item.building_scene.instantiate()
 	get_tree().current_scene.add_child(instance)

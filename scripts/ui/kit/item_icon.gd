@@ -74,5 +74,7 @@ func _glyph(r: Rect2) -> void:
 		initials = (item.display_name if item != null else item_id).substr(0, 2).to_upper()
 	var font := get_theme_font("font", "TitleLabel")
 	var fs := int(s * 0.7)
+	if fs < 1:                                          # not sized yet
+		return
 	var w := font.get_string_size(initials, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	draw_string(font, c + Vector2(-w * 0.5, fs * 0.35), initials, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)

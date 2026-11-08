@@ -134,9 +134,33 @@ func _show_tab(t: String) -> void:
 	_refresh()
 
 func _affordable(r: Recipe) -> bool:
+	return _carried(r) > 0 or _has_inputs(r)
+
+## Copies of this building already in the inventory (crafted, picked up, given by a command). Placing uses one of
+## these first, for free; only when there are none does it cost the recipe's materials.
+func _carried(r: Recipe) -> int:
+	return Inventory.get_count(r.output_id)
+
+func _has_inputs(r: Recipe) -> bool:
 	for k in r.input_ids.size():
 		if Inventory.get_count(r.input_ids[k]) < r.input_amounts[k]:
 			return false
+	return true
+
+## For the placer: true if this recipe can be placed now.
+func can_pay(r: Recipe) -> bool:
+	return r != null and _affordable(r)
+
+## For the placer: take one carried copy, or else the materials. False (nothing taken) if neither is there.
+func pay(r: Recipe) -> bool:
+	if r == null:
+		return false
+	if _carried(r) > 0:
+		return Inventory.try_remove(r.output_id, 1)
+	if not _has_inputs(r):
+		return false
+	for k in r.input_ids.size():
+		Inventory.try_remove(r.input_ids[k], r.input_amounts[k])
 	return true
 
 func _card(i: int, r: Recipe) -> Button:
@@ -198,7 +222,9 @@ func _refresh() -> void:
 		b.modulate = Color(1, 1, 1, 1) if ok else Color(1, 1, 1, 0.55)
 		var cost := b.find_child("Cost", true, false) as Label
 		if cost != null:
-			cost.theme_type_variation = "DimLabel" if ok else "WarnLabel"
+			var carried := _carried(BUILDABLE_RECIPES[i])
+			cost.text = "%d in inventory" % carried if carried > 0 else _cost_short(BUILDABLE_RECIPES[i])
+			cost.theme_type_variation = ("AccentLabel" if carried > 0 else "DimLabel") if ok else "WarnLabel"
 	_refresh_detail()
 
 func _refresh_detail() -> void:
@@ -220,7 +246,11 @@ func _refresh_detail() -> void:
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.custom_minimum_size.x = 230
 	_detail.add_child(d)
-	_detail.add_child(UiKit.section("Cost"))
+	var carried := _carried(r)
+	if carried > 0:
+		_detail.add_child(UiKit.section("In inventory"))
+		_detail.add_child(UiKit.label("%d ready to place, no materials used" % carried, "AccentLabel"))
+	_detail.add_child(UiKit.section("Cost" if carried == 0 else "Cost once those are used"))
 	for k in r.input_ids.size():
 		var it := Inventory.get_item_def(r.input_ids[k])
 		var have := Inventory.get_count(r.input_ids[k])
