@@ -81,7 +81,7 @@ TRAITS_DEF = {
     "volcanic": dict(name="Volcanic", base=0.75, temp=(0.3, 1.0), tsoft=0.2, air=(0.0, 100.0), asoft=1.0,
                      requires=["geologically_active"], spatial="regional", mode="replace", hue=30, chroma=0.03,
                      accent=False, emissive=True, excludes=["life"], affinity={"sulfur": 1.7, "crystalline": 1.1},
-                     mats={"surface": "basalt_dark", "surface_alt": "rock_dark_rough", "regional": "basalt_dark",
+                     mats={"surface": "regolith_dark", "surface_alt": "rock_dark_rough", "regional": "regolith_dark",
                            "cliff": "basalt_black", "bedrock": "basalt_black", "strata_a": "basalt_dark",
                            "strata_b": "obsidian", "fresh_cut": "basalt_black"},
                      lines=["columnar_basalt", "vent_cones", "lava_tubes", "flow_fronts", "stain_rings", "pebbles"],

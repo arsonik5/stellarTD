@@ -436,7 +436,7 @@ static func build(body: CelestialBody, voxel_scale: float,
 	if cliff_rock and not ridge.is_empty():
 		cliff = _build_slope_mask(f, body, x, y, z, norm, profile, ridge)
 
-	_build_materials(f, body, norm, sdf, profile, cliff, x, y, z)
+	_build_materials(f, body, norm, sdf, profile, cliff, x, y, z, masks, eroded)
 
 	var result: Dictionary = g.compile()
 	if not result.get("success", false):
@@ -1801,8 +1801,15 @@ static func _biome_weight(f: VoxelGraphFunction, temp: Array, rough: Array,
 ## live in a graph at all.
 static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 		norm: int, sdf: Array, profile: PlanetProfile, cliff: Array,
-		x: int, y: int, z: int) -> void:
+		x: int, y: int, z: int, masks: Dictionary = {}, eroded: Image = null) -> void:
 	var depth := _mul(f, sdf, _const(f, -1.0, Vector2(900, 560)), Vector2(950, 500))
+	# A planet with traits (reports/AAA voxel terrain fidelity.md) gets its ground from trait rules; the biome path
+	# below stays for bodies that still use hand-authored biomes.
+	var mix := TraitMixer.of(body)
+	if not mix.is_empty():
+		_build_trait_materials(f, body, mix, norm, depth, profile, cliff, x, y, z, masks, eroded)
+		_build_ores(f, body, norm, depth, profile, x, y, z)
+		return
 
 	# Bedrock takes over below the topsoil band; biome ground fades out with it.
 	var bed := _clamp01(f,
@@ -1899,6 +1906,12 @@ static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 				_cutoff(f, w, Vector2(1540, row)), Vector2(1600, row))
 			row += 300.0
 
+	_build_ores(f, body, norm, depth, profile, x, y, z)
+
+## Ore deposits: one weight layer each (shared by the biome and the trait material paths).
+static func _build_ores(f: VoxelGraphFunction, body: CelestialBody, norm: int, depth: Array,
+		profile: PlanetProfile, x: int, y: int, z: int) -> void:
+	var row := 1720.0
 	# --- ore deposits: one weight layer each -------------------------------
 	#
 	# Modelled on Space Engineers rather than on veins, because the vein model
@@ -1947,7 +1960,6 @@ static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 	if site.is_empty():
 		return
 
-	row = 1720.0
 	var n_ores := ores.size()
 	for i in n_ores:
 		var ore = ores[i]
@@ -1969,6 +1981,125 @@ static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 			in_depth, Vector2(1320, row))
 		_weight_out(f, ore.material_index, w, Vector2(1600, row))
 		row += 300.0
+
+## Ground materials from the planet's TRAITS (stage 3 of reports/AAA voxel terrain fidelity.md). Every rule reads a
+## physical signal, so each material sits where the process that makes it would put it:
+##   cliff rock (11)      steep faces: the baked slope mask (or the procedural cliff mask)
+##   fine surface (0)     where fines settle: the deposition record ("dust")
+##   alternate (8)        open, wind- or impact-worked ground between
+##   scree (10)           talus aprons below slopes: the thermal-erosion talus mask
+##   secondary traits     (9, 14) claim regions by their spatial mode, sized by their weight, replacing the ground
+##   strata (13) / bedrock (12)  below the topsoil: warped depth bands alternating, so a dig shows layers
+## Slot roles are filled by PaletteBuilder from the same mix, so generator and palette always agree.
+const STRATA_MIN_M := 2.5
+const STRATA_MAX_M := 6.5
+
+static func _build_trait_materials(f: VoxelGraphFunction, body: CelestialBody, mix: Array, norm: int,
+		depth: Array, profile: PlanetProfile, cliff: Array, x: int, y: int, z: int,
+		masks: Dictionary, eroded: Image) -> void:
+	var P := Vector2(900, 2600)
+	var bed := _clamp01(f,
+		_mul(f, _sub(f, depth, _const(f, TOPSOIL_DEPTH, P), P), _const(f, 1.0 / BEDROCK_FADE, P), P), P)
+	var surface := _sub(f, _const(f, 1.0, P), bed, P)
+
+	# --- steepness -> cliff rock
+	var slope01 := _build_landform_slope(f, body, x, y, z, profile, eroded, masks, P + Vector2(0, 200))
+	var cliffw: Array = []
+	if not slope01.is_empty():
+		cliffw = _smoothstep(f, slope01, 0.5, 0.92, P + Vector2(300, 200))
+	elif not cliff.is_empty():
+		cliffw = cliff
+	var ground := surface
+	if not cliffw.is_empty():
+		_weight_out(f, VoxelMaterials.CLIFF_ROCK, _cutoff(f, _mul(f, cliffw, surface, P), P), P + Vector2(600, 200))
+		ground = _mul(f, surface, _sub(f, _const(f, 1.0, P), cliffw, P), P)
+
+	# --- secondary traits claim regions (replace mode), each into its own slot
+	var free := _const(f, 1.0, P)
+	var slots := [PaletteBuilder.SECONDARY_1, PaletteBuilder.SECONDARY_2]
+	var si := 0
+	for i in range(1, mix.size()):
+		if si >= slots.size():
+			break
+		var t: PlanetTrait = mix[i].trait
+		if t.material_mode != "replace" or (t.material("regional") == null and t.material("surface") == null):
+			continue
+		var region := _trait_region(f, body, t, float(mix[i].weight), norm, masks, x, y, z, P + Vector2(0, 600 + si * 400))
+		if region.is_empty():
+			continue
+		_weight_out(f, slots[si], _cutoff(f, _mul(f, ground, region, P), P), P + Vector2(600, 600 + si * 400))
+		free = _mul(f, free, _sub(f, _const(f, 1.0, P), region, P), P)
+		si += 1
+	var base := _mul(f, ground, free, P + Vector2(300, 1400))
+
+	# --- the dominant trait's ground: fine where fines settle, scree on talus, worked ground between
+	var dust := _dust_field(f, body, x, y, z, masks, P + Vector2(0, 1500))
+	var talus: Array = []
+	var tal_img: Image = masks.get("talus")
+	if tal_img != null:
+		var tm := _sample_mask(f, x, y, z, tal_img, body.radius, P + Vector2(0, 1700))
+		if not tm.is_empty():
+			talus = _smoothstep(f, tm, 0.12, 0.45, P + Vector2(200, 1700))
+	if dust.is_empty():
+		# no erosion record: noise decides, at hundred-metre patches
+		var n := _noise_on(f, norm, body.seed + 520, profile.continent_freq * 6.0, P + Vector2(0, 1500))
+		dust = _smoothstep(f, _to01(f, n, P), 0.35, 0.65, P) if not n.is_empty() else _const(f, 0.6, P)
+	var not_dust := _sub(f, _const(f, 1.0, P), dust, P)
+	_weight_out(f, VoxelMaterials.STONE, _cutoff(f, _mul(f, base, dust, P), P), P + Vector2(600, 1500))
+	if talus.is_empty():
+		_weight_out(f, PaletteBuilder.SURFACE_ALT, _cutoff(f, _mul(f, base, not_dust, P), P), P + Vector2(600, 1600))
+	else:
+		var open := _mul(f, not_dust, _sub(f, _const(f, 1.0, P), talus, P), P)
+		_weight_out(f, PaletteBuilder.SURFACE_ALT, _cutoff(f, _mul(f, base, open, P), P), P + Vector2(600, 1600))
+		_weight_out(f, PaletteBuilder.SCREE, _cutoff(f, _mul(f, base, _mul(f, not_dust, talus, P), P), P), P + Vector2(600, 1700))
+
+	# --- below the topsoil: strata bands alternating with bedrock, warped so they wander like real beds
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([body.seed, "strata"])
+	var thickness := rng.randf_range(STRATA_MIN_M, STRATA_MAX_M)
+	var warp := _noise_on(f, norm, body.seed + 610, profile.continent_freq * 3.0, P + Vector2(0, 1900))
+	var phase := _mul(f, depth, _const(f, TAU / thickness, P), P)
+	if not warp.is_empty():
+		phase = _add(f, phase, _mul(f, warp, _const(f, 2.2, P), P), P)
+	var sn := f.create_node(VoxelGraphFunction.NODE_SIN, P + Vector2(300, 1900))
+	f.add_connection(phase[0], phase[1], sn, 0)
+	var band := _smoothstep(f, [sn, 0], -0.3, 0.3, P + Vector2(400, 1900))
+	_weight_out(f, PaletteBuilder.STRATA_A, _cutoff(f, _mul(f, bed, band, P), P), P + Vector2(600, 1900))
+	_weight_out(f, VoxelMaterials.BEDROCK,
+		_cutoff(f, _mul(f, bed, _sub(f, _const(f, 1.0, P), band, P), P), P), P + Vector2(600, 2000))
+
+## Where a secondary trait shows, 0..1, by its spatial mode. Coverage follows its weight (a 0.3 trait claims roughly a
+## third of the open ground), with soft edges so the material height blend shapes the border.
+static func _trait_region(f: VoxelGraphFunction, body: CelestialBody, t: PlanetTrait, weight: float, norm: int,
+		masks: Dictionary, x: int, y: int, z: int, pos: Vector2) -> Array:
+	var cov := clampf(weight * 1.1, 0.08, 0.6)
+	var seed_t := body.seed + 800 + String(t.id).hash() % 1000
+	var cut := 1.0 - cov
+	var patches := _noise_on(f, norm, seed_t, 9.0, pos, FRACTAL_FBM, 3)
+	if patches.is_empty():
+		return []
+	var p01 := _to01(f, patches, pos)
+	match t.spatial:
+		"lowland", "crater_floor", "cold_trap":
+			# where fines and ice collect: the deposition record, broken up by patches
+			var dust := _dust_field(f, body, x, y, z, masks, pos + Vector2(0, 120))
+			if not dust.is_empty():
+				p01 = _mul(f, _add(f, p01, dust, pos), _const(f, 0.5, pos), pos)
+		"highland":
+			var wear := _sample_mask(f, x, y, z, masks.get("wear"), body.radius, pos + Vector2(0, 120))
+			if not wear.is_empty():
+				p01 = _mul(f, _add(f, p01, _smoothstep(f, wear, 0.05, 0.4, pos), pos), _const(f, 0.5, pos), pos)
+		"polar":
+			var ny := f.create_node(VoxelGraphFunction.NODE_ABS, pos + Vector2(0, 200))
+			f.add_connection(norm, 1, ny, 0)
+			p01 = _mul(f, _add(f, p01, [ny, 0], pos), _const(f, 0.5, pos), pos)
+		"fault":
+			# narrow ridged lines: 1 - |noise| sharpened
+			var lines := _noise_on(f, norm, seed_t + 7, 14.0, pos + Vector2(0, 200))
+			if not lines.is_empty():
+				p01 = _sub(f, _const(f, 1.0, pos), _abs(f, lines, pos), pos)
+				cut = 1.0 - cov * 0.5
+	return _smoothstep(f, p01, cut - 0.06, cut + 0.06, pos + Vector2(200, 0))
 
 ## Single-channel float copy of a `PlanetHeightmap`'s image.
 ##

@@ -116,6 +116,9 @@ const ITEM_BY_MATERIAL := {
 	VoxelMaterials.STONE_CRYSTAL_FIELDS: "stone",
 	VoxelMaterials.CLIFF_ROCK: "stone",
 	VoxelMaterials.BEDROCK: "stone",
+	13: "stone",                     # strata band (PaletteBuilder.STRATA_A)
+	14: "stone",                     # second secondary trait's ground / second strata (SECONDARY_2)
+	15: "stone",                     # fresh cut painted by the drill (FRESH_CUT)
 	VoxelMaterials.IRON_ORE: "ore_a",
 	VoxelMaterials.COPPER_ORE: "ore_b",
 	VoxelMaterials.SULFUR_ORE: "sulfur",
@@ -142,6 +145,20 @@ static func strength_for(material_index: int) -> float:
 ## Reads go through two bulk copy() calls rather than per-voxel get_voxel_f():
 ## each tool read on VoxelLodTerrain takes its own lock, and ~700 of them per
 ## bite measured 3-19 ms - a visible hitch at 20 bites a second.
+## Fresh cut (stage 3, SE1's "DamagedMaterial"): the bore's walls get the planet's fresh-cut material (palette slot 15:
+## freshly broken rock of the dominant trait) blended in at partial strength, so the strata and ores still read
+## through it. Applied a little past the bite so the new wall is covered, not just the removed volume.
+const FRESH_CUT_INDEX := 15
+const FRESH_CUT_OPACITY := 0.45
+
+static func _paint_fresh_cut(tool: VoxelTool, center: Vector3, radius: float) -> void:
+	tool.set_mode(VoxelTool.MODE_TEXTURE_PAINT)
+	tool.set_texture_index(FRESH_CUT_INDEX)
+	tool.set_texture_opacity(FRESH_CUT_OPACITY)
+	tool.set_texture_falloff(0.6)
+	tool.do_sphere(center, radius + 0.6)
+	tool.set_mode(VoxelTool.MODE_REMOVE)
+
 static func bite(tool: VoxelTool, center: Vector3, radius: float, strength: float) -> Dictionary:
 	var reach := radius + 1.0
 	var lo := Vector3i((center - Vector3.ONE * reach).floor())
@@ -156,6 +173,7 @@ static func bite(tool: VoxelTool, center: Vector3, radius: float, strength: floa
 	tool.set_sdf_strength(strength)
 	tool.do_sphere(center, radius)
 	tool.set_sdf_strength(1.0)
+	_paint_fresh_cut(tool, center, radius)
 
 	var after := _buffer(size)
 	tool.copy(lo, after, 1 << VoxelBuffer.CHANNEL_SDF, false)

@@ -3,18 +3,17 @@ extends RefCounted
 
 ## Trait mix -> the planet's ground materials in the 16 MIXEL4 slots, plus a colour-harmony report.
 ##
-## Slot roles (VoxelMaterials): the dominant trait owns the base ground, secondary traits get the regional slots by
-## weight, ores and the construction block keep their own styles.
-##   0  STONE                surface of the dominant trait
-##   8  STONE_FROZEN         regional slot 1   (strongest secondary trait, else the dominant's surface_alt)
-##   9  STONE_SULFUR_FLATS   regional slot 2
-##   10 STONE_CRYSTAL_FIELDS regional slot 3
-##   11 CLIFF_ROCK           cliff rock of the dominant trait
-##   12 BEDROCK              bedrock (dominant)
-##   13 STRATA_A, 14 STRATA_B  depth bands (stage 3: what a dig reveals)
-##   15 FRESH_CUT            what the drill leaves on a cut face (stage 3)
-## The old slot names come from when those slots were hard-wired biomes; the role is what matters now.
-##
+## Slot roles (the graph generator writes the same roles: PlanetGraphGenerator._build_trait_materials):
+##   0  STONE        fine surface (dominant trait), where fines settle
+##   8  SURFACE_ALT  open, worked ground (dominant)
+##   9  SECONDARY_1  the strongest secondary trait's ground, in its regions
+##   10 SCREE        talus / scree aprons (the dominant trait's coarse "regional" material)
+##   11 CLIFF_ROCK   steep faces (dominant)
+##   12 BEDROCK      deep rock, alternating with strata (dominant)
+##   13 STRATA_A     strata bands below the topsoil (dominant)
+##   14 SECONDARY_2  the second secondary trait's ground (else the dominant's second strata)
+##   15 FRESH_CUT    what the drill leaves on a cut face
+## Ores (1, 2, 4, 5, 6, 7) and the construction block (3) keep their own styles.
 ## Harmony (reports/AAA voxel terrain fidelity.md, "Beauty is a separate goal"): colours are judged in OKLCH, the
 ## perceptual space where equal steps look equal. Rules:
 ##   - one saturation budget: only ACCENT traits may exceed BASE_CHROMA_MAX; at most one accent per planet
@@ -22,10 +21,13 @@ extends RefCounted
 ##   - accent hue analogous (within 45 deg) or complementary (180 +- 35) to the base hue, when the base has a hue
 ##   - the swatch at 64 px must show a clear base, mid and accent (lightness / chroma steps)
 
+const SURFACE_ALT := 8
+const SECONDARY_1 := 9
+const SCREE := 10
 const STRATA_A := 13
-const STRATA_B := 14
+const SECONDARY_2 := 14
 const FRESH_CUT := 15
-const REGIONAL := [8, 9, 10]
+const REGIONAL := [9, 14]
 const BASE_CHROMA_MAX := 0.06
 const BASE_LIGHTNESS_SPREAD := 0.28
 
@@ -47,24 +49,23 @@ static func build(mix: Array) -> Dictionary:
 			styles[idx] = s
 			roles[idx] = "%s/%s" % [t.id, used]
 	put.call(VoxelMaterials.STONE, dom, "surface", [])
+	put.call(SURFACE_ALT, dom, "surface_alt", ["surface"])
+	put.call(SCREE, dom, "regional", ["surface_alt", "surface"])
 	put.call(VoxelMaterials.CLIFF_ROCK, dom, "cliff", ["bedrock", "surface"])
 	put.call(VoxelMaterials.BEDROCK, dom, "bedrock", ["cliff", "surface"])
 	put.call(STRATA_A, dom, "strata_a", ["bedrock", "cliff"])
-	put.call(STRATA_B, dom, "strata_b", ["strata_a", "cliff"])
 	put.call(FRESH_CUT, dom, "fresh_cut", ["cliff", "bedrock"])
-	# regional slots: secondary traits by weight (their regional material, else their surface), then the dominant's
-	# alternate surface so a single-trait planet still has variety
+	# secondary traits' ground, in the order the generator gives them regions (replace-mode traits with a material)
 	var r := 0
 	for i in range(1, mix.size()):
 		if r >= REGIONAL.size():
 			break
 		var t: PlanetTrait = mix[i].trait
-		if t.material("regional") != null or t.material("surface") != null:
+		if t.material_mode == "replace" and (t.material("regional") != null or t.material("surface") != null):
 			put.call(REGIONAL[r], t, "regional", ["surface"])
 			r += 1
-	while r < REGIONAL.size():
-		put.call(REGIONAL[r], dom, "surface_alt" if r == 0 else "regional", ["surface"])
-		r += 1
+	if r < 2:
+		put.call(SECONDARY_2, dom, "strata_b", ["strata_a", "cliff"])
 	return {"styles": styles, "roles": roles, "report": harmony(mix, styles)}
 
 # --- harmony ---------------------------------------------------------------------------------------------------------
