@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="SurfaceStyle" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/surface_style.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Regolith pebbly"
+texture_name = "gravel043"
+albedo_tint = Color(1.0, 1.0, 1.02, 1)
+roughness_scale = 1.35
+metallic = 0.0
+specular = 0.4
+normal_strength = 1.2
+texture_scale_m = 2.0
+saturation = 0.35

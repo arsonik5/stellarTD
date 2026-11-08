@@ -15,6 +15,8 @@ const OUT := "res://art_src/ingame"
 const VIEWS := [["eye2", 1.7, 30.0], ["m10", 10.0, 35.0], ["m50", 50.0, 25.0], ["m500", 500.0, 20.0], ["orbit", -1.0, 0.0]]
 var tag := "s0"
 var sun_deg := 25.0
+var debug := 0
+var only := ""
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -22,6 +24,10 @@ func _ready() -> void:
 			tag = a.substr(4)
 		elif a.begins_with("sun="):
 			sun_deg = float(a.substr(4))
+		elif a.begins_with("debug="):
+			debug = int(a.substr(6))                 # terrain shader debug_view (2 = material, 7 = ladder step)
+		elif a.begins_with("only="):
+			only = a.substr(5)
 	var player: Node3D = null
 	for i in 900:
 		await get_tree().create_timer(0.2).timeout
@@ -29,7 +35,12 @@ func _ready() -> void:
 		if player != null and player.is_spawn_resolved():
 			break
 	await get_tree().create_timer(3.0).timeout
-	var planet := get_tree().get_first_node_in_group("planet") as Node3D
+	# the planet under the player (the "planet" group holds every body; the first may be a moon)
+	var planet: Node3D = null
+	for n in get_tree().get_nodes_in_group("planet"):
+		var p3 := n as Node3D
+		if planet == null or p3.global_position.distance_to(player.global_position) < planet.global_position.distance_to(player.global_position):
+			planet = p3
 	var star := get_tree().current_scene.find_child("Star", true, false) as Node3D
 	var ground: Vector3 = player.global_position
 	var up := PlanetPhysics.get_up(ground)
@@ -51,8 +62,14 @@ func _ready() -> void:
 	var vp := get_viewport().get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(vp, true)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	if debug != 0:
+		var terrain = planet.get("terrain")
+		if terrain != null and terrain.material is ShaderMaterial:
+			(terrain.material as ShaderMaterial).set_shader_parameter("debug_view", debug)
 	for v in VIEWS:
 		var name: String = v[0]
+		if only != "" and name != only:
+			continue
 		var h: float = v[1]
 		if h > 0.0:
 			var eye := ground + up * h - north * h * 0.2

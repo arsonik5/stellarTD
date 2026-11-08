@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="PlanetTrait" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/planet_trait.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/library/basalt_black.tres" id="m2"]
+[ext_resource type="Resource" path="res://data/surfaces/library/basalt_dark.tres" id="m3"]
+[ext_resource type="Resource" path="res://data/surfaces/library/obsidian.tres" id="m4"]
+[ext_resource type="Resource" path="res://data/surfaces/library/rock_dark_rough.tres" id="m5"]
+
+[resource]
+script = ExtResource("1")
+id = &"volcanic"
+display_name = "Volcanic"
+base_weight = 0.75
+temperature_range = Vector2(0.3, 1.0)
+temperature_soft = 0.2
+air_range = Vector2(0.0, 100.0)
+air_soft = 1.0
+requires_facts = Array[StringName]([&"geologically_active"])
+excludes = Array[StringName]([&"life"])
+affinity = {
+"sulfur": 1.7,
+"crystalline": 1.1
+}
+spatial = "regional"
+material_mode = "replace"
+materials = {
+"bedrock": ExtResource("m2"),
+"cliff": ExtResource("m2"),
+"fresh_cut": ExtResource("m2"),
+"regional": ExtResource("m3"),
+"strata_a": ExtResource("m3"),
+"strata_b": ExtResource("m4"),
+"surface": ExtResource("m3"),
+"surface_alt": ExtResource("m5")
+}
+hue = 30
+chroma_max = 0.03
+accent = false
+emissive = true
+asset_lines = Array[StringName]([&"columnar_basalt", &"vent_cones", &"lava_tubes", &"flow_fronts", &"stain_rings", &"pebbles"])
+landmarks = Array[StringName]([&"basalt_cliff", &"caldera"])

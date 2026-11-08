@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 
 CACHE = os.path.join(os.path.expanduser("~"), ".stellar-assets", "scans")
-OUT = "data/textures/surfaces"
+OUT = "data/textures/surfaces/scan"          # git-ignored: rebuilt by tools/setup_surfaces.sh
 SIZE = 2048
 AO_FLOOR = 0.35            # an AO of 0 claims a crevice is sealed from the sky; scans bottom out in tiny pits
 

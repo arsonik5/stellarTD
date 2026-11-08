@@ -692,6 +692,8 @@ func _build_surface_material() -> ShaderMaterial:
 	var palette: Dictionary = SurfacePalette.build(body)
 	mat.set_shader_parameter("pal_tint_rough", palette["tint_rough"])
 	mat.set_shader_parameter("pal_extra", palette["extra"])
+	mat.set_shader_parameter("pal_grade", palette["grade"])
+	mat.set_shader_parameter("pal_far", palette["far"])
 	mat.set_shader_parameter("tex_albedo", palette["albedo_array"])
 	mat.set_shader_parameter("tex_normal", palette["normal_array"])
 	if TerrainLog.enabled:

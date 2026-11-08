@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="PlanetTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/planet_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"life"
+display_name = "Living"
+base_weight = 0.6
+temperature_range = Vector2(0.3, 0.7)
+temperature_soft = 0.12
+air_range = Vector2(0.2, 5.0)
+air_soft = 0.2
+requires_facts = Array[StringName]([&"water"])
+excludes = Array[StringName]([&"airless"])
+affinity = {}
+spatial = "lowland"
+material_mode = "overlay"
+materials = {}
+hue = 130
+chroma_max = 0.1
+accent = true
+emissive = false
+asset_lines = Array[StringName]([&"lichen_crust", &"microbial_mats", &"low_cover", &"shrubs", &"alien_flora"])
+landmarks = Array[StringName]([&"great_tree"])

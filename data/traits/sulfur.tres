@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="PlanetTrait" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/planet_trait.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/library/sulfur_crust.tres" id="m2"]
+
+[resource]
+script = ExtResource("1")
+id = &"sulfur"
+display_name = "Sulfurous"
+base_weight = 0.5
+temperature_range = Vector2(0.3, 0.95)
+temperature_soft = 0.2
+air_range = Vector2(0.0, 100.0)
+air_soft = 1.0
+requires_facts = Array[StringName]([&"geologically_active"])
+excludes = Array[StringName]([&"life"])
+affinity = {}
+spatial = "fault"
+material_mode = "replace"
+materials = {
+"regional": ExtResource("m2"),
+"surface": ExtResource("m2")
+}
+hue = 95
+chroma_max = 0.12
+accent = true
+emissive = false
+asset_lines = Array[StringName]([&"fumaroles", &"mineral_crusts", &"stain_rings"])
+landmarks = Array[StringName]([&"sulfur_spring"])

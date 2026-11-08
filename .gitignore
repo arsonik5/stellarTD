@@ -6,3 +6,7 @@
 art_src/terrain_lab/cc0/*/
 art_src/terrain_lab/baked/
 art_src/terrain_lab/shots/
+
+# photoscan-derived terrain sets and BC7 layers: ~750 MB, rebuilt by tools/setup_surfaces.sh
+data/textures/surfaces/scan/
+data/textures/surfaces/bc7/

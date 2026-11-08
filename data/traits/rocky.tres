@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="PlanetTrait" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/planet_trait.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/library/rock_mountain.tres" id="m2"]
+[ext_resource type="Resource" path="res://data/surfaces/library/rock_rough.tres" id="m3"]
+[ext_resource type="Resource" path="res://data/surfaces/library/rock_face.tres" id="m4"]
+[ext_resource type="Resource" path="res://data/surfaces/library/riverbed_rock.tres" id="m5"]
+[ext_resource type="Resource" path="res://data/surfaces/library/rock_cracked.tres" id="m6"]
+[ext_resource type="Resource" path="res://data/surfaces/library/gravel_grey.tres" id="m7"]
+[ext_resource type="Resource" path="res://data/surfaces/library/pebbles_light.tres" id="m8"]
+
+[resource]
+script = ExtResource("1")
+id = &"rocky"
+display_name = "Barren rock"
+base_weight = 1.0
+temperature_range = Vector2(0.15, 0.8)
+temperature_soft = 0.2
+air_range = Vector2(0.0, 2.0)
+air_soft = 0.5
+requires_facts = Array[StringName]([])
+excludes = Array[StringName]([])
+affinity = {
+"desert": 1.3,
+"volcanic": 1.1
+}
+spatial = "global"
+material_mode = "replace"
+materials = {
+"bedrock": ExtResource("m2"),
+"cliff": ExtResource("m3"),
+"fresh_cut": ExtResource("m4"),
+"regional": ExtResource("m5"),
+"strata_a": ExtResource("m4"),
+"strata_b": ExtResource("m6"),
+"surface": ExtResource("m7"),
+"surface_alt": ExtResource("m8")
+}
+hue = 60
+chroma_max = 0.025
+accent = false
+emissive = false
+asset_lines = Array[StringName]([&"boulder_fields", &"talus_aprons", &"outcrops", &"strata_ledges", &"pebbles", &"gravel_patches", &"cracks", &"dig_rubble"])
+landmarks = Array[StringName]([&"mesa", &"outcrop_spire"])

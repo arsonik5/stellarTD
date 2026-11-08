@@ -33,6 +33,9 @@ extends Resource
 ## that reads as wet.
 @export_range(0.1, 1.5, 0.01) var roughness_scale: float = 1.0
 
+## 1 = the scan's own colour, 0 = grey. Lets a sandy beige scan become grey lunar regolith without a new texture.
+@export_range(0.0, 2.0, 0.01) var saturation: float = 1.0
+
 @export_group("Response")
 ## 0 for every natural rock and mineral. A metal reflects its own colour and has
 ## NO diffuse term at all, which is a big enough change that a wrong value reads
@@ -53,6 +56,32 @@ extends Resource
 ## planet radius - a constant that only works at one body size is the bug this
 ## project keeps re-learning.
 @export_range(0.25, 64.0, 0.05) var texture_scale_m: float = 4.0
+
+@export_group("Blending")
+## How much this material's height map decides contested edges against its neighbours (shader height blend). Above 1
+## it pushes through others (rock through dust); below 1 it settles into hollows (dust, snow).
+@export_range(0.0, 3.0, 0.01) var height_blend_scale: float = 1.0
+## Added to its height in the blend: + stands on top (boulders, ice), - lies under (fine dust).
+@export_range(-1.0, 1.0, 0.01) var height_offset: float = 0.0
+
+## Packed for the shader: x = saturation - 1, y = height blend scale - 1, z = height offset (zeros = unchanged).
+func grade_params() -> Plane:
+	return Plane(saturation - 1.0, height_blend_scale - 1.0, height_offset, 0.0)
+
+## The colour this material reads as from far away (linear): its scan's mean colour (tools/pack_surface_set.py
+## writes it next to the maps) with saturation and tint applied. a = 0 when unknown (the shader keeps sampling).
+func far_colour() -> Plane:
+	var p := SurfacePalette.surface_file(texture_name, ".json")
+	if texture_name == "" or not FileAccess.file_exists(p):
+		return Plane(0, 0, 0, 0)
+	var j = JSON.parse_string(FileAccess.get_file_as_string(p))
+	if not (j is Dictionary) or not j.has("far_colour_linear"):
+		return Plane(0, 0, 0, 0)
+	var a: Array = j["far_colour_linear"]
+	var c := Vector3(a[0], a[1], a[2])
+	var lum := c.dot(Vector3(0.299, 0.587, 0.114))
+	c = Vector3(lum, lum, lum).lerp(c, saturation)
+	return Plane(c.x * albedo_tint.r, c.y * albedo_tint.g, c.z * albedo_tint.b, 1.0)
 
 ## Packed for the shader: rgb = albedo tint, a = roughness scale.
 func tint_roughness() -> Plane:

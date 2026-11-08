@@ -16,6 +16,16 @@ extends RefCounted
 
 const SLOTS := 16
 const TEXTURE_DIR := "res://data/textures/surfaces"
+## Photoscan-derived sets (CC0, packed at 2048). Git-ignored and rebuilt by tools/setup_surfaces.sh, because the
+## packed maps are ~430 MB and fully reproducible from the public scans.
+const SCAN_DIR := "res://data/textures/surfaces/scan"
+
+## Path of a set's file (`_alb.png`, `_nrm.png`, `.json`): the scan folder first, then the committed generated sets.
+static func surface_file(texture_name: String, suffix: String) -> String:
+	var p := "%s/%s%s" % [SCAN_DIR, texture_name, suffix]
+	if ResourceLoader.exists(p) or FileAccess.file_exists(p):
+		return p
+	return "%s/%s%s" % [TEXTURE_DIR, texture_name, suffix]
 
 ## Built texture arrays are cached by their layer signature. Two planets sharing
 ## a biome set would otherwise each build and upload their own copy of the same
@@ -75,6 +85,13 @@ static func build(body: CelestialBody) -> Dictionary:
 		for biome: Biome in body.biomes:
 			if biome != null and biome.surface != null:
 				styles[biome.stone_material_index] = biome.surface
+		# trait-driven ground (reports/AAA voxel terrain fidelity.md, stage 1): the planet's trait mix fills the base,
+		# regional, cliff, bedrock, strata and fresh-cut slots; ores and the construction block keep their own
+		var mix := TraitMixer.of(body)
+		if not mix.is_empty():
+			var pal := PaletteBuilder.build(mix)
+			for idx in pal.styles:
+				styles[idx] = pal.styles[idx]
 		for ore: OreType in body.ore_types:
 			if ore != null and ore.surface != null:
 				styles[ore.material_index] = ore.surface
@@ -82,6 +99,8 @@ static func build(body: CelestialBody) -> Dictionary:
 	var fallback := _fallback_style()
 	var tint_rough := PackedVector4Array()
 	var extra := PackedVector4Array()
+	var grade := PackedVector4Array()
+	var far := PackedVector4Array()
 	var names: Array[String] = []
 	var texture_names: Array[String] = []
 
@@ -91,6 +110,10 @@ static func build(body: CelestialBody) -> Dictionary:
 		var ex := style.extra_params()
 		tint_rough.append(Vector4(tr.x, tr.y, tr.z, tr.d))
 		extra.append(Vector4(ex.x, ex.y, ex.z, ex.d))
+		var gr := style.grade_params()
+		grade.append(Vector4(gr.x, gr.y, gr.z, gr.d))
+		var fc := style.far_colour()
+		far.append(Vector4(fc.x, fc.y, fc.z, fc.d))
 		names.append(style.display_name if styles.has(i) else "-")
 		texture_names.append(style.texture_name)
 
@@ -98,6 +121,8 @@ static func build(body: CelestialBody) -> Dictionary:
 	return {
 		"tint_rough": tint_rough,
 		"extra": extra,
+		"grade": grade,
+		"far": far,
 		"albedo_array": arrays["albedo"],
 		"normal_array": arrays["normal"],
 		"names": names,
@@ -114,6 +139,10 @@ static func _build_texture_arrays(texture_names: Array[String]) -> Dictionary:
 	var key := "|".join(texture_names)
 	if _array_cache.has(key):
 		return _array_cache[key]
+	var bc7 := _build_bc7_arrays(texture_names)
+	if not bc7.is_empty():
+		_array_cache[key] = bc7
+		return bc7
 
 	var albedo_images: Array[Image] = []
 	var normal_images: Array[Image] = []
@@ -124,7 +153,7 @@ static func _build_texture_arrays(texture_names: Array[String]) -> Dictionary:
 	for n in texture_names:
 		if n == "":
 			continue
-		var img := _load_image("%s/%s_alb.png" % [TEXTURE_DIR, n])
+		var img := _load_image(surface_file(n, "_alb.png"))
 		if img != null:
 			size = img.get_width()
 			break
@@ -132,9 +161,9 @@ static func _build_texture_arrays(texture_names: Array[String]) -> Dictionary:
 		size = 64
 
 	for n in texture_names:
-		albedo_images.append(_load_layer("%s/%s_alb.png" % [TEXTURE_DIR, n], size,
+		albedo_images.append(_load_layer(surface_file(n, "_alb.png"), size,
 			Color(0.42, 0.42, 0.43, 0.9)))
-		normal_images.append(_load_layer("%s/%s_nrm.png" % [TEXTURE_DIR, n], size,
+		normal_images.append(_load_layer(surface_file(n, "_nrm.png"), size,
 			Color(0.5, 0.5, 1.0, 0.5)))
 
 	var albedo := Texture2DArray.new()
@@ -145,6 +174,35 @@ static func _build_texture_arrays(texture_names: Array[String]) -> Dictionary:
 	var result := {"albedo": albedo, "normal": normal}
 	_array_cache[key] = result
 	return result
+
+## GPU-ready path: every layer pre-compressed to BC7 with mips by scripts/dev/compress_surfaces.gd (2048 px, ~5.6 MiB a
+## map instead of ~22 MiB raw). Empty slots use the neutral layer. Returns {} when any named set has no BC7 version,
+## and the uncompressed path below takes over.
+const BC7_DIR := "res://data/textures/surfaces/bc7"
+
+static func _build_bc7_arrays(texture_names: Array[String]) -> Dictionary:
+	var alb: Array[Image] = []
+	var nrm: Array[Image] = []
+	for n in texture_names:
+		var base := n if n != "" else "neutral"
+		var a := _bc7("%s/%s_alb.res" % [BC7_DIR, base])
+		var m := _bc7("%s/%s_nrm.res" % [BC7_DIR, base])
+		if a == null or m == null:
+			return {}
+		alb.append(a)
+		nrm.append(m)
+	var albedo := Texture2DArray.new()
+	if albedo.create_from_images(alb) != OK:
+		return {}
+	var normal := Texture2DArray.new()
+	if normal.create_from_images(nrm) != OK:
+		return {}
+	return {"albedo": albedo, "normal": normal}
+
+static func _bc7(path: String) -> Image:
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Image
 
 static func _load_image(path: String) -> Image:
 	if not ResourceLoader.exists(path):
