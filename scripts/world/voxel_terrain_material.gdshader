@@ -222,8 +222,11 @@ void fragment() {
 	float tile_mix = 0.0;
 	if (antitile == 1) {
 		vec3 big = v_rel_pos / 23.0 + mod(v_origin, 23.0) / 23.0;
-		float m = texture(tex_albedo, vec3(big.xz * blend.y + big.zy * blend.x + big.xy * blend.z, 0.0)).g;
-		m += texture(tex_albedo, vec3(big.xz * 0.31 + 0.5, 1.0)).g;
+		// projected the triplanar way, not from world +Y: on a sphere a top-down .xz lookup smears into stripes
+		// wherever the ground does not face world up (stage 0 of reports/AAA voxel terrain fidelity.md)
+		vec2 bp = big.xz * blend.y + big.zy * blend.x + big.xy * blend.z;
+		float m = texture(tex_albedo, vec3(bp, 0.0)).g;
+		m += texture(tex_albedo, vec3(bp * 0.31 + 0.5, 1.0)).g;
 		tile_mix = smoothstep(0.55, 0.95, m);
 	}
 	vec3 wn = v_world_normal;
@@ -263,7 +266,10 @@ void fragment() {
 	// different scale, reused as a variation field. Cheaper than a noise
 	// function and it already has the right statistics, because it is the same
 	// rock.
-	float macro = texture(tex_albedo, vec3(v_world_pos.xz / macro_scale, float(i0))).r;
+	// triplanar and precision-safe (block-relative + block origin mod scale), like every other lookup here; the old
+	// v_world_pos.xz was a top-down projection in raw 10 km coordinates
+	vec3 mc = v_rel_pos / macro_scale + mod(v_origin, macro_scale) / macro_scale;
+	float macro = texture(tex_albedo, vec3(mc.xz * blend.y + mc.zy * blend.x + mc.xy * blend.z, float(i0))).r;
 	float macro_mul = mix(1.0 - macro_strength * 0.5, 1.0 + macro_strength * 0.5, macro);
 
 	// Detail normal (already in world space, see sample_planes), scaled per material.
