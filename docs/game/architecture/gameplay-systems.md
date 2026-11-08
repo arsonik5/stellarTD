@@ -55,6 +55,25 @@
 - Ammo types: `iron_piercing_ammo` (both turrets), `he_shell` (cannon-only, splash)
 - Why ammo owns ballistics: different ammo types are what differentiate combat outcomes, not which turret fired them
 
+**Ship weapons and the weapon control system (2026-11-08, Michael: "similar to war thunder"):**
+- Weapons are ship blocks (`ShipWeapon`, scripts/world/ship_weapon.gd): ammo, fire interval, which trigger, a group
+  name. They only know how to fire ONE round (`fire_one`). Ammo is saved per block (`save_extra` / `load_extra`,
+  stored under "extra" in Ship.save_state, generic for any block).
+- `ShipWeaponControl` (scripts/world/ship_weapon_control.gd, one per Ship, `ShipWeaponControl.of(ship)`) is the pilot's
+  switch panel: weapons grouped by name, PRIMARY trigger fires all guns while held, SECONDARY fires the SELECTED group,
+  a selector, a salvo size per group (1/2/4/8/16/ripple), rounds alternating between pods, and a CCIP solution
+  (`ccip`) for the HUD pipper, recomputed 15 times a second with the projectile's own flight model. Any controller
+  (player or AI) drives it with set_primary / set_secondary / select_next / cycle_salvo.
+- Player keys (PlayerShipController): LMB = guns, or the selected weapon if no guns are fitted; MMB or B = secondary;
+  wheel or 1-9 = select; H = salvo size.
+- HUD: a WEAPONS list in the ship instruments (selected marked, count, salvo; amber under 20 %, red empty) and the
+  CCIP pipper (ring with ticks) where the selected weapon would land.
+- First weapon: Rocket Pod (ship_rocket_pod.gd, rocket.gd). Rocket: 45 m/s tube kick + 1.1 s motor at 260 m/s^2,
+  radial gravity + drag, 0.5 deg random spread, swept physics + voxel ray each tick, 60 damage / 4 m blast to
+  enemies (take_damage) and other ships (Ship.apply_damage by block distance), 1.7 m crater. Craters on terrain
+  that is not editable yet (far LODs) wait in a queue until the area loads; not saved.
+- Test: scenes/dev/rocket_test.tscn (CCIP vs real impact, salvo, ripple, LMB through the controller, save/load).
+
 **Weapon tiers (planned, not all built):**
 - Personal/infantry guns (player-carried, hitscan/short arcs)
 - Point-defense (fast anti-missile)

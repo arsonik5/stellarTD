@@ -21,6 +21,7 @@ lift, Q/R roll, G landing gear, V camera, X dampeners, E exit.
 | Landing Gear | 2x2x2 | Sprung leg, mount on top - goes under the ship. Never drives, grips hard (parks). G retracts it for flight | `ship_landing_gear` |
 | Thruster | 4x4x4 | Pushes along its axis | `ship_thruster` |
 | RCS Thruster | 1x1x1 | Weak, but pushes any direction asked for, and adds a little turning | `ship_rcs` |
+| Rocket Pod | 3x2x5 | 160 unguided 70 mm rockets (16 x 10 tubes), mount plate on top - hangs under the ship. Fired by the weapon control system (see gameplay-systems.md "Ship weapons") | `ship_rocket_pod` |
 | Gyroscope | 4x4x4 | Turning authority | `ship_gyroscope` |
 | Beam 0.5 / 1 / 2 m | 1x1x1 / 1x1x2 / 1x1x4 | Crossout-style frame building: square tube with bolting end plates | `ship_block` |
 | Frame Cube | 1x1x1 | Open tube cube: light filler in a frame | `ship_block` |

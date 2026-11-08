@@ -179,9 +179,9 @@ Fixed places, so the eye learns them once:
 
 | Where | What |
 |---|---|
-| centre | crosshair dot (dark rim, reads on snow and night sky), gold ticks open on usable things; the interact prompt sits 28 px under it |
+| centre | crosshair dot (dark rim, reads on snow and night sky), gold ticks open on usable things; the interact prompt sits 28 px under it. Flying with weapons: the CCIP pipper (ring + four ticks) where the selected weapon would land |
 | top left | `◆ OBJECTIVE`: current goal, 2 px progress line, `[J] Journal`. Hidden when there is no goal (Warframe's pinned-mission spot) |
-| top right | ship instruments, only while flying |
+| top right | ship instruments, only while flying; WEAPONS list under them when weapons are fitted (selected group marked, count, salvo) |
 | bottom left | SUIT O2: gold caption, the time large (22 px semibold), a 2 px line. LOW orange under 60 s, flashing red EMPTY with what to do, REFILLING in teal |
 | bottom right | held tools `[L] Mining Tool` / `[R] Build Tool`; pickup feed above it ("+3   IRON ORE", counts up, fades 3.5 s) |
 | bottom centre | context hints (section 7) |

@@ -53,6 +53,11 @@ func _ready() -> void:
 	_refresh_hints()
 
 # --- building -------------------------------------------------------------------------------------------
+var _wpn_caption: Label
+var _wpn_list: VBoxContainer
+var _wpn_sig := ""
+var _pipper: Control
+
 func _build() -> void:
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -181,10 +186,10 @@ func _build() -> void:
 	_ship_box = UiKit.panel("HudPanel")
 	_ship_box.anchor_left = 1.0
 	_ship_box.anchor_right = 1.0
-	_ship_box.offset_left = -260
+	_ship_box.offset_left = -320
 	_ship_box.offset_right = -40
 	_ship_box.offset_top = 32
-	_ship_box.custom_minimum_size.x = 220
+	_ship_box.custom_minimum_size.x = 280
 	_ship_box.visible = false
 	_ship_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_ship_box)
@@ -199,18 +204,41 @@ func _build() -> void:
 		r.add_child(val)
 		sv.add_child(r)
 		_ship_rows[k] = val
+	# weapons (War Thunder style): one line per group, the selected secondary marked, ammo and salvo setting
+	_wpn_caption = UiKit.label("WEAPONS", "HudCaption")
+	sv.add_child(_wpn_caption)
+	_wpn_list = UiKit.vbox(2)
+	sv.add_child(_wpn_list)
+	# CCIP pipper: where the selected weapon's rounds would land, drawn over the world
+	_pipper = Control.new()
+	_pipper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pipper.visible = false
+	_pipper.draw.connect(func() -> void:
+		var col := UiTokens.ACCENT
+		_pipper.draw_arc(Vector2.ZERO, 14.0, 0.0, TAU, 40, Color(0, 0, 0, 0.5), 4.0)
+		_pipper.draw_arc(Vector2.ZERO, 14.0, 0.0, TAU, 40, col, 1.6)
+		_pipper.draw_circle(Vector2.ZERO, 2.0, col)
+		for d: Vector2 in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+			_pipper.draw_line(d * 18.0, d * 26.0, col, 1.6))
+	root.add_child(_pipper)
 
 # --- public API (player.gd) -----------------------------------------------------------------------------
 ## Kept for player.gd: the mode name picks which hint set shows; the old legend text is no longer drawn.
 func set_mode_text(mode_name: String, _legend: String) -> void:
 	if mode_name == "SHIP":
-		set_context_hints([["W/S", "Thrust"], ["A/D", "Steer"], ["Space/Ctrl", "Up/Down"], ["G", "Gear"], ["X", "Dampeners"], ["E", "Leave"]])
+		var hints := [["W/S", "Thrust"], ["A/D", "Steer"], ["Space/Ctrl", "Up/Down"], ["G", "Gear"], ["X", "Dampeners"], ["E", "Leave"]]
+		if _ship != null and is_instance_valid(_ship) and ShipWeaponControl.of(_ship).has_weapons():
+			hints = [["LMB", "Fire"], ["Wheel", "Select weapon"], ["H", "Salvo"]] + hints
+		set_context_hints(hints)
 	else:
 		set_context_hints([])
 
 func set_piloted_ship(ship: Ship) -> void:
 	_ship = ship
 	_ship_box.visible = ship != null
+	_wpn_sig = ""
+	if ship == null:
+		_pipper.visible = false
 
 ## Hints for the current activity (building, flying). Empty = the starter hints, which vanish once learned.
 func set_context_hints(pairs: Array) -> void:
@@ -290,6 +318,40 @@ func _update_ship() -> void:
 	_ship_rows["Altitude"].text = "%d m" % roundi(body.global_position.distance_to(_ship.global_position) - body.radius_world()) if body != null else "--"
 	_ship_rows["Dampeners"].text = "ON" if _ship.dampeners_enabled else "OFF"
 	_ship_rows["Status"].text = String(_ship.ship_state).to_upper()
+	_update_weapons()
+
+func _update_weapons() -> void:
+	var wc := ShipWeaponControl.of(_ship)
+	_wpn_caption.visible = wc.has_weapons()
+	var sel := wc.selected_group()
+	var lines: Array = []
+	for g in wc.groups:
+		var a := wc.ammo_of(g)
+		var mark := "▸ " if g == sel else "   "
+		var mode := "" if g["trigger"] == "primary" else "   " + wc.salvo_label(g)
+		lines.append([mark + String(g["name"]), "%d%s" % [a.x, mode], a])
+	var sig := str(lines)
+	if sig != _wpn_sig:
+		_wpn_sig = sig
+		for c in _wpn_list.get_children():
+			c.queue_free()
+		for l in lines:
+			var r := UiKit.hbox()
+			var n := UiKit.label(l[0], "HudLabel")
+			r.add_child(n)
+			r.add_child(UiKit.spacer())
+			var v := UiKit.label(l[1], "HudValue")
+			var a: Vector2i = l[2]
+			v.modulate = UiTokens.DANGER if a.x == 0 else (UiTokens.WARN if a.x * 5 < a.y else UiTokens.TEXT)
+			r.add_child(v)
+			_wpn_list.add_child(r)
+	# pipper
+	var cam := get_viewport().get_camera_3d()
+	var hit: bool = wc.ccip.get("hit", false)
+	_pipper.visible = hit and cam != null and not cam.is_position_behind(wc.ccip["position"])
+	if _pipper.visible:
+		_pipper.position = cam.unproject_position(wc.ccip["position"])
+		_pipper.queue_redraw()
 
 func _refresh_quest() -> void:
 	var ids: Array = QuestManager.get_active_ids()

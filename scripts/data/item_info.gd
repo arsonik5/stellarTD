@@ -46,6 +46,7 @@ const INFO := {
 	"landing_gear": ["vehicles", "Sprung leg for landing. Grips hard when parked; G folds it away."],
 	"ship_thruster": ["vehicles", "Main thruster. Pushes along its nozzle."],
 	"rcs": ["vehicles", "Small thruster that pushes any way it is asked to. Fine control."],
+	"rocket_pod": ["defense", "160 unguided rockets. Mount it under the ship; fire with LMB, aim with the pipper."],
 	"ship_gyroscope": ["vehicles", "Turns the ship."],
 	"ship_hull": ["vehicles", "2 m armour block."],
 	"hull_small": ["vehicles", "0.5 m armour block."],

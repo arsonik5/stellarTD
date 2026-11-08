@@ -30,7 +30,49 @@ func activate(cockpit_cam: Camera3D, chase_cam: Camera3D) -> void:
 	if chase_camera != null:
 		chase_camera.far = 1000000.0
 
+## Weapons (War Thunder style, see ShipWeaponControl). LMB = primary guns (or the selected weapon when the ship has
+## no guns), MMB or B = secondary (the selected group), wheel / 1-9 = select secondary group, H = salvo size.
+func weapons() -> ShipWeaponControl:
+	return ShipWeaponControl.of(ship) if ship != null and is_instance_valid(ship) else null
+
+func _has_primary(wc: ShipWeaponControl) -> bool:
+	for g in wc.groups:
+		if g["trigger"] == "primary":
+			return true
+	return false
+
+func _exit_tree() -> void:
+	var wc := weapons()
+	if wc != null:
+		wc.set_primary(false)
+		wc.set_secondary(false)
+
 func _unhandled_input(event: InputEvent) -> void:
+	var wc := weapons()
+	if wc != null and event is InputEventMouseButton:
+		match event.button_index:
+			MOUSE_BUTTON_LEFT:
+				if _has_primary(wc):
+					wc.set_primary(event.pressed)
+				else:
+					wc.set_secondary(event.pressed)
+			MOUSE_BUTTON_MIDDLE:
+				wc.set_secondary(event.pressed)
+			MOUSE_BUTTON_WHEEL_UP:
+				if event.pressed:
+					wc.select_next(-1)
+			MOUSE_BUTTON_WHEEL_DOWN:
+				if event.pressed:
+					wc.select_next(1)
+	if wc != null and event is InputEventKey and not event.echo:
+		if event.keycode == KEY_B:
+			wc.set_secondary(event.pressed)
+		elif event.pressed and event.keycode == KEY_H:
+			wc.cycle_salvo()
+		elif event.pressed and event.keycode >= KEY_1 and event.keycode <= KEY_9:
+			var i: int = event.keycode - KEY_1
+			if i < wc.secondary_groups().size():
+				wc.selected = i
 	if event is InputEventMouseMotion:
 		_mouse_delta += event.relative
 	elif event is InputEventKey and event.pressed and not event.echo:

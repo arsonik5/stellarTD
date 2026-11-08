@@ -2,7 +2,7 @@
 
 Slice 1: prove the repeatable feel loop on a spherical voxel planet: dig/place, five ores, processing, and one ore→refined→placeable chain.
 
-Deferred: power, combat, UI polish, advanced automation/logistics.
+Deferred: power, UI polish, advanced automation/logistics. Combat: ship weapons started 2026-11-08 at Michael's request (rocket pod + War Thunder-style weapon control, see architecture/gameplay-systems.md); everything else in combat stays deferred.
 
 Built past this line and now in scope to maintain: ships, and save/load
 (main menu, slots, terrain edit deltas, world state - see
