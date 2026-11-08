@@ -130,8 +130,8 @@ func set_span(length: float) -> void:
 
 ## Inlet knee: `joint` is where the upstream pipe's straight line and this pipe's line meet, `upstream_dir` the
 ## upstream flow direction, both global. The knee bends exactly through the angle between the two lines.
-func set_knee(joint: Vector3, upstream_dir: Vector3) -> void:
-	_knee = {"joint": to_local(joint), "dir": (global_transform.basis.inverse() * upstream_dir).normalized()}
+func set_knee(joint: Vector3, upstream_dir: Vector3, radius: float = KNEE_RADIUS) -> void:
+	_knee = {"joint": to_local(joint), "dir": (global_transform.basis.inverse() * upstream_dir).normalized(), "r": radius}
 	_build_knee()
 
 func clear_knee() -> void:
@@ -139,8 +139,9 @@ func clear_knee() -> void:
 	_build_knee()
 
 ## The straight length a knee of `angle` takes from each of the two lines it joins (arc tangent + collar stub).
-static func knee_leg(angle: float) -> float:
-	return KNEE_RADIUS * tan(angle * 0.5) + COLLAR_W
+## Radius: KNEE_RADIUS for a tight bend (straight runs), larger for the wide bends of curved runs.
+static func knee_leg(angle: float, radius: float = KNEE_RADIUS) -> float:
+	return radius * tan(angle * 0.5) + COLLAR_W
 
 # ------------------------------------------------------------------ modular layout
 
@@ -241,14 +242,15 @@ func _knee_geometry() -> Dictionary:
 	var d0: Vector3 = _knee["dir"]
 	var d1 := Vector3(0, 0, -1)
 	var angle := d0.angle_to(d1)
-	var leg := knee_leg(angle)
+	var r: float = _knee.get("r", KNEE_RADIUS)
+	var leg := knee_leg(angle, r)
 	var k := leg - COLLAR_W
 	var a0 := j - d0 * k
 	var a1 := j + d1 * k
 	var axis := d0.cross(d1).normalized()
 	var to_c := (d1 - d0 * d0.dot(d1)).normalized()
 	return {"p0": j - d0 * leg, "a0": a0, "a1": a1, "p1": j + d1 * leg, "d0": d0, "d1": d1, "angle": angle,
-			"c": a0 + to_c * KNEE_RADIUS, "axis": axis, "len": 2.0 * COLLAR_W + KNEE_RADIUS * angle}
+			"c": a0 + to_c * r, "axis": axis, "r": r, "len": 2.0 * COLLAR_W + r * angle}
 
 func _build_knee() -> void:
 	if _knee_node != null:
@@ -269,7 +271,7 @@ func _path_point(s: float) -> Vector3:
 				return g["p0"] + g["d0"] * s
 			if s > kl - COLLAR_W:
 				return g["a1"] + g["d1"] * (s - (kl - COLLAR_W))
-			var phi := (s - COLLAR_W) / KNEE_RADIUS
+			var phi := (s - COLLAR_W) / float(g["r"])
 			var c: Vector3 = g["c"]
 			return c + (g["a0"] - c).rotated(g["axis"], phi)
 		s -= kl
@@ -277,6 +279,46 @@ func _path_point(s: float) -> Vector3:
 
 func _path_length() -> float:
 	return _span_length + (_knee_geometry()["len"] if not _knee.is_empty() else 0.0)
+
+# ------------------------------------------------------------------ flow arrows
+
+var _arrows: MeshInstance3D
+
+## Arrowheads along the pipe pointing the way items move: shown on every pipe while a pipe is in the build tool.
+func show_flow_arrows(on: bool) -> void:
+	if not on or not _is_modular():
+		if _arrows != null:
+			_arrows.queue_free()
+			_arrows = null
+		return
+	if _arrows != null:
+		return
+	var marks: Array = []
+	var total := _path_length()
+	var s := 0.5 if total > 1.0 else total * 0.5
+	while s < total:
+		var p := _path_point(s)
+		var t := (_path_point(minf(s + 0.02, total)) - _path_point(maxf(s - 0.02, 0.0))).normalized()
+		marks.append([p, t])
+		s += 1.0
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	PipeRoute.arrows_into(st, marks, func(_p: Vector3) -> Vector3: return Vector3.UP, 0.31)
+	_arrows = MeshInstance3D.new()
+	_arrows.name = "FlowArrows"
+	_arrows.mesh = st.commit()
+	_arrows.material_override = arrow_material()
+	_arrows.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_arrows)
+
+static var _arrow_mat: StandardMaterial3D
+static func arrow_material() -> StandardMaterial3D:
+	if _arrow_mat == null:
+		_arrow_mat = StandardMaterial3D.new()
+		_arrow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_arrow_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_arrow_mat.albedo_color = Color(0.55, 1.0, 0.85)
+	return _arrow_mat
 
 # ------------------------------------------------------------------ items
 
@@ -406,15 +448,16 @@ func save_state() -> Dictionary:
 	if not _knee.is_empty():
 		var j: Vector3 = _knee["joint"]
 		var d: Vector3 = _knee["dir"]
-		out["knee"] = [j.x, j.y, j.z, d.x, d.y, d.z]
+		out["knee"] = [j.x, j.y, j.z, d.x, d.y, d.z, float(_knee.get("r", KNEE_RADIUS))]
 	return out
 
 func load_state(data: Dictionary) -> void:
 	grid_pos = SaveManager.array_to_vec3i(data.get("grid_pos", []))
 	set_span(float(data.get("span", 0.9)))
 	var k: Array = data.get("knee", [])
-	if k.size() == 6:
-		_knee = {"joint": Vector3(k[0], k[1], k[2]), "dir": Vector3(k[3], k[4], k[5]).normalized()}
+	if k.size() >= 6:
+		_knee = {"joint": Vector3(k[0], k[1], k[2]), "dir": Vector3(k[3], k[4], k[5]).normalized(),
+				"r": float(k[6]) if k.size() >= 7 else KNEE_RADIUS}
 		_build_knee()
 	# Routed back through pipe_accept() rather than assigning the fields
 	# directly, so the cube's colour and starting position come from the one

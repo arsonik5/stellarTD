@@ -110,6 +110,25 @@ func add(item_id: String, amount: int) -> int:
 		changed.emit()
 	return added
 
+## True if all of `items` (item id -> count) would fit at once (dismantling refunds everything or nothing).
+func can_add_all(items: Dictionary) -> bool:
+	var free := 0
+	for slot in _grid:
+		if slot.item_id == "":
+			free += 1
+	for id: String in items:
+		var amount: int = items[id]
+		if amount <= 0:
+			continue
+		var item: Item = _item_defs.get(id)
+		var max_stack: int = item.max_stack if item != null else 100
+		for slot in _grid:
+			if slot.item_id == id:
+				amount -= max_stack - slot.count
+		if amount > 0:
+			free -= ceili(float(amount) / max_stack)
+	return free >= 0
+
 func try_remove(item_id: String, amount: int) -> bool:
 	if amount <= 0:
 		return true

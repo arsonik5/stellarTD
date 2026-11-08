@@ -123,8 +123,8 @@ var _build_ghost_material: StandardMaterial3D = null
 var _pipe_anchor: Vector3 = Vector3.ZERO
 var _pipe_anchor_set := false
 var _pipe_preview_end: Vector3 = Vector3.ZERO
-## Pipe build mode: false = STRAIGHT (level or vertical runs), true = FREE (any angle). B toggles it.
-var _pipe_free_mode := false
+## Pipe build mode: false = STRAIGHT (axis runs, tight knees), true = CURVED (natural path, wide bends). B toggles.
+var _pipe_curved := false
 
 func _ready() -> void:
 	add_to_group("player")
@@ -222,6 +222,10 @@ func _input(event: InputEvent) -> void:
 			_toggle_build_mode()
 			_hud_key("C")
 			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_F and _build_mode and not _build_menu_open():
+			_set_dismantle_mode(not _dismantle_mode)      # Satisfactory: F with the build tool out = dismantle
+			_hud_key("F")
+			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_F and not UiState.is_any_open():
 			toggle_lamp()
 			_hud_key("F")
@@ -272,7 +276,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _build_menu_open():
 			return # the menu's buttons take the clicks; picking one closes it (on_build_picked)
 		if event is InputEventMouseButton and event.pressed:
-			if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.button_index == MOUSE_BUTTON_LEFT and _dismantle_mode:
+				_dismantle()
+			elif event.button_index == MOUSE_BUTTON_RIGHT and _dismantle_mode:
+				_set_dismantle_mode(false)
+			elif event.button_index == MOUSE_BUTTON_LEFT:
 				if _is_pipe_item(_selected_build_item()):
 					_place_pipe_or_set_anchor()
 				else:
@@ -293,12 +301,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if event is InputEventKey and event.pressed and not event.echo:
 			if event.keycode == KEY_B and _is_pipe_item(_selected_build_item()):
-				_pipe_free_mode = not _pipe_free_mode
+				_pipe_curved = not _pipe_curved
 			elif event.keycode == KEY_G:
 				_build_grid_snap = not _build_grid_snap
 			elif event.keycode == KEY_R:
 				_build_rotation = wrapf(_build_rotation + BUILD_ROTATE_STEP, 0.0, TAU)
 			elif event.keycode == KEY_Q:
+				_set_dismantle_mode(false)
 				_open_build_menu()
 			_refresh_build_hint()
 		# mouse motion falls through to the normal look below
@@ -511,14 +520,29 @@ func _refresh_build_hint() -> void:
 	if hud == null:
 		return
 	if not _build_mode:
+		_last_hint_pairs = ""
 		hud.set_context_hints([])
 		return
 	var item := _selected_build_item()
 	var pairs: Array = [["LMB", "Place " + (item.display_name if item != null else "")], ["R/Wheel", "Rotate"],
-		["G", "Grid " + ("on" if _build_grid_snap else "off")], ["Q", "Menu"], ["RMB", "Done"]]
+		["G", "Grid " + ("on" if _build_grid_snap else "off")], ["F", "Dismantle"], ["Q", "Menu"], ["RMB", "Done"]]
 	if item != null and item.id == "vacuum_pipe":
 		pairs = [["LMB", "Start / end pipe" if not _pipe_anchor_set else "End pipe here"],
-			["B", "Free angle" if _pipe_free_mode else "Straight"], ["Q", "Menu"], ["RMB", "Cancel" if _pipe_anchor_set else "Done"]]
+			["B", "Curved" if _pipe_curved else "Straight"], ["F", "Dismantle"], ["Q", "Menu"],
+			["RMB", "Cancel" if _pipe_anchor_set else "Done"]]
+		if _pipe_anchor_set and not _pipe_route_preview.is_empty() and not _pipe_route_preview.get("ok", true):
+			pairs.push_front(["!", String(_pipe_route_preview.get("why", ""))])
+	if _dismantle_mode:
+		var t := _dismantle_target
+		if t != null and is_instance_valid(t):
+			pairs = [["LMB", "Dismantle, get back " + _refund_text(_dismantle_refund(t))], ["F/RMB", "Back to building"]]
+		else:
+			pairs = [["LMB", "Aim at something you built"], ["F/RMB", "Back to building"]]
+	if _build_message != "" and Time.get_ticks_msec() < _build_message_until:
+		pairs.push_front(["!", _build_message])
+	if str(pairs) == _last_hint_pairs:
+		return                                        # unchanged: the HUD rebuilds its row on every call
+	_last_hint_pairs = str(pairs)
 	hud.set_context_hints(pairs)
 
 func _spawn_build_ghost() -> void:
@@ -561,6 +585,153 @@ func _clear_build_ghost() -> void:
 	if _build_ghost != null:
 		_build_ghost.queue_free()
 		_build_ghost = null
+	_hide_pipe_preview()
+	_set_pipe_arrows(false)
+	_set_dismantle_mode(false)
+
+# --- pipe run preview -----------------------------------------------------------------------------------------
+var _pipe_preview: MeshInstance3D
+var _pipe_preview_mat: StandardMaterial3D
+var _pipe_route_preview: Dictionary = {}
+var _pipe_arrows_on := false
+
+func _show_pipe_preview(route: Dictionary, ok: bool) -> void:
+	if _pipe_preview == null:
+		_pipe_preview = MeshInstance3D.new()
+		_pipe_preview.name = "PipeRunPreview"
+		_pipe_preview.top_level = true
+		_pipe_preview.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_pipe_preview_mat = StandardMaterial3D.new()
+		_pipe_preview_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_pipe_preview_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_pipe_preview_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		get_tree().current_scene.add_child(_pipe_preview)
+	_pipe_preview.global_transform = Transform3D.IDENTITY
+	_pipe_preview.mesh = PipeRoute.preview_mesh(route, func(p: Vector3) -> Vector3: return PlanetPhysics.get_up(p))
+	_pipe_preview.set_surface_override_material(0, _pipe_preview_mat)
+	var c := GHOST_OK if ok else GHOST_BAD
+	_pipe_preview_mat.albedo_color = Color(c.r, c.g, c.b, 0.6)
+	_pipe_preview.visible = true
+
+func _hide_pipe_preview() -> void:
+	_pipe_route_preview = {}
+	if _pipe_preview != null and is_instance_valid(_pipe_preview):
+		_pipe_preview.visible = false
+
+# --- dismantle (Satisfactory: F with the build tool out) ------------------------------------------------------
+## F in build mode switches to dismantling: what you look at turns red with its refund on the HUD; LMB takes it
+## apart and gives back everything it cost plus what it holds (all or nothing: refused if it won't fit). F again,
+## Q (menu) or RMB goes back.
+var _dismantle_mode := false
+var _dismantle_target: Node3D
+var _dismantle_mat: StandardMaterial3D
+
+func _set_dismantle_mode(on: bool) -> void:
+	if on == _dismantle_mode:
+		return
+	_dismantle_mode = on
+	_pipe_anchor_set = false
+	if not on:
+		_set_dismantle_target(null)
+	_refresh_build_hint()
+
+func _update_dismantle_target() -> void:
+	var from := camera.global_position
+	var q := PhysicsRayQueryParameters3D.create(from, from - camera.global_transform.basis.z * BUILD_MODE_RANGE)
+	q.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var target: Node3D = null
+	if not hit.is_empty():
+		var n: Node = hit.collider
+		while n != null and not n.has_meta(SaveManager.ITEM_ID_META):
+			n = n.get_parent()
+		if n is Node3D and _refund_recipe(n) != null:
+			target = n
+	_set_dismantle_target(target)
+
+func _refund_recipe(n: Node) -> Recipe:
+	var build_ui := get_tree().get_first_node_in_group("build_ui")
+	if build_ui == null or not n.has_meta(SaveManager.ITEM_ID_META):
+		return null
+	return build_ui.recipe_for(String(n.get_meta(SaveManager.ITEM_ID_META)))
+
+func _set_dismantle_target(t: Node3D) -> void:
+	if t == _dismantle_target:
+		return
+	if _dismantle_target != null and is_instance_valid(_dismantle_target):
+		for g in _dismantle_target.find_children("*", "GeometryInstance3D", true, false):
+			(g as GeometryInstance3D).material_overlay = null
+	_dismantle_target = t
+	if t != null:
+		if _dismantle_mat == null:
+			_dismantle_mat = StandardMaterial3D.new()
+			_dismantle_mat.albedo_color = Color(GHOST_BAD.r, GHOST_BAD.g, GHOST_BAD.b, 0.45)
+			_dismantle_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			_dismantle_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		for g in t.find_children("*", "GeometryInstance3D", true, false):
+			(g as GeometryInstance3D).material_overlay = _dismantle_mat
+	_refresh_build_hint()
+
+## Everything taking `t` apart gives back: its build cost, plus a machine's stored items and modifiers and a pipe's
+## item in transit.
+func _dismantle_refund(t: Node3D) -> Dictionary:
+	var out := {}
+	var r := _refund_recipe(t)
+	if r != null:
+		for k in r.input_ids.size():
+			out[r.input_ids[k]] = int(out.get(r.input_ids[k], 0)) + r.input_amounts[k]
+	if t is Building:
+		var b := t as Building
+		for i in b.inventory_slots:
+			var slot := b.get_inventory_slot(i)
+			if String(slot.item_id) != "" and int(slot.count) > 0:
+				out[slot.item_id] = int(out.get(slot.item_id, 0)) + int(slot.count)
+		for m: String in b._modifiers:
+			if m != "":
+				out[m] = int(out.get(m, 0)) + 1
+	if t is PipeSegment and (t as PipeSegment)._held_item_id != "":
+		var h := (t as PipeSegment)._held_item_id
+		out[h] = int(out.get(h, 0)) + 1
+	return out
+
+func _dismantle() -> void:
+	var t := _dismantle_target
+	if t == null or not is_instance_valid(t):
+		_deny_build()
+		return
+	var refund := _dismantle_refund(t)
+	if not Inventory.can_add_all(refund):
+		_deny_build("No room in your inventory")
+		return
+	for id: String in refund:
+		Inventory.add(id, refund[id])
+	_set_dismantle_target(null)
+	var was_pipe := t.is_in_group("pipe")
+	for g in ["pipe", "building", SaveManager.SAVEABLE_GROUP]:
+		if t.is_in_group(g):
+			t.remove_from_group(g)
+	t.queue_free()
+	if was_pipe:
+		PipeSegment.relink_all(get_tree())
+	if feel != null:
+		feel.kick("place")
+	UiSound.play("place", 0.7)
+
+func _refund_text(refund: Dictionary) -> String:
+	var parts: Array[String] = []
+	for id: String in refund:
+		var it := Inventory.get_item_def(id)
+		parts.append("%d %s" % [refund[id], it.display_name if it != null else id])
+	return ", ".join(parts)
+
+## Flow arrows on every laid pipe while a pipe is in the build tool.
+func _set_pipe_arrows(on: bool) -> void:
+	if on == _pipe_arrows_on:
+		return
+	_pipe_arrows_on = on
+	for n in get_tree().get_nodes_in_group("pipe"):
+		if n is PipeSegment and is_instance_valid(n):
+			(n as PipeSegment).show_flow_arrows(on)
 
 ## Holds the player motionless above the nearest body until a real physics
 ## collider actually exists under the spawn point, then drops them onto it.
@@ -1249,84 +1420,178 @@ func _pipe_basis(direction: Vector3, up: Vector3) -> Basis:
 	var ref := up if absf(d.dot(up)) < 0.999 else -camera.global_transform.basis.z
 	return Basis.looking_at(d, ref)
 
-## Pipe build modes (B toggles): STRAIGHT keeps a pipe exactly level or exactly vertical, FREE lets it run at any
-## angle (up a slope, diagonally). Where a new pipe leaves the end of an existing one at another angle, a knee is
-## built bent to exactly that angle.
-func _pipe_constrain(anchor: Vector3, end: Vector3) -> Vector3:
-	if _pipe_free_mode:
-		return end
-	var up := PlanetPhysics.get_up(anchor)
-	var d := end - anchor
-	var vertical := d.dot(up)
-	var level := d - up * vertical
-	if absf(vertical) > level.length():
-		return anchor + up * vertical
-	return anchor + level
+## Pipe runs (PipeRoute): B toggles STRAIGHT (along the ground axes and straight up, tight 90 degree knees) and
+## CURVED (the natural path, wide bends). A run carries on from an open pipe end in that pipe's direction and leaves /
+## enters a machine port straight along its axis. An end that is already connected can't take a second pipe.
+const PIPE_END_TOL := 0.1
+
+## What is at a build-plane point, as one end of a run: {ok, why, centre (centreline point), dir, kind}.
+## kind "free" (ground), "pipe" (an open pipe or junction end) or "port" (a machine port).
+func _pipe_end_info(point: Vector3, as_start: bool) -> Dictionary:
+	var up := PlanetPhysics.get_up(point)
+	var info := {"ok": true, "why": "", "centre": point + up * PipeSegment.PIPE_HEIGHT, "dir": Vector3.ZERO, "kind": "free"}
+	for n in get_tree().get_nodes_in_group("pipe"):
+		var p := n as PipeSegment
+		if p == null or not is_instance_valid(p):
+			continue
+		var lift := p.global_transform.basis.y.normalized() * PipeSegment.PIPE_HEIGHT
+		for q: Vector3 in p.output_ports():
+			if q.distance_to(point) < PIPE_END_TOL:
+				if not as_start:
+					return {"ok": false, "why": "That end is an outlet: start from it", "centre": info.centre}
+				if _pipe_input_near(q, p):
+					return {"ok": false, "why": "Already connected", "centre": info.centre}
+				var d := p.flow_dir() if p._is_modular() else p._outward(q)
+				return {"ok": true, "why": "", "centre": q + lift, "dir": d.normalized(), "kind": "pipe"}
+		for q: Vector3 in p.input_ports():
+			if q.distance_to(point) < PIPE_END_TOL:
+				if as_start:
+					return {"ok": false, "why": "That end is an inlet: end a pipe on it", "centre": info.centre}
+				if _pipe_output_near(q, p) or (p._is_modular() and p._building_at(p.input_point() - p.input_dir() * 0.4) != null):
+					return {"ok": false, "why": "Already connected", "centre": info.centre}
+				var d := p.input_dir() if p._is_modular() else -p._outward(q)
+				return {"ok": true, "why": "", "centre": q + lift, "dir": d.normalized(), "kind": "pipe"}
+	for n in get_tree().get_nodes_in_group("building"):
+		var b := n as Building
+		if b == null or not is_instance_valid(b):
+			continue
+		for port: Dictionary in b.get_pipe_ports():
+			var q: Vector3 = port["point"]
+			if q.distance_to(point) >= PIPE_END_TOL:
+				continue
+			var kind: int = port["kind"]
+			var c := q + b.global_transform.basis.y.normalized() * PipeSegment.PIPE_HEIGHT
+			if as_start:
+				if kind < 0:
+					return {"ok": false, "why": "That port takes items in", "centre": c}
+				if _pipe_input_near(q, null):
+					return {"ok": false, "why": "Already connected", "centre": c}
+				return {"ok": true, "why": "", "centre": c, "dir": port["out"], "kind": "port"}
+			if kind > 0:
+				return {"ok": false, "why": "That port sends items out", "centre": c}
+			if _pipe_output_near(q, null):
+				return {"ok": false, "why": "Already connected", "centre": c}
+			return {"ok": true, "why": "", "centre": c, "dir": -(port["out"] as Vector3), "kind": "port"}
+	return info
+
+func _pipe_input_near(point: Vector3, except: Node) -> bool:
+	for n in get_tree().get_nodes_in_group("pipe"):
+		if n != except and is_instance_valid(n):
+			for q: Vector3 in (n as PipeSegment).input_ports():
+				if q.distance_to(point) < PIPE_END_TOL:
+					return true
+	return false
+
+func _pipe_output_near(point: Vector3, except: Node) -> bool:
+	for n in get_tree().get_nodes_in_group("pipe"):
+		if n != except and is_instance_valid(n):
+			for q: Vector3 in (n as PipeSegment).output_ports():
+				if q.distance_to(point) < PIPE_END_TOL:
+					return true
+	return false
+
+## The run from the anchor to `end` (build-plane points), checked: PipeRoute.plan's result, "why" when it can't.
+func _plan_pipe_run(start: Vector3, end: Vector3) -> Dictionary:
+	var a := _pipe_end_info(start, true)
+	if not a.ok:
+		return {"ok": false, "why": a.why}
+	var e := _pipe_end_info(end, false)
+	if not e.ok:
+		return {"ok": false, "why": e.why}
+	var route := PipeRoute.plan(a.centre, a.dir, a.kind, e.centre, e.dir, e.kind, PlanetPhysics.get_up(start),
+			_pipe_curved, -camera.global_transform.basis.z)
+	route["end_kind"] = e.kind
+	return route
 
 func _place_pipe_or_set_anchor() -> void:
 	var aim: Variant = _build_aim()
 	if aim == null:
 		return
-	var raw_pos: Vector3 = aim
-	var point := _snap_pipe_point(raw_pos)
-	if not _pipe_anchor_set:
-		_pipe_anchor = point
-		_pipe_preview_end = point
-		_pipe_anchor_set = true
-		return
 	var item := _selected_build_item()
 	if item == null:
 		_pipe_anchor_set = false
 		return
-	var end := _snap_pipe_point(raw_pos)
-	if item.id == "vacuum_pipe":
-		end = _pipe_constrain(_pipe_anchor, end)
-	if end.distance_to(_pipe_anchor) < 0.1:
+	_pipe_click(item, _snap_pipe_point(aim))
+
+## One LMB with a pipe item at the (snapped, build-plane) point: start a run, or end it there.
+func _pipe_click(item: Item, point: Vector3) -> void:
+	if item.id != "vacuum_pipe":
+		# mergers and splitters: one click, on the point
+		if not _place_pipe(item, point, point):
+			_deny_build()
 		return
-	if _place_pipe(item, _pipe_anchor, end) and item.id == "vacuum_pipe":
-		# keep building: the next pipe starts where this one ended (a knee is added if it turns)
-		_pipe_anchor = end
+	if not _pipe_anchor_set:
+		var a := _pipe_end_info(point, true)
+		if not a.ok:
+			_deny_build(a.why)
+			return
+		_pipe_anchor = point
+		_pipe_preview_end = point
+		_pipe_anchor_set = true
+		return
+	if point.distance_to(_pipe_anchor) < 0.1:
+		return
+	var route := _plan_pipe_run(_pipe_anchor, point)
+	if not route.ok:
+		_deny_build(route.why)
+		return
+	if _lay_pipe_run(item, route):
+		# ending on a machine or another pipe closes the run; on open ground the next run carries on from here
+		if route.get("end_kind", "free") != "free":
+			_pipe_anchor_set = false
+		else:
+			_pipe_anchor = point
 		return
 	_pipe_anchor_set = false
 
-## The plain pipe whose output end is at `point` (build-plane point), if any.
-func _pipe_ending_at(point: Vector3) -> PipeSegment:
-	for n in get_tree().get_nodes_in_group("pipe"):
-		var p := n as PipeSegment
-		if p == null or not is_instance_valid(p) or not p._is_modular():
-			continue
-		var pts := p.get_connection_points()
-		if pts[1].distance_to(point) < 0.05:
-			return p
-	return null
+func _deny_build(why: String = "") -> void:
+	if feel != null:
+		feel.kick("deny")
+	UiSound.play("deny", 1.0, 0.25)
+	if why != "":
+		_build_message = why
+		_build_message_until = Time.get_ticks_msec() + 2500
+		_refresh_build_hint()
 
+var _build_message := ""
+var _last_hint_pairs := ""
+var _build_message_until := 0
+
+func _lay_pipe_run(item: Item, route: Dictionary) -> bool:
+	var build_ui := get_tree().get_first_node_in_group("build_ui")
+	if build_ui == null:
+		return false
+	var recipe: Recipe = build_ui.get_selected_recipe()
+	var count := PipeRoute.piece_count(route)
+	if recipe == null or not build_ui.can_pay(recipe, count):
+		_deny_build("Not enough for %d pipe pieces" % count)
+		return false
+	var pipes := PipeRoute.build(route, get_tree().current_scene, item.building_scene,
+			func(p: Vector3) -> Vector3: return PlanetPhysics.get_up(p))
+	for seg in pipes:
+		build_ui.pay(recipe)
+		PipeNetwork.register(seg.grid_pos, seg)
+		SaveManager.mark_placed(seg, item.id)
+		seg.show_flow_arrows(true)
+		QuestManager.notify_building_placed(item.id)
+	PipeSegment.relink_all(get_tree())
+	if feel != null:
+		feel.kick("place")
+	UiSound.play("place")
+	return true
+
+## Mergers and splitters (one click).
 func _place_pipe(item: Item, start: Vector3, end: Vector3) -> bool:
 	var build_ui := get_tree().get_first_node_in_group("build_ui")
 	if build_ui == null:
 		return false
 	var recipe: Recipe = build_ui.get_selected_recipe()
-	if recipe == null:
+	if recipe == null or not build_ui.can_pay(recipe):
 		return false
-	if not build_ui.can_pay(recipe):
-		return false
-	var is_junction := item.id != "vacuum_pipe"
-	# Plain pipes are laid on their centreline (0.45 m above the build plane). A pipe started on the end of an
-	# existing one continues from that pipe's centreline; if it turns, a knee takes one leg from each.
-	var upstream: PipeSegment = null if is_junction else _pipe_ending_at(start)
-	var c_start := upstream.output_point() if upstream != null else start + PlanetPhysics.get_up(start) * PipeSegment.PIPE_HEIGHT
-	var c_end := end + PlanetPhysics.get_up(end) * PipeSegment.PIPE_HEIGHT
-	var leg := 0.0 if is_junction else PipeSegment.knee_leg_for(upstream, c_start, c_end)
-	if leg < 0.0:
-		return false                                     # too sharp to bend, or no room for the bend
 	build_ui.pay(recipe)
 	var instance: Node3D = item.building_scene.instantiate()
 	get_tree().current_scene.add_child(instance)
-	if instance is PipeSegment and not is_junction:
-		var segment := instance as PipeSegment
-		PipeSegment.lay(segment, c_start, c_end, upstream if leg > 0.0 else null, leg, PlanetPhysics.get_up(c_end))
-		segment.grid_pos = Vector3i(floori(start.x), floori(start.y), floori(start.z))
-	else:
-		instance.global_transform = _pipe_transform(start, end, is_junction)
+	instance.global_transform = _pipe_transform(start, end, true)
 	PipeNetwork.register(Vector3i(floori(instance.global_position.x), floori(instance.global_position.y), floori(instance.global_position.z)), instance)
 	SaveManager.mark_placed(instance, item.id)
 	QuestManager.notify_building_placed(item.id)
@@ -1339,10 +1604,19 @@ func _place_pipe(item: Item, start: Vector3, end: Vector3) -> bool:
 func _update_build_ghost() -> void:
 	if _build_ghost == null:
 		return
+	if _build_message != "" and Time.get_ticks_msec() >= _build_message_until:
+		_build_message = ""
+		_refresh_build_hint()
 
+	if _dismantle_mode:
+		_build_ghost.visible = false
+		_hide_pipe_preview()
+		_update_dismantle_target()
+		return
 	var aim: Variant = _build_aim()
 	if _build_menu_open() or aim == null:
 		_build_ghost.visible = false
+		_hide_pipe_preview()
 		return
 
 	var item := _selected_build_item()
@@ -1354,28 +1628,36 @@ func _update_build_ghost() -> void:
 	var force_snap := item != null and item.force_grid_snap
 
 	var raw_pos: Vector3 = aim
+	_set_pipe_arrows(item != null and item.id == "vacuum_pipe")
 	if _is_pipe_item(item):
 		var pipe_end := _snap_pipe_point(raw_pos)
-		if _pipe_anchor_set and item.id == "vacuum_pipe":
-			pipe_end = _pipe_constrain(_pipe_anchor, pipe_end)
 		_pipe_preview_end = pipe_end
 		_build_ghost_material.albedo_color = GHOST_OK
-		if _pipe_anchor_set:
-			_build_ghost.global_transform = _pipe_transform(_pipe_anchor, pipe_end, item.id != "vacuum_pipe")
-			if item.id == "vacuum_pipe":
-				var run := _build_ghost.global_transform
-				run.origin += run.basis.y.normalized() * PipeSegment.PIPE_HEIGHT
-				_build_ghost.global_transform = run
-				(_build_ghost.mesh as BoxMesh).size = Vector3(0.5, 0.5, maxf(_pipe_anchor.distance_to(pipe_end), 0.05))
-		elif item.id == "vacuum_pipe":
-			# before the first click: a pipe-sized marker where the run would start
+		if _pipe_anchor_set and item.id == "vacuum_pipe":
+			# the whole planned run, with arrows the way items will flow; red (and the reason on the HUD) when not
+			var route := _plan_pipe_run(_pipe_anchor, pipe_end)
+			_pipe_route_preview = route
+			if route.get("points", []).size() >= 2:
+				_show_pipe_preview(route, route.ok)
+			else:
+				_hide_pipe_preview()
+			_build_ghost.visible = false
+			_refresh_build_hint()
+			return
+		_hide_pipe_preview()
+		if item.id == "vacuum_pipe":
+			# before the first click: a pipe-sized marker where the run would start, red if nothing may start there
 			var up := PlanetPhysics.get_up(pipe_end)
-			_build_ghost.global_transform = Transform3D(_tangent_basis_at(up, -camera.global_transform.basis.z), pipe_end + up * PipeSegment.PIPE_HEIGHT)
+			var a := _pipe_end_info(pipe_end, true)
+			var fwd: Vector3 = a.dir if a.dir != Vector3.ZERO else -camera.global_transform.basis.z
+			_build_ghost.global_transform = Transform3D(_tangent_basis_at(up, fwd), a.centre)
 			(_build_ghost.mesh as BoxMesh).size = Vector3(0.5, 0.5, 0.5)
+			_build_ghost_material.albedo_color = GHOST_OK if a.ok else GHOST_BAD
 		else:
 			_build_ghost.global_transform = _pipe_transform(pipe_end, pipe_end, true)
 		_build_ghost.visible = true
 		return
+	_hide_pipe_preview()
 	if not is_foundation and _build_grid_snap:
 		# Foundations get their own continuous edge-snap/free-tangent
 		# placement below - the old flat voxel-cell snap is a different,

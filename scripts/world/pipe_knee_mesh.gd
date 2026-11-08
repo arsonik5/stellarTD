@@ -1,7 +1,7 @@
 class_name PipeKneeMesh
 extends RefCounted
 ## Builds a pipe knee for any angle in any direction: the glass tube and its four guide rails swept along a
-## circular arc (radius PipeSegment.KNEE_RADIUS), with the pipe's own collars on both ends (copies of the
+## circular arc (its radius from the knee: PipeSegment.KNEE_RADIUS, or wider on curved runs), with the pipe's own collars on both ends (copies of the
 ## modular pipe model's EndIn/EndOut), so the knee bolts to the pipe before it and the pipe after it like any
 ## other joint. Nothing is a pre-made fixed-angle part; the bend is exactly the angle between the two pipes.
 
@@ -30,7 +30,8 @@ static func build(pipe: PipeSegment, g: Dictionary) -> Node3D:
 			else:
 				steel_mat = m
 	var angle: float = g["angle"]
-	var steps := maxi(4, ceili(rad_to_deg(angle) / 6.0))
+	# one ring every 6 degrees, and at least every 15 cm along a wide bend
+	var steps := maxi(4, maxi(ceili(rad_to_deg(angle) / 6.0), ceili(float(g.get("r", PipeSegment.KNEE_RADIUS)) * angle / 0.15)))
 	var d0: Vector3 = g["d0"]
 	var axis: Vector3 = g["axis"]
 	var c: Vector3 = g["c"]

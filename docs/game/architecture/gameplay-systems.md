@@ -9,6 +9,9 @@
 - **Pipe network grid-cell lookup:** `Vector3i(floor(pos))` dictionary, O(1) neighbor queries
 - **Merger fairness:** rotating cursor per-input, not first-come-first-served
 - **Splitter:** rotating cursor per-output
+- **Pipe runs (2026-11-08, `scripts/world/pipe_route.gd`):** one click-to-click run is planned whole and laid as a chain of PipeSegments (straight span + inlet knee). The bends live inside the new run, so laying never moves or shortens an existing pipe (the old way shortened the upstream pipe for its knee, and a second pipe from the same end tore the first knee loose). STRAIGHT mode: ground axes then up/down, tight knees (r 0.6). CURVED: one wide arc (up to 5 m) out of a fixed direction, an S for two; a too-tight axis route falls back to the direct sloped line. A run carries on from an open pipe end in its direction and leaves / enters a machine port straight for 1.2 m. An end already connected refuses a second pipe; an outlet can't end a run, an inlet can't start one. Knee radius is saved per pipe. Test: `scenes/dev/pipe_route_test.tscn`
+- **Machine ports:** `Building.pipe_ports` (x, z, kind) per scene, read off the model generator's `machine_port()` calls (Blender -Y = Godot +Z). Pipes snap only to these; buildings without ports keep the old four side points
+- **Dismantle:** F with the build tool out (Satisfactory). Anything placed from a build recipe: aim (red), LMB, get back its full cost plus a machine's stored items and modifiers and a pipe's item in transit; refused if it won't all fit
 - **Multi-input recipes:** parallel `input_ids`/`input_amounts` arrays (simpler to hand-author than nested sub-resources)
 - **Building base class absorbs timer/auto-craft:** every recipe-driven building gets it for free; rotating cursor over multiple auto-recipes
 - **Slot-based inventory:** backward-compatible wrapper over flat counter API; grid + hand slots via generic adapters
@@ -313,7 +316,7 @@ climate field, both of which broke on a sphere for exactly that reason).
 
 **Validated patterns:**
 - One `CanvasLayer` (compact HUD) with `UiState` autoload registry â€” all modals call `UiState.set_open(id, bool)`, HUD just watches aggregate
-- Build tool: first-person, Satisfactory style (since 2026-11-04; the top-down camera was deleted). C opens the build menu, picking a building closes it, the ghost sits where the crosshair hits (30 m), LMB place, R / wheel rotate, G grid, B pipe mode, Q menu, RMB / C / Esc exit. Test: scenes/dev/build_fp_test.tscn
+- Build tool: first-person, Satisfactory style (since 2026-11-04; the top-down camera was deleted). C opens the build menu, picking a building closes it, the ghost sits where the crosshair hits (30 m), LMB place, R / wheel rotate, G grid, B pipe mode (Straight / Curved), F dismantle, Q menu, RMB / C / Esc exit. Test: scenes/dev/build_fp_test.tscn
 - Inventory: slot-based grid + hand slots, unified click-to-carry/merge/swap via `SlotCarry` adapter pattern
 - Quest system: 7-quest diamond (two roots, two branches, one final) generated from pure data, no hand-laid-out nodes
 

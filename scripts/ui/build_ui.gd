@@ -147,9 +147,22 @@ func _has_inputs(r: Recipe) -> bool:
 			return false
 	return true
 
-## For the placer: true if this recipe can be placed now.
-func can_pay(r: Recipe) -> bool:
-	return r != null and _affordable(r)
+## For the placer: true if this recipe can be placed `n` times now (a pipe run is several pieces).
+func can_pay(r: Recipe, n: int = 1) -> bool:
+	if r == null:
+		return false
+	var left := n - _carried(r)
+	for k in r.input_ids.size():
+		if left > 0 and Inventory.get_count(r.input_ids[k]) < r.input_amounts[k] * left:
+			return false
+	return true
+
+## The build recipe that makes `item_id` (what dismantling it gives back), or null.
+func recipe_for(item_id: String) -> Recipe:
+	for r: Recipe in BUILDABLE_RECIPES:
+		if r.output_id == item_id:
+			return r
+	return null
 
 ## For the placer: take one carried copy, or else the materials. False (nothing taken) if neither is there.
 func pay(r: Recipe) -> bool:

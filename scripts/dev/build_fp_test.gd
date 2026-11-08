@@ -128,7 +128,7 @@ func _physics_process(delta: float) -> void:
 			await get_tree().create_timer(0.3).timeout
 			_click(MOUSE_BUTTON_LEFT)           # pipe end
 			await get_tree().process_frame
-			_check(_segments() == before + 1, "two clicks lay a pipe (%d -> %d)" % [before, _segments()])
+			_check(_segments() >= before + 1, "two clicks lay a pipe run (%d -> %d)" % [before, _segments()])
 		5:
 			if _t < 3.4: return
 			_shot("build_fp_after")

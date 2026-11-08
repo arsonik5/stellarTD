@@ -9,6 +9,7 @@ size = Vector3(1.5, 1.15, 1.5)
 
 [node name="Chest" type="StaticBody3D"]
 script = ExtResource("1")
+pipe_ports = Array[Vector3]([Vector3(-0.75, 0, 0), Vector3(0.75, 0, 0)])
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.575, 0)

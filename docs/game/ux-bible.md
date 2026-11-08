@@ -215,8 +215,15 @@ hovered card in full: icon, name, category, what it is for, each input as `have 
 menu and you aim it.
 
 Aiming: the ghost is the building's REAL meshes in a see-through mint hologram (`ModelMeshes.extract`), red where it
-can't go. Pipes show a 0.5 m marker before the first click, then the run. Hints at the bottom: LMB place, R / wheel
-rotate (90 / 15 deg), G grid, B pipe mode, Q menu, RMB done. You keep walking and looking the whole time.
+can't go. Pipes show a 0.5 m marker before the first click (red where nothing may start), then the whole planned
+run as a see-through tube with white arrows the way items will flow; red with the reason in the hints when it can't
+be laid. While a pipe is in the tool every laid pipe shows its flow arrows too. B switches Straight (axis runs, tight
+knees) / Curved (natural path, wide bends). Hints at the bottom: LMB place, R / wheel rotate (90 / 15 deg), G grid,
+B pipe mode, F dismantle, Q menu, RMB done. You keep walking and looking the whole time.
+
+Dismantle (Satisfactory): F with the build tool out. What you look at turns red and the hint says what you get back;
+LMB takes it apart (full cost + what it holds, all or nothing). F / RMB go back to building. Outside build mode F
+is still the helmet lamp.
 Future: a hotbar (1-9) of recent buildings, and a Satisfactory-style "pick the building you look at" key.
 
 ## 10. Feel (scripts/player/first_person_feel.gd)
