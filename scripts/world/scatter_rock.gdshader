@@ -17,6 +17,8 @@ uniform vec3 rock_mean = vec3(0.4);             // the scan's mean albedo (linea
 
 uniform sampler2DArray terrain_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform bool has_terrain = false;               // false: blend toward ground_colour (no texture)
+// Near-field stones carry their own ground in the instance colour: rgb = that ground's far colour, a = slot / 15.
+uniform bool ground_from_instance = false;
 uniform int ground_layer = 0;
 uniform float ground_tile_m = 2.5;
 uniform vec3 ground_colour = vec3(0.2);         // the ground's far colour (linear, tinted)
@@ -30,17 +32,21 @@ uniform float blend_height_m = 0.18;
 
 varying vec3 v_world;
 varying float v_h;                               // metres above the rock's base, in its own up
+varying vec4 v_ground;
 
 void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_h = VERTEX.y * length(MODEL_MATRIX[1].xyz);
+	v_ground = COLOR;
 }
 
 void fragment() {
 	vec4 alb = texture(albedo_tex, UV);
 	vec3 c = alb.rgb;
+	vec3 gcol = ground_from_instance ? v_ground.rgb : ground_colour;
+	int glayer = ground_from_instance ? int(round(v_ground.a * 15.0)) : ground_layer;
 	// colour match: scale the scan toward the ground's colour, keeping its own variation
-	vec3 ratio = ground_colour / max(rock_mean, vec3(0.02));
+	vec3 ratio = gcol / max(rock_mean, vec3(0.02));
 	c *= mix(vec3(1.0), clamp(ratio, vec3(0.2), vec3(3.0)), colour_match);
 
 	vec3 up = normalize(v_world - planet_center);
@@ -52,7 +58,7 @@ void fragment() {
 	float base = 1.0 - smoothstep(burial_m, burial_m + blend_height_m, v_h);
 	float g_amt = max(base, upness * dust);
 	if (g_amt > 0.01) {
-		vec3 g = has_terrain ? texture(terrain_albedo, vec3(guv, float(ground_layer))).rgb * ground_tint : ground_colour;
+		vec3 g = has_terrain ? texture(terrain_albedo, vec3(guv, float(glayer))).rgb * ground_tint : gcol;
 		c = mix(c, g, g_amt);
 	}
 	ALBEDO = c;

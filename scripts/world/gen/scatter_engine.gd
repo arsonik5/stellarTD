@@ -19,7 +19,16 @@ const ROLE_SLOTS := {
 	"fine": [0], "worked": [8], "scree": [10], "secondary": [9, 14], "cliff": [11], "strata": [13, 12],
 }
 const SKEW := {"linear": 0, "quadratic": 1, "cubic": 2, "quintic": 3}
-const MAX_VARIANTS := 4
+const MAX_VARIANTS := 3
+## Ground roles a line lies on when it doesn't say: every open ground role.
+const DEFAULT_GROUND := ["fine", "worked", "scree", "secondary"]
+
+static func _combos(variants: Array, slots: PackedInt32Array) -> Array:
+	var out: Array = []
+	for v in variants:
+		for sl in slots:
+			out.append([v, sl])
+	return out
 
 static func lines_for(mix: Array) -> Array:
 	var out: Array = []
@@ -74,8 +83,16 @@ static func build(planet: Node3D, body: CelestialBody, masks: Dictionary, terrai
 		# a secondary trait's lines are thinner, in proportion to how much of the planet it is
 		var trait_scale := clampf(float(e.weight) / float(mix[0].weight), 0.25, 1.0)
 		var per_variant := line.density * trait_scale / float(variants.size())
+		# one item set per ground role it can lie on, each shaded to THAT ground (a boulder in dark volcanic gravel goes
+		# dark, the same boulder on pale regolith stays light): the material filter picks the role, the material the colour
+		var slots := PackedInt32Array()
+		for role in (line.on_ground if not line.on_ground.is_empty() else DEFAULT_GROUND):
+			for sl in ROLE_SLOTS.get(role, []):
+				slots.append(sl)
 		var vi := 0
-		for v in variants:
+		for combo in _combos(variants, slots):
+			var v: Dictionary = combo[0]
+			var slot: int = combo[1]
 			var item := VoxelInstanceLibraryMultiMeshItem.new()
 			item.name = "%s_%d" % [line.id, vi]
 			item.lod_index = line.lod
@@ -88,7 +105,7 @@ static func build(planet: Node3D, body: CelestialBody, masks: Dictionary, terrai
 				item.mesh_lod0_distance_ratio = line.view_ratio
 			item.hide_beyond_max_lod = line.view_ratio < 0.999
 			item.cast_shadow = RenderingServer.SHADOW_CASTING_SETTING_ON if line.shadows else RenderingServer.SHADOW_CASTING_SETTING_OFF
-			item.material_override = _material(v, line, planet, terrain_mat)
+			item.material_override = _material(v, line, planet, terrain_mat, slot)
 			if line.collision:
 				var hull := (v.mesh as Mesh).create_convex_shape(true, false)
 				if hull != null:
@@ -96,7 +113,7 @@ static func build(planet: Node3D, body: CelestialBody, masks: Dictionary, terrai
 					item.collision_mask = 1
 					item.collision_shapes = [hull, Transform3D.IDENTITY]
 					item.collision_distance = 60.0
-			item.generator = _generator(line, body, masks, per_variant, float(v.span), vi)
+			item.generator = _generator(line, body, masks, per_variant, float(v.span), vi % variants.size(), PackedInt32Array([slot]))
 			library.add_item(next_id, item)
 			next_id += 1
 			vi += 1
@@ -150,7 +167,7 @@ static func _load_mesh(path: String) -> Dictionary:
 
 ## The rock's own maps from its glTF material, plus the ground it lies on (the line's first ground role) from the
 ## planet's terrain material.
-static func _material(v: Dictionary, line: AssetLine, planet: Node3D, terrain_mat: ShaderMaterial) -> ShaderMaterial:
+static func _material(v: Dictionary, line: AssetLine, planet: Node3D, terrain_mat: ShaderMaterial, ground_slot: int = -1) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = RockShader
 	var src := v.get("material") as BaseMaterial3D
@@ -161,9 +178,9 @@ static func _material(v: Dictionary, line: AssetLine, planet: Node3D, terrain_ma
 			m.set_shader_parameter("orm_tex", src.roughness_texture)
 			m.set_shader_parameter("has_orm", true)
 		m.set_shader_parameter("rock_mean", _mean_colour(src.albedo_texture))
-	var slot := 8
-	if not line.on_ground.is_empty():
-		slot = int(ROLE_SLOTS.get(line.on_ground[0], [8])[0])
+	var slot := ground_slot
+	if slot < 0:
+		slot = int(ROLE_SLOTS.get(line.on_ground[0], [8])[0]) if not line.on_ground.is_empty() else 8
 	if terrain_mat != null:
 		var arr = terrain_mat.get_shader_parameter("tex_albedo")
 		if arr is Texture2DArray:
@@ -208,7 +225,7 @@ static func _mean_colour(tex: Texture2D) -> Vector3:
 	return acc / 64.0
 
 static func _generator(line: AssetLine, body: CelestialBody, masks: Dictionary, density: float, span: float,
-		variant: int) -> VoxelInstanceGenerator:
+		variant: int, filter_slots: PackedInt32Array = PackedInt32Array()) -> VoxelInstanceGenerator:
 	var g := VoxelInstanceGenerator.new()
 	g.emit_mode = VoxelInstanceGenerator.EMIT_FROM_FACES
 	g.density = density
@@ -223,14 +240,10 @@ static func _generator(line: AssetLine, body: CelestialBody, masks: Dictionary, 
 	g.max_slope_degrees = line.slope_max_deg
 	g.min_slope_falloff_degrees = 4.0
 	g.max_slope_falloff_degrees = 6.0
-	if not line.on_ground.is_empty():
-		var slots := PackedInt32Array()
-		for role in line.on_ground:
-			for s in ROLE_SLOTS.get(role, []):
-				slots.append(s)
+	if not filter_slots.is_empty():
 		g.voxel_texture_filter_enabled = true
-		g.voxel_texture_filter_array = slots
-		g.voxel_texture_filter_threshold = 0.4
+		g.voxel_texture_filter_array = filter_slots
+		g.voxel_texture_filter_threshold = 0.5                 # the dominant material: its colour is what the rock gets
 	g.noise_graph = _placement_graph(line, body, masks, variant)
 	g.noise_dimension = VoxelInstanceGenerator.DIMENSION_3D
 	g.noise_threshold = 0.25

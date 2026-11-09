@@ -24,12 +24,14 @@ var _chunks := {}                # Vector3i -> Array[MultiMeshInstance3D] (empty
 var _queue: Array[Vector3i] = []
 var _timer := 0.0
 var _dirty_at := {}              # Vector3i -> ticks when it may rebuild (after a dig)
+var _far                         # the planet's per-slot far colours (PackedVector4Array), for each stone's ground
 var stats := {"chunks": 0, "probe_hits": 0, "probe_miss": 0, "cand": 0, "hit": 0, "cell": 0, "clump": 0, "ground": 0, "slope": 0, "placed": 0, "other_collider": 0}
 
 func setup(p: Node3D, t: VoxelLodTerrain, b: CelestialBody, near_lines: Array, terrain_mat: ShaderMaterial) -> void:
 	planet = p
 	terrain = t
 	body = b
+	_far = terrain_mat.get_shader_parameter("pal_far") if terrain_mat != null else null
 	for e in near_lines:
 		var line: AssetLine = e.line
 		var vs := ScatterEngine._variants(line)
@@ -46,6 +48,7 @@ func setup(p: Node3D, t: VoxelLodTerrain, b: CelestialBody, near_lines: Array, t
 		var variants: Array = []
 		for v in vs:
 			var mat: Material = ScatterEngine._material(v, line, p, terrain_mat)
+			(mat as ShaderMaterial).set_shader_parameter("ground_from_instance", true)
 			variants.append({"mesh": v.lod1 if (line.low_poly and v.lod1 != null) else v.mesh, "material": mat,
 					"span": v.span})
 		var n := FastNoiseLite.new()
@@ -168,8 +171,10 @@ func _build_chunk(key: Vector3i) -> Array:
 		var line: AssetLine = L.line
 		var nvar: int = (L.variants as Array).size()
 		var xforms: Array = []
+		var colours: Array = []
 		for v in nvar:
 			xforms.append([])
+			colours.append([])
 		var rng := RandomNumberGenerator.new()
 		rng.seed = hash([body.seed, key, String(line.id)])
 		var trait_scale := clampf(float(L.weight), 0.25, 1.0)
@@ -196,15 +201,14 @@ func _build_chunk(key: Vector3i) -> Array:
 			if roll > smoothstep(0.5 - line.clump_cover, 0.95 - line.clump_cover, cl):
 				stats.clump += 1
 				continue
-			# ground roles: the dominant material under the stone
-			if not (L.slots as PackedInt32Array).is_empty():
-				var lp := inv * (pos - (hit.normal as Vector3) * 0.4) - Vector3(lo)
-				var q := Vector3i(clampi(roundi(lp.x), 0, bsize.x - 1), clampi(roundi(lp.y), 0, bsize.y - 1), clampi(roundi(lp.z), 0, bsize.z - 1))
-				var m := TerrainDrill.dominant_from_packed(mats.get_voxel(q.x, q.y, q.z, VoxelBuffer.CHANNEL_INDICES),
-						mats.get_voxel(q.x, q.y, q.z, VoxelBuffer.CHANNEL_WEIGHTS))
-				if not (L.slots as PackedInt32Array).has(m):
-					stats.ground += 1
-					continue
+			# the ground under the stone: its role decides whether the line lies here, its colour shades the stone
+			var lp := inv * (pos - (hit.normal as Vector3) * 0.4) - Vector3(lo)
+			var q := Vector3i(clampi(roundi(lp.x), 0, bsize.x - 1), clampi(roundi(lp.y), 0, bsize.y - 1), clampi(roundi(lp.z), 0, bsize.z - 1))
+			var m := TerrainDrill.dominant_from_packed(mats.get_voxel(q.x, q.y, q.z, VoxelBuffer.CHANNEL_INDICES),
+					mats.get_voxel(q.x, q.y, q.z, VoxelBuffer.CHANNEL_WEIGHTS))
+			if not (L.slots as PackedInt32Array).is_empty() and not (L.slots as PackedInt32Array).has(m):
+				stats.ground += 1
+				continue
 			var n: Vector3 = hit.normal
 			if rad_to_deg(acos(clampf(n.dot(up), -1.0, 1.0))) > line.slope_max_deg:
 				stats.slope += 1
@@ -218,15 +222,22 @@ func _build_chunk(key: Vector3i) -> Array:
 			var nz := nx.cross(ny)
 			var basis := Basis(nx, ny, nz).scaled(Vector3(s, s, s))
 			xforms[variant].append(Transform3D(basis, pos - ny * line.burial * size))
+			var gc := Color(0.2, 0.2, 0.2, float(m) / 15.0)
+			if _far is PackedVector4Array and m < (_far as PackedVector4Array).size():
+				var f: Vector4 = _far[m]
+				gc = Color(f.x, f.y, f.z, float(m) / 15.0)
+			colours[variant].append(gc)
 		for v in nvar:
 			if (xforms[v] as Array).is_empty():
 				continue
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = true
 			mm.mesh = L.variants[v].mesh
 			mm.instance_count = (xforms[v] as Array).size()
 			for k in mm.instance_count:
 				mm.set_instance_transform(k, xforms[v][k])
+				mm.set_instance_color(k, colours[v][k])
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
 			mmi.material_override = L.variants[v].material

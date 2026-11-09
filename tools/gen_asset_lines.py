@@ -15,19 +15,19 @@ LINES = {
     # debris that fell off slopes and came to rest below them: big, clustered, few
     "boulder_fields": dict(models=BOULDERS, size=(0.8, 3.2), skew="cubic", density=0.006, signal="talus",
                            sig=(0.12, 0.45), slope=(2, 38), ground=[], clump=(70, 0.4), rest=(300, 0.35),
-                           burial=0.3, lod=1, shadows=True, collision=True, match=0.55, dust=0.3, view=1.0),
+                           burial=0.3, lod=1, shadows=True, collision=True, match=0.8, dust=0.3, view=1.0),
     # impact throw-out on scoured ground away from the debris aprons: scattered blocks
     "ejecta_blocks": dict(models=BOULDERS, size=(0.6, 2.4), skew="quintic", density=0.0025, signal="wear",
                           sig=(0.1, 0.45), slope=(0, 30), ground=[], clump=(120, 0.3), rest=(300, 0.35),
-                          burial=0.2, lod=1, shadows=True, collision=True, match=0.5, dust=0.25, view=1.0),
+                          burial=0.2, lod=1, shadows=True, collision=True, match=0.8, dust=0.25, view=1.0),
     # the finer part of the debris apron: hand to knee sized rocks on scree and worked ground
     "talus_aprons": dict(models=ROCKS, size=(0.2, 0.9), skew="cubic", density=0.05, signal="talus",
-                         sig=(0.06, 0.35), slope=(4, 42), ground=["scree", "worked"], clump=(25, 0.55),
-                         rest=(300, 0.35), burial=0.3, lod=0, shadows=True, collision=False, match=0.6, dust=0.35, view=0.7),
+                         sig=(0.06, 0.35), slope=(4, 42), ground=["scree", "worked", "secondary"], clump=(25, 0.55),
+                         rest=(300, 0.35), burial=0.3, lod=0, shadows=True, collision=False, match=0.8, dust=0.35, view=0.7),
     # stones everywhere the fines have not covered them
     "pebbles": dict(models=STONES + MOON, size=(0.04, 0.2), skew="cubic", density=2.5, near=True, signal="deposition",
                     sig=(0.3, 0.8), invert=True, slope=(0, 45), ground=["worked", "scree", "secondary"],
-                    clump=(6, 0.65), rest=(200, 0.25), burial=0.35, lod=0, shadows=False, collision=False,
+                    clump=(6, 0.65), rest=(200, 0.25), burial=0.35, lod=0, shadows=True, collision=False,
                     match=0.35, dust=0.3, view=0.25, low=True),
     # impact-gardened clods half sunk in the fine regolith of airless worlds
     "regolith_clods": dict(models=MOON, size=(0.05, 0.25), skew="quadratic", density=1.0, near=True, signal="deposition",
