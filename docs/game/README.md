@@ -8,6 +8,7 @@ Load only the task topic.
 | Reported defects being worked | `open-items.md` |
 | Art/assets | `art-direction.md` |
 | Milestones, status, scale | `architecture/roadmap.md` |
+| Planet surfaces: traits, materials, shader, scatter (seeded-universe path) | `architecture/planet-surfaces.md` |
 | Terrain materials/voxels | `architecture/terrain-world.md` |
 | Bodies, gravity, multi-planet | `architecture/star-gravity.md` |
 | Terrain generator, profiles, `--terrain-log` | `architecture/terrain-generator.md` |

@@ -4,6 +4,10 @@ Slice 1: prove the repeatable feel loop on a spherical voxel planet: dig/place, 
 
 Deferred: power, UI polish, advanced automation/logistics. Combat: ship weapons started 2026-11-08 at Michael's request (rocket pod + War Thunder-style weapon control, see architecture/gameplay-systems.md); everything else in combat stays deferred.
 
+In progress, at Michael's direction (2026-11-08, "never lower the bar"): AAA planet surfaces on the way to a seeded
+universe (traits, CC0 material library, rebuilt terrain shader, ground rules, scatter) - stages 0-4a done, see
+`architecture/planet-surfaces.md` and `reports/AAA voxel terrain fidelity.md`. Fresh clone: `sh tools/setup_surfaces.sh`.
+
 Built past this line and now in scope to maintain: ships, and save/load
 (main menu, slots, terrain edit deltas, world state - see
 `architecture/gameplay-systems.md`).
