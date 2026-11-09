@@ -153,6 +153,8 @@ static var EROSION_WARP_OVERRIDE: float = -1.0
 ## bare swept rock, and useful as an A/B switch when judging whether the
 ## terrain itself is carrying a shot.
 @export var boulders_enabled: bool = true
+## Pebbles and gravel around the viewer (NearScatter); null when this planet has no near-field lines.
+var near_scatter: NearScatter
 
 @onready var terrain: VoxelLodTerrain = $Terrain
 
@@ -765,6 +767,19 @@ func _log_dust_coverage() -> void:
 func _spawn_boulders() -> void:
 	if not boulders_enabled:
 		return
+	# planets with traits: every asset line their traits bring (ScatterEngine, stage 4a); others the old boulders
+	if not TraitMixer.of(body).is_empty():
+		var scatter := ScatterEngine.build(self, body, _erosion_masks, terrain.material as ShaderMaterial)
+		if scatter != null:
+			terrain.add_child(scatter)
+		var near := ScatterEngine.near_lines(TraitMixer.of(body))
+		if not near.is_empty():
+			near_scatter = NearScatter.new()
+			near_scatter.name = "NearScatter"
+			add_child(near_scatter)
+			near_scatter.setup(self, terrain, body, near, terrain.material as ShaderMaterial)
+		if scatter != null or near_scatter != null:
+			return
 	var instancer := BoulderScatter.build(
 		float(body.radius), _erosion_masks.get("talus"),
 		VoxelInstancer.UP_MODE_SPHERE)

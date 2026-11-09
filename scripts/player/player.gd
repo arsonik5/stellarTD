@@ -1114,6 +1114,9 @@ func _dig() -> void:
 	var paid := TerrainDrill.payout(_yield_carry, removed, scale * scale * scale)
 	for item_id: String in paid:
 		Inventory.add(item_id, paid[item_id])
+	var planet_node := _terrain.get_parent()
+	if planet_node != null and planet_node.get("near_scatter") != null:
+		planet_node.near_scatter.invalidate(_terrain.to_global(center), _terrain.scale.x * radius)
 	if _tool_fx != null:
 		var at := _terrain.to_global(surface)
 		_tool_fx.bite(at, camera.global_position - at, material_index, not removed.is_empty(), VoxelMaterials.hardness_for(material_index))

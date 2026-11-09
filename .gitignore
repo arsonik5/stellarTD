@@ -10,3 +10,8 @@ art_src/terrain_lab/shots/
 # photoscan-derived terrain sets and BC7 layers: ~750 MB, rebuilt by tools/setup_surfaces.sh
 data/textures/surfaces/scan/
 data/textures/surfaces/bc7/
+
+# fetched CC0 rock models (Poly Haven, ~220 MB): tools/fetch_rock_models.py via tools/setup_surfaces.sh
+data/models/rocks/*/
+!data/models/rocks/moon_rock_0*/
+data/models/rocks/*/game/

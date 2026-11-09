@@ -8,6 +8,8 @@ set -e
 PY="${PYTHON:-C:/Users/Admin/AppData/Local/Programs/Python/Python312/python.exe}"
 GODOT="${GODOT:-C:/Tools/Godot/Godot_v4.7.2-stable_win64_console.exe}"
 "$PY" -I tools/fetch_scans.py
+"$PY" -I tools/fetch_rock_models.py
 "$PY" -I tools/pack_surface_set.py --all
+"${BLENDER:-C:/Program Files/Blender Foundation/Blender 5.2/blender.exe}" -b -P tools/decimate_rocks.py
 "$GODOT" --headless --path . --import
 "$GODOT" --headless --path . --script res://scripts/dev/compress_surfaces.gd

@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="AssetLine" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/asset_line.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"talus_aprons"
+display_name = "Talus aprons"
+models = Array[String](["namaqualand_rocks_01", "namaqualand_boulders_01", "rock_07"])
+size_min_m = 0.2
+size_max_m = 0.9
+size_skew = "cubic"
+density = 0.05
+signal_mask = "talus"
+signal_low = 0.06
+signal_high = 0.35
+signal_invert = false
+slope_min_deg = 4
+slope_max_deg = 42
+on_ground = Array[String](["scree", "worked"])
+clump_m = 25
+clump_cover = 0.55
+rest_m = 300
+rest_share = 0.35
+burial = 0.3
+lod = 0
+shadows = true
+collision = false
+colour_match = 0.6
+dust = 0.35
+view_ratio = 0.7
+low_poly = false
+near_field = false

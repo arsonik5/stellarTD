@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="AssetLine" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/asset_line.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pebbles"
+display_name = "Pebbles"
+models = Array[String](["namaqualand_stones_01", "stone_01", "rock_09", "moon_rock_02", "moon_rock_03", "moon_rock_04", "moon_rock_05", "moon_rock_06", "moon_rock_07"])
+size_min_m = 0.04
+size_max_m = 0.2
+size_skew = "cubic"
+density = 2.5
+signal_mask = "deposition"
+signal_low = 0.3
+signal_high = 0.8
+signal_invert = true
+slope_min_deg = 0
+slope_max_deg = 45
+on_ground = Array[String](["worked", "scree", "secondary"])
+clump_m = 6
+clump_cover = 0.65
+rest_m = 200
+rest_share = 0.25
+burial = 0.35
+lod = 0
+shadows = false
+collision = false
+colour_match = 0.35
+dust = 0.3
+view_ratio = 0.25
+low_poly = true
+near_field = true

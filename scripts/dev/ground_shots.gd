@@ -12,11 +12,13 @@ extends Node
 ##   orbit   3 radii out, at the planet   - the body as a whole
 ## Writes art_src/ingame/ground_<tag>_<view>.png and prints GROUND lines with the mean GPU frame time per view.
 const OUT := "res://art_src/ingame"
-const VIEWS := [["eye2", 1.7, 30.0], ["m10", 10.0, 35.0], ["m50", 50.0, 25.0], ["m500", 500.0, 20.0], ["orbit", -1.0, 0.0]]
+const VIEWS := [["eye2", 1.7, 30.0], ["m10", 10.0, 35.0], ["m50", 50.0, 25.0], ["m500", 500.0, 20.0], ["orbit", -1.0, 0.0],
+		["top40", 40.0, 89.0], ["close", 1.2, 55.0]]
 var tag := "s0"
 var sun_deg := 25.0
 var debug := 0
 var only := ""
+var noscatter := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -28,6 +30,8 @@ func _ready() -> void:
 			debug = int(a.substr(6))                 # terrain shader debug_view (2 = material, 7 = ladder step)
 		elif a.begins_with("only="):
 			only = a.substr(5)
+		elif a == "noscatter=1":
+			noscatter = true
 	var player: Node3D = null
 	for i in 900:
 		await get_tree().create_timer(0.2).timeout
@@ -66,6 +70,25 @@ func _ready() -> void:
 		var terrain = planet.get("terrain")
 		if terrain != null and terrain.material is ShaderMaterial:
 			(terrain.material as ShaderMaterial).set_shader_parameter("debug_view", debug)
+	if noscatter:
+		for n in get_tree().root.find_children("*", "VoxelInstancer", true, false):
+			n.queue_free()
+		for n in get_tree().root.find_children("NearScatter", "", true, false):
+			n.queue_free()
+		await get_tree().process_frame
+	# scatter census: instances per item (ScatterEngine)
+	for inst in get_tree().root.find_children("*", "VoxelInstancer", true, false):
+		var vi := inst as VoxelInstancer
+		if vi.has_method("debug_get_instance_counts"):
+			var counts: Dictionary = vi.debug_get_instance_counts()
+			var total := 0
+			var by_line := {}
+			for item_id in counts:
+				var it := vi.library.get_item(item_id)
+				var key := String(it.name).rsplit("_", true, 1)[0] if it != null else str(item_id)
+				by_line[key] = int(by_line.get(key, 0)) + int(counts[item_id])
+				total += int(counts[item_id])
+			print("SCATTER %s total %d %s" % [vi.name, total, by_line])
 	for v in VIEWS:
 		var name: String = v[0]
 		if only != "" and name != only:
@@ -94,5 +117,10 @@ func _ready() -> void:
 		await RenderingServer.frame_post_draw
 		var path := "%s/ground_%s_%s.png" % [OUT, tag, name]
 		get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path(path))
-		print("GROUND tag=%s view=%s gpu_ms=%.2f" % [tag, name, sum / 60.0])
+		var calls := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+		var prims := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
+		print("GROUND tag=%s view=%s gpu_ms=%.2f draws=%d prims=%.1fM" % [tag, name, sum / 60.0, calls, prims / 1.0e6])
+		var ns = planet.get("near_scatter")
+		if ns != null:
+			print("NEAR %s stones %d" % [name, ns.instance_count()])
 	get_tree().quit()
