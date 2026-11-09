@@ -24,7 +24,6 @@ emissive = false
 crater_density = 0.05
 ray_strength = 0.05
 ledge_strength = 0.0
-crack_cell_m = 0.0
 lava_tubes = 0.0
 asset_lines = Array[StringName]([&"lichen_crust", &"microbial_mats", &"low_cover", &"shrubs", &"alien_flora"])
 landmarks = Array[StringName]([&"great_tree"])

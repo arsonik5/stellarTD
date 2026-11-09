@@ -31,8 +31,7 @@ const REGIONAL := [9, 14]
 const BASE_CHROMA_MAX := 0.06
 const BASE_LIGHTNESS_SPREAD := 0.28
 
-## -> {"styles": {index: SurfaceStyle}, "roles": {index: "trait/role"}, "cracks": {index: polygon size m},
-##     "report": {...}}
+## -> {"styles": {index: SurfaceStyle}, "roles": {index: "trait/role"}, "report": {...}}
 static func build(mix: Array) -> Dictionary:
 	var styles := {}
 	var roles := {}
@@ -67,19 +66,7 @@ static func build(mix: Array) -> Dictionary:
 			r += 1
 	if r < 2:
 		put.call(SECONDARY_2, dom, "strata_b", ["strata_a", "cliff"])
-	# contraction cracks (stage 4b): only on the flat-ground slots, from the trait that filled them
-	var cracks := {}
-	for idx in [VoxelMaterials.STONE, SURFACE_ALT, SECONDARY_1, SECONDARY_2]:
-		if not roles.has(idx):
-			continue
-		var parts: PackedStringArray = String(roles[idx]).split("/")
-		if parts.size() < 2 or not parts[1] in ["surface", "surface_alt", "regional"]:
-			continue
-		for o in mix:
-			var t: PlanetTrait = o.trait
-			if String(t.id) == parts[0] and t.crack_cell_m > 0.0:
-				cracks[idx] = t.crack_cell_m
-	return {"styles": styles, "roles": roles, "cracks": cracks, "report": harmony(mix, styles)}
+	return {"styles": styles, "roles": roles, "report": harmony(mix, styles)}
 
 # --- harmony ---------------------------------------------------------------------------------------------------------
 static func harmony(mix: Array, styles: Dictionary) -> Dictionary:

@@ -20,6 +20,10 @@ const ROLE_SLOTS := {
 }
 const SKEW := {"linear": 0, "quadratic": 1, "cubic": 2, "quintic": 3}
 const MAX_VARIANTS := 3
+## Tests: build instancer items without their far mesh LOD (scripts/dev/ground_shots.gd lods=0).
+static var mesh_lods := true
+## Tests: rocks in their scan colours, no ground blending (ground_shots plainrocks=1), to tell hidden from absent.
+static var plain_rocks := false
 ## Ground roles a line lies on when it doesn't say: every open ground role.
 const DEFAULT_GROUND := ["fine", "worked", "scree", "secondary"]
 
@@ -96,9 +100,13 @@ static func build(planet: Node3D, body: CelestialBody, masks: Dictionary, terrai
 			var item := VoxelInstanceLibraryMultiMeshItem.new()
 			item.name = "%s_%d" % [line.id, vi]
 			item.lod_index = line.lod
-			item.mesh = v.lod1 if (line.low_poly and v.lod1 != null) else v.mesh
-			if v.lod1 != null and not line.low_poly:
-				item.mesh_lod1 = v.lod1
+			# sunk by a share of the rock's OWN height, baked into the mesh so it scales with each instance: a constant
+			# offset (burial x the line's mean size) put small rocks wholly under the ground, painted as ground,
+			# leaving only their shadows (2026-11-09, the moon's ejecta)
+			var sink: float = line.burial * float(v.height)
+			item.mesh = _sunk(v.lod1 if (line.low_poly and v.lod1 != null) else v.mesh, sink)
+			if v.lod1 != null and not line.low_poly and mesh_lods:
+				item.mesh_lod1 = _sunk(v.lod1, sink)
 				item.mesh_lod0_distance_ratio = line.view_ratio * 0.4
 				item.mesh_lod1_distance_ratio = line.view_ratio
 			else:
@@ -144,9 +152,10 @@ static func _variants(line: AssetLine) -> Array:
 				continue
 			var b := _load_mesh("%s/%s" % [dir, fn.trim_suffix(".glb") + "_lod1.glb"])
 			var mesh: Mesh = a.mesh
-			var sz := mesh.get_aabb().size
+			var ab := mesh.get_aabb()
+			var sz := ab.size
 			out.append({"mesh": mesh, "lod1": b.get("mesh"), "material": a.material,
-					"span": maxf(sz.x, maxf(sz.y, sz.z))})
+					"span": maxf(sz.x, maxf(sz.y, sz.z)), "height": maxf(sz.y, 1e-4), "bottom": ab.position.y})
 	return out
 
 ## {mesh, material} of a .glb's first mesh; the material may sit on the MeshInstance (glTF import) rather than the mesh.
@@ -167,7 +176,8 @@ static func _load_mesh(path: String) -> Dictionary:
 
 ## The rock's own maps from its glTF material, plus the ground it lies on (the line's first ground role) from the
 ## planet's terrain material.
-static func _material(v: Dictionary, line: AssetLine, planet: Node3D, terrain_mat: ShaderMaterial, ground_slot: int = -1) -> ShaderMaterial:
+static func _material(v: Dictionary, line: AssetLine, planet: Node3D, terrain_mat: ShaderMaterial, ground_slot: int = -1,
+		sunk: bool = true) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = RockShader
 	var src := v.get("material") as BaseMaterial3D
@@ -201,11 +211,33 @@ static func _material(v: Dictionary, line: AssetLine, planet: Node3D, terrain_ma
 	m.set_shader_parameter("planet_center", planet.global_position)
 	m.set_shader_parameter("colour_match", line.colour_match)
 	m.set_shader_parameter("dust", line.dust)
-	var mean_size := (line.size_min_m + line.size_max_m) * 0.5
-	m.set_shader_parameter("burial_m", line.burial * mean_size)
-	# the ground-blend band scales with the rock: a fixed 18 cm swallowed whole pebbles into the ground colour
-	m.set_shader_parameter("blend_height_m", clampf(mean_size * 0.25, 0.02, 0.4))
+	# burial and the ground-blend band as shares of the rock's own height (from its bottom), so every instance keeps
+	# its top whatever its size; `sunk` = this mesh is already moved down by the burial (instancer items, _sunk)
+	m.set_shader_parameter("mesh_height", float(v.get("height", 1.0)))
+	m.set_shader_parameter("mesh_bottom", float(v.get("bottom", 0.0)) - (line.burial * float(v.get("height", 1.0)) if sunk else 0.0))
+	m.set_shader_parameter("burial_frac", line.burial)
+	m.set_shader_parameter("blend_frac", 0.18)
+	if plain_rocks:
+		m.set_shader_parameter("colour_match", 0.0)
+		m.set_shader_parameter("dust", 0.0)
+		m.set_shader_parameter("burial_frac", -1.0)
+		m.set_shader_parameter("blend_frac", 0.001)
 	return m
+
+## A copy of `mesh` moved down by `dy` (local units), so a scaled instance sinks in proportion to its own size.
+static func _sunk(mesh: Mesh, dy: float) -> Mesh:
+	if mesh == null or dy <= 0.0:
+		return mesh
+	var out := ArrayMesh.new()
+	for si in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(si)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		for i in verts.size():
+			verts[i].y -= dy
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		out.add_surface_from_arrays(mesh.surface_get_primitive_type(si), arrays)
+		out.surface_set_material(si, mesh.surface_get_material(si))
+	return out
 
 static func _mean_colour(tex: Texture2D) -> Vector3:
 	if tex == null:
@@ -235,7 +267,7 @@ static func _generator(line: AssetLine, body: CelestialBody, masks: Dictionary, 
 	g.random_rotation = true
 	g.random_vertical_flip = false
 	g.vertical_alignment = 1.0
-	g.offset_along_normal = -line.burial * (line.size_min_m + line.size_max_m) * 0.5
+	g.offset_along_normal = 0.0        # the burial is in each item's mesh (_sunk), so it scales with the instance
 	g.min_slope_degrees = line.slope_min_deg
 	g.max_slope_degrees = line.slope_max_deg
 	g.min_slope_falloff_degrees = 4.0

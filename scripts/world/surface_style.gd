@@ -64,9 +64,15 @@ extends Resource
 ## Added to its height in the blend: + stands on top (boulders, ice), - lies under (fine dust).
 @export_range(-1.0, 1.0, 0.01) var height_offset: float = 0.0
 
+@export_group("Cracks")
+## Contraction cracks drawn by the terrain shader on this material: polygon size in metres (0 = none). A property of
+## the MATERIAL, because only some ground cracks: permafrost (5-20 m polygons), mineral crusts, clay. Windblown sand
+## and gravel never do, whatever planet they are on.
+@export_range(0.0, 30.0, 0.05) var crack_cell_m: float = 0.0
+
 ## Packed for the shader: x = saturation - 1, y = height blend scale - 1, z = height offset (zeros = unchanged).
 func grade_params() -> Plane:
-	return Plane(saturation - 1.0, height_blend_scale - 1.0, height_offset, 0.0)
+	return Plane(saturation - 1.0, height_blend_scale - 1.0, height_offset, crack_cell_m)
 
 ## The colour this material reads as from far away (linear): its scan's mean colour (tools/pack_surface_set.py
 ## writes it next to the maps) with saturation and tint applied. a = 0 when unknown (the shader keeps sampling).

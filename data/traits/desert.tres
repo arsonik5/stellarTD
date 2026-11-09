@@ -42,7 +42,6 @@ emissive = false
 crater_density = 0.12
 ray_strength = 0.1
 ledge_strength = 1.4
-crack_cell_m = 0.7
 lava_tubes = 0.0
 asset_lines = Array[StringName]([&"ventifacts", &"yardangs", &"hoodoos", &"dust_drifts", &"gravel_patches", &"cracks", &"pebbles"])
 landmarks = Array[StringName]([&"arch", &"hoodoo_field"])

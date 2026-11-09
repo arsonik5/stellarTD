@@ -723,6 +723,21 @@ func _build_surface_material() -> ShaderMaterial:
 ## basis are set once here; the voxel engine gives each block its own copy of the material, so later changes would
 ## not reach the blocks anyway.
 func _apply_feature_map(mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("planet_center", global_position)
+	mat.set_shader_parameter("planet_basis_inv", global_transform.basis.orthonormalized().inverse())
+	# fine layering inside the strata beds, on planets whose traits lay beds down (ledge strength)
+	var ledges := float(TraitMixer.landform(body).ledges)
+	mat.set_shader_parameter("strata_lamination", clampf(ledges, 0.0, 1.0))
+	if ledges > 0.0 and profile != null:
+		# the beds on cliff faces, per pixel, from the generator's own bed function
+		var sp := GraphGenerator.strata_params(body, profile)
+		var vpm: float = sp.vox_per_m
+		mat.set_shader_parameter("strata_period", float(sp.period_vox) / vpm * VOXEL_SCALE)
+		mat.set_shader_parameter("strata_base", float(sp.base_vox) / vpm * VOXEL_SCALE)
+		mat.set_shader_parameter("strata_phase", float(sp.phase))
+		mat.set_shader_parameter("strata_wob_ratio", GraphGenerator.STRATA_WOB_RATIO)
+		mat.set_shader_parameter("strata_wob_amp", GraphGenerator.STRATA_WOB_AMP)
+		mat.set_shader_parameter("strata_hard_share", GraphGenerator.STRATA_HARD_SHARE)
 	var fresh: Image = _erosion_masks.get("fresh")
 	var rays: float = float(_craters.get("ray_strength", 0.0))
 	if fresh == null or rays <= 0.0:
@@ -733,8 +748,6 @@ func _apply_feature_map(mat: ShaderMaterial) -> void:
 	img.generate_mipmaps()
 	mat.set_shader_parameter("feature_map", ImageTexture.create_from_image(img))
 	mat.set_shader_parameter("has_features", true)
-	mat.set_shader_parameter("planet_center", global_position)
-	mat.set_shader_parameter("planet_basis_inv", global_transform.basis.orthonormalized().inverse())
 	mat.set_shader_parameter("feature_texel_m", TAU * radius_world() / float(img.get_width()))
 	mat.set_shader_parameter("ray_strength", clampf(rays * 1.6, 0.0, 1.0))
 

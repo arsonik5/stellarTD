@@ -28,7 +28,6 @@ emissive = false
 crater_density = 0.15
 ray_strength = 0.2
 ledge_strength = 0.0
-crack_cell_m = 0.35
 lava_tubes = 0.0
 asset_lines = Array[StringName]([&"fumaroles", &"mineral_crusts", &"stain_rings"])
 landmarks = Array[StringName]([&"sulfur_spring"])

@@ -14,12 +14,15 @@ extends Node
 ## Writes art_src/ingame/ground_<tag>_<view>.png and prints GROUND lines with the mean GPU frame time per view.
 const OUT := "res://art_src/ingame"
 const VIEWS := [["eye2", 1.7, 30.0], ["m10", 10.0, 35.0], ["m50", 50.0, 25.0], ["m500", 500.0, 20.0], ["orbit", -1.0, 0.0],
-		["top40", 40.0, 89.0], ["close", 1.2, 55.0], ["cliff", -2.0, 0.0]]
+		["top40", 40.0, 89.0], ["close", 1.2, 55.0], ["cliff", -2.0, 0.0], ["flat", -3.0, 0.0]]
 var tag := "s0"
 var sun_deg := 25.0
 var debug := 0
 var only := ""
 var noscatter := false
+var rock_shadow := true
+var on_planet := ""                     # planet=<node name>: shoot another body, next to its biggest young crater
+var crater_at := 1.6                    # at=<x>: where, in crater radii from its centre (0.3 = on the floor)
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -31,6 +34,16 @@ func _ready() -> void:
 			debug = int(a.substr(6))                 # terrain shader debug_view (2 = material, 7 = ladder step)
 		elif a.begins_with("only="):
 			only = a.substr(5)
+		elif a.begins_with("at="):
+			crater_at = float(a.substr(3))
+		elif a.begins_with("planet="):
+			on_planet = a.substr(7)
+		elif a == "plainrocks=1":
+			ScatterEngine.plain_rocks = true
+		elif a == "lods=0":
+			ScatterEngine.mesh_lods = false
+		elif a == "rockshadow=0":
+			rock_shadow = false
 		elif a == "noscatter=1":
 			noscatter = true
 	var player: Node3D = null
@@ -40,6 +53,8 @@ func _ready() -> void:
 		if player != null and player.is_spawn_resolved():
 			break
 	await get_tree().create_timer(3.0).timeout
+	if on_planet != "":
+		await _move_to_body(player, on_planet)
 	# the planet under the player (the "planet" group holds every body; the first may be a moon)
 	var planet: Node3D = null
 	for n in get_tree().get_nodes_in_group("planet"):
@@ -77,7 +92,16 @@ func _ready() -> void:
 		for n in get_tree().root.find_children("NearScatter", "", true, false):
 			n.queue_free()
 		await get_tree().process_frame
-	# scatter census: instances per item (ScatterEngine)
+	if not rock_shadow:
+		# every scattered rock without shadows (tells a rock's shadow from something else on the ground)
+		for inst in get_tree().root.find_children("*", "VoxelInstancer", true, false):
+			var lib: VoxelInstanceLibrary = (inst as VoxelInstancer).library
+			for item_id in lib.get_all_item_ids():
+				var it = lib.get_item(item_id)
+				if it is VoxelInstanceLibraryMultiMeshItem:
+					it.cast_shadow = RenderingServer.SHADOW_CASTING_SETTING_OFF
+		await get_tree().create_timer(2.0).timeout
+		# scatter census: instances per item (ScatterEngine)
 	for inst in get_tree().root.find_children("*", "VoxelInstancer", true, false):
 		var vi := inst as VoxelInstancer
 		if vi.has_method("debug_get_instance_counts"):
@@ -95,7 +119,20 @@ func _ready() -> void:
 		if only != "" and name != only:
 			continue
 		var h: float = v[1]
-		if h == -2.0:
+		if h == -3.0:
+			# the flattest ground within 1.2 km (cracks, dust, pebbles on open ground), 3 m up, looking down 35 deg
+			var flat := _steepest_face(planet, ground, up, true)
+			if flat.is_empty():
+				print("GROUND no flat ground found")
+				continue
+			var fp: Vector3 = flat.point
+			var fu2 := PlanetPhysics.get_up(fp)
+			var fe := fu2.cross(Vector3.UP).normalized() if absf(fu2.dot(Vector3.UP)) < 0.9 else fu2.cross(Vector3.RIGHT).normalized()
+			cam.global_position = fp + fu2 * 3.0 - fe * 2.0
+			cam.look_at(fp + fe * 4.0, fu2)
+			cam.near = 0.05
+			print("GROUND flat slope %.1f deg at %.0f m from spawn" % [flat.deg, fp.distance_to(ground)])
+		elif h == -2.0:
 			var face := _steepest_face(planet, ground, up)
 			if face.is_empty():
 				print("GROUND no cliff found")
@@ -128,7 +165,7 @@ func _ready() -> void:
 			cam.near = 5.0
 		# let the terrain stream in around the new view, then measure 60 frames
 		await get_tree().create_timer(6.0 if h > 100.0 or h < 0.0 else 3.0).timeout
-		if h == -2.0:
+		if h <= -2.0:
 			await get_tree().create_timer(4.0).timeout
 		var sum := 0.0
 		for i in 60:
@@ -148,7 +185,7 @@ func _ready() -> void:
 ## The steepest landform within 1.2 km of the spawn, from the generator itself (no collision needed that far out):
 ## surface radius by bisection along a grid of directions, slope from two 40 m differences (landform, not a boulder).
 ## -> {"point": world Vector3, "downhill": world tangent Vector3, "deg": float} or {}
-func _steepest_face(planet: Node3D, ground: Vector3, up: Vector3) -> Dictionary:
+func _steepest_face(planet: Node3D, ground: Vector3, up: Vector3, flattest: bool = false) -> Dictionary:
 	var terrain = planet.get("terrain")
 	if terrain == null or not (terrain.generator is VoxelGeneratorGraph):
 		return {}
@@ -173,11 +210,13 @@ func _steepest_face(planet: Node3D, ground: Vector3, up: Vector3) -> Dictionary:
 	var east := up.cross(Vector3.UP).normalized() if absf(up.dot(Vector3.UP)) < 0.9 else up.cross(Vector3.RIGHT).normalized()
 	var north := east.cross(up).normalized()
 	var best := {}
-	var best_s := 0.0
-	var step := 40.0
-	for gx in range(-12, 13):
-		for gy in range(-12, 13):
-			var off := east * gx * 100.0 + north * gy * 100.0
+	var best_s := 1e9 if flattest else 0.0
+	var step := 12.0 if flattest else 40.0
+	var spacing := 40.0 if flattest else 100.0             # flat: within ~300 m, where LOD 0 has streamed in
+	var reach := 7 if flattest else 12
+	for gx in range(-reach, reach + 1):
+		for gy in range(-reach, reach + 1):
+			var off := east * gx * spacing + north * gy * spacing
 			if off.length() < 60.0:
 				continue
 			var wdir := (ground + off - c).normalized()
@@ -188,7 +227,7 @@ func _steepest_face(planet: Node3D, ground: Vector3, up: Vector3) -> Dictionary:
 			var rn: float = surf.call((c + wdir * r0 + t_e2 * step - c).normalized())
 			var g := Vector2(re - rc, rn - rc) / step
 			var sl := g.length()
-			if sl > best_s:
+			if (sl < best_s) if flattest else (sl > best_s):
 				best_s = sl
 				var down := -(t_e * g.x + t_e2 * g.y).normalized()
 				best = {"point": c + wdir * rc, "downhill": down, "deg": rad_to_deg(atan(sl))}
@@ -230,3 +269,68 @@ func _steepest_face(planet: Node3D, ground: Vector3, up: Vector3) -> Dictionary:
 			node_sm = b2.get_voxel_f(0, 0, 0, VoxelBuffer.CHANNEL_SDF) * 90.0
 		print("GROUND cliff slots %s  baked slope %.0f deg (cpu)  %.0f deg (node)" % [" ".join(parts), sm, node_sm])
 	return best
+
+## Puts the player on `body_name`, 1.6 crater radii from the centre of its biggest young crater (on the ejecta), and
+## waits for the terrain there to stream in and collide.
+func _move_to_body(player: Node3D, body_name: String) -> void:
+	var target: Node3D = null
+	for n in get_tree().get_nodes_in_group("planet"):
+		if String(n.name) == body_name:
+			target = n
+	if target == null:
+		print("GROUND no planet ", body_name)
+		return
+	var c := target.global_position
+	var basis := target.global_transform.basis.orthonormalized()
+	var dir := (player.global_position - c).normalized()
+	var field: Dictionary = target.get("_craters") if target.get("_craters") != null else {}
+	var best_r := 0.0
+	if not field.is_empty():
+		var data: PackedFloat32Array = field.data
+		for i in int(field.count):
+			var o := i * CraterField.STRIDE
+			if data[o + 6] < CraterField.YOUNG_AGE and data[o + 3] > best_r:
+				best_r = data[o + 3]
+				var cd := Vector3(data[o], data[o + 1], data[o + 2])
+				var e := Vector3(data[o + 8], data[o + 9], data[o + 10])
+				var rr: float = target.call("radius_world")
+				dir = basis * (cd * rr + e * data[o + 3] * crater_at).normalized()
+	var terrain = target.get("terrain")
+	var graph := terrain.generator as VoxelGeneratorGraph
+	var buf := VoxelBuffer.new()
+	buf.create(1, 1, 1)
+	var r0: float = target.call("radius_world")
+	var ld := basis.inverse() * dir
+	var lo := r0 - 600.0
+	var hi := r0 + 600.0
+	for _i in 22:
+		var mid := (lo + hi) * 0.5
+		graph.generate_block(buf, Vector3i((ld * mid).round()), 0)
+		if buf.get_voxel_f(0, 0, 0, VoxelBuffer.CHANNEL_SDF) < 0.0:
+			lo = mid
+		else:
+			hi = mid
+	var surf := c + dir * (lo + hi) * 0.5
+	player.global_position = surf + dir * 2.0
+	if "velocity" in player:
+		player.velocity = Vector3.ZERO
+	print("GROUND moved to %s next to a young crater of R %.0f m" % [body_name, best_r])
+	for _i in 60:
+		await get_tree().create_timer(0.25).timeout
+		player.global_position = surf + dir * 2.0
+		var q := PhysicsRayQueryParameters3D.create(surf + dir * 30.0, surf - dir * 30.0)
+		if not player.get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+			break
+	# LOD 0 and the instancers around the new spot; the player is held there the whole time (left free it falls
+	# before collision exists, and the terrain streams away with it)
+	for _i in 120:
+		await get_tree().create_timer(0.25).timeout
+		player.global_position = surf + dir * 2.0
+		if "velocity" in player:
+			player.velocity = Vector3.ZERO
+	# the ground the views are measured from: the real surface here, by a ray now that it has collision
+	var hit := player.get_world_3d().direct_space_state.intersect_ray(
+		PhysicsRayQueryParameters3D.create(surf + dir * 40.0, surf - dir * 40.0))
+	var ground_p: Vector3 = hit.position if not hit.is_empty() else surf
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	player.global_position = ground_p

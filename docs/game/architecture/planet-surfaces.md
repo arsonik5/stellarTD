@@ -85,22 +85,35 @@ and every mask read 0 almost everywhere; that was why slope, dust and talus rule
 ## Landforms (stage 4b)
 
 Per-trait numbers in PlanetTrait "Landforms", mixed by weight in `TraitMixer.landform(body)`: crater density, ray
-strength (air erases rays: x 1 / (1 + 10 air)), ledge strength, crack polygon size, lava tubes.
+strength (air erases rays: x 1 / (1 + 10 air)), ledge strength, lava tubes. Crack size is a MATERIAL property.
 - **Craters**: CraterField, baked by shaders/erosion/craters.glsl (tile-binned). Simple (parabolic, depth 0.2 D, rim
   0.04 D, ejecta ~ r^-3), complex above D_t (flat floor, terraced walls) and with a central peak above 1.6 D_t;
   irregular outlines. Age > 0.45 goes in before erosion (worn, filled); younger after it, then 6 talus passes.
   Masks: `fresh` (young walls, ejecta blanket, rays; 4096 wide) drives the terrain shader's brighter immature
   regolith and the ejecta_blocks line; `crater_floor` places crater-floor traits (the crystal moon's crystal fields).
   The graph's cellular craters stay for sizes under the map's resolution.
-- **Strata ledges**: level beds on absolute radius minus the rock relief (so a bed crosses a rough face as a band),
-  cycle 5-13 m with +-35% thickness wobble; hard bed = lower 34% of a cycle (STRATA_A), soft above. Steep faces
-  (slope01 0.6-0.85) get a sawtooth offset: a riser at each hard bed, a long slope back (amplitude capped so the
-  field never folds). Cliff faces are painted cliff rock / strata by the same bands; underground the same beds.
+- **Strata**: one bed function, `PlanetGraphGenerator.strata_params` / `_strata`: level beds on the true radius,
+  cycle 8-18 m with +-35% thickness wobble, hard bed = lower 34% of a cycle. The generator uses it for the ledges
+  (sawtooth radial offset on faces with slope01 0.6-0.85, capped so the field never folds) and for the beds
+  underground (STRATA_A / bedrock). Exposed cliff faces are ONE voxel material (cliff rock); the terrain shader draws
+  the beds on them per pixel from the same function (`strata_*` uniforms, set by Planet): hard beds in the strata
+  scan, each bed its own thickness and tone, plus laminae and partings. As voxel weights the beds aliased into
+  blotches and dashes at LOD 1-2; per pixel they stay continuous at any distance and still meet the ledges and what
+  a dig exposes.
 - **Lava tubes** (volcanic, in its region): warped Voronoi edge network (F2 - F1) at 13 m depth, ~12 m wide, 8 m high,
   in segments; roof collapses (skylights, trenches) on ~15% of the length. Cave and tube walls take the material of
   their depth (materials measure depth from the ground before any carving). Measured: scripts/dev/tube_probe.gd.
-- **Cracks**: Voronoi polygons in the terrain shader on the flat-ground slots of traits with a crack size
-  (pal_grade.w): desert 0.7 m, sulfur 0.35 m, icy permafrost 9 m; near only, anti-aliased by pixel footprint.
+- **Cracks**: `SurfaceStyle.crack_cell_m` (pal_grade.w), only on ground that really cracks and whose scan doesn't
+  already show it: frozen ground, permafrost polygons of 9 m. Exact-edge Voronoi in the shader: V-shaped trough with
+  wandering width, lighter rim, normals tilted into the trough so the light shapes it; near only, anti-aliased.
+  Checked in `res://scenes/dev/surface_lab.tscn -- mix=icy:0.8,rocky:0.2 slot=0` (the real shader on a flat patch).
+
+## Rock burial (scatter)
+
+Each rock is sunk by `burial` x its OWN height, baked into the instancer item's mesh (ScatterEngine._sunk) so it
+scales per instance; near-field stones the same per stone. The rock shader's ground band is a share of the rock's
+height from its bottom (mesh_height / mesh_bottom). Before 2026-11-09 the sink was burial x the line's mean size for
+every instance, which put small rocks wholly underground.
 
 ## Checks
 
@@ -109,7 +122,9 @@ strength (air erases rays: x 1 / (1 + 10 air)), ledge strength, crack polygon si
   now ~7.5 ms with all of the above (measure with and without scatter in the same session: other GPU load swings it).
 - `res://scenes/dev/dig_reel.tscn`: the drill in the real world.
 - `ground_shots ... only=cliff`: the steepest landform within 1.2 km, lit from the camera side, plus the generator's
-  slots there and the slope mask read both ways (CPU and node): they must agree.
+  slots there and the slope mask read both ways (CPU and node): they must agree. `only=flat`: the flattest ground
+  within 300 m. `planet=TestMoon [at=1.6]`: shoot another body, next to its biggest young crater (at = crater radii
+  from its centre). `rockshadow=0`, `lods=0`, `plainrocks=1`: scatter diagnostics.
 - Headless (from the erosion cache): `crater_preview.gd -- tag=x [crop=x,y,w,h]` (hillshade + crater masks),
   `crater_round_check.gd`, `tube_probe.gd`, `gen_cost_probe.gd`, `mat_lightness.gd` (OKLCH of every material).
 
@@ -117,5 +132,7 @@ strength (air erases rays: x 1 / (1 + 10 air)), ledge strength, crack polygon si
 
 Generator kits per trait (crystals, ice,
 basalt columns, desert forms), life, landmarks, density AO / parallax / micro-shadows, distance normalmaps, then the
-seeded universe (cluster -> systems -> 20 mixed seeds). Godot 4 limits to engineer around: no tessellation, no dynamic
+seeded universe (cluster -> systems -> 20 mixed seeds). Open from stage 4b: after the player is moved to another body
+(planet= shots), groups of scattered rocks are culled from the camera but still cast shadows (orphan shadow blobs);
+not seen on home from its own spawn. Pebbles near spawn blend into the gravel texture (2000 placed, few read). Godot 4 limits to engineer around: no tessellation, no dynamic
 GI on edited voxels (dug caves read flatter than SE2).

@@ -27,16 +27,21 @@ uniform vec3 planet_center = vec3(0.0);
 
 uniform float colour_match : hint_range(0.0, 1.0) = 0.55;
 uniform float dust : hint_range(0.0, 1.0) = 0.35;
-uniform float burial_m = 0.1;                    // how deep this instance sits (approximate, per line)
-uniform float blend_height_m = 0.18;
+// Burial and the ground band as shares of the rock's own height, measured from the mesh's bottom (mesh_bottom, local
+// units; for instancer items the mesh is already moved down by the burial). Scale-free, so every instance keeps its
+// top: an absolute depth per line swallowed small rocks whole and left only their shadows.
+uniform float mesh_height = 1.0;
+uniform float mesh_bottom = 0.0;
+uniform float burial_frac = 0.2;
+uniform float blend_frac = 0.18;
 
 varying vec3 v_world;
-varying float v_h;                               // metres above the rock's base, in its own up
+varying float v_h;                               // share of the rock's height above its bottom, 0..1
 varying vec4 v_ground;
 
 void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	v_h = VERTEX.y * length(MODEL_MATRIX[1].xyz);
+	v_h = (VERTEX.y - mesh_bottom) / max(mesh_height, 1e-4);
 	v_ground = COLOR;
 }
 
@@ -55,7 +60,7 @@ void fragment() {
 	vec2 guv = vec2(dot(v_world, t), dot(v_world, b)) / ground_tile_m;
 	vec3 n_world = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	float upness = smoothstep(0.55, 0.92, dot(n_world, up));
-	float base = 1.0 - smoothstep(burial_m, burial_m + blend_height_m, v_h);
+	float base = 1.0 - smoothstep(burial_frac, burial_frac + blend_frac, v_h);
 	float g_amt = max(base, upness * dust);
 	if (g_amt > 0.01) {
 		vec3 g = has_terrain ? texture(terrain_albedo, vec3(guv, float(glayer))).rgb * ground_tint : gcol;

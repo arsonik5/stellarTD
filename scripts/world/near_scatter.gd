@@ -47,10 +47,10 @@ func setup(p: Node3D, t: VoxelLodTerrain, b: CelestialBody, near_lines: Array, t
 		vs = vs.slice(0, MAX_VARIANTS)
 		var variants: Array = []
 		for v in vs:
-			var mat: Material = ScatterEngine._material(v, line, p, terrain_mat)
+			var mat: Material = ScatterEngine._material(v, line, p, terrain_mat, -1, false)   # sunk per instance below
 			(mat as ShaderMaterial).set_shader_parameter("ground_from_instance", true)
 			variants.append({"mesh": v.lod1 if (line.low_poly and v.lod1 != null) else v.mesh, "material": mat,
-					"span": v.span})
+					"span": v.span, "height": v.height})
 		var n := FastNoiseLite.new()
 		n.seed = b.seed * 31 + String(line.id).hash() % 997
 		n.frequency = 1.0 / maxf(line.clump_m, 1.0)
@@ -227,7 +227,8 @@ func _build_chunk(key: Vector3i) -> Array:
 			var nx := ny.cross(t if absf(ny.dot(t)) < 0.95 else b).normalized().rotated(ny, spin)
 			var nz := nx.cross(ny)
 			var basis := Basis(nx, ny, nz).scaled(Vector3(s, s, s))
-			xforms[variant].append(Transform3D(basis, pos - ny * line.burial * size))
+			# sunk by a share of this stone's own height (not its span: a flat stone would vanish)
+			xforms[variant].append(Transform3D(basis, pos - ny * line.burial * float(L.variants[variant].height) * s))
 			var gc := Color(0.2, 0.2, 0.2, float(m) / 15.0)
 			if _far is PackedVector4Array and m < (_far as PackedVector4Array).size():
 				var f: Vector4 = _far[m]

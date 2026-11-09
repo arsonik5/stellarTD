@@ -348,9 +348,10 @@ static var _last_slope: Array = []
 ## down level and cut by the landform, so a hillside shows them as contour stripes and a cliff as horizontal ledges.
 ## Shared by the shape (ledges) and the materials (stripes), built once per graph.
 static var _strata_soft: Array = []
-## The rock relief (crags, rock, grain) added on top of the eroded map, in voxels: the strata are measured from the
-## surface WITHOUT it, so a bed crosses a rough face as a continuous band instead of in patches.
+## The rock relief (crags, rock, grain) added on top of the eroded map, in voxels.
 static var _last_relief: Array = []
+## The overhang term (_overhang_amount), cached per graph.
+static var _last_overhang: Array = []
 static var _strata_band: Array = []
 
 ## `voxel_scale` is passed in rather than read from Planet.VOXEL_SCALE - see
@@ -418,6 +419,7 @@ static func build(body: CelestialBody, voxel_scale: float,
 	_strata_soft = []
 	_strata_band = []
 	_last_relief = []
+	_last_overhang = []
 
 	var x := f.create_node(VoxelGraphFunction.NODE_INPUT_X, Vector2(0, 0))
 	var y := f.create_node(VoxelGraphFunction.NODE_INPUT_Y, Vector2(0, 80))
@@ -1183,6 +1185,19 @@ static func _dust_field(f: VoxelGraphFunction, body: CelestialBody,
 static func _carve_overhangs(f: VoxelGraphFunction, body: CelestialBody,
 		x: int, y: int, z: int, norm: int, profile: PlanetProfile,
 		sdf: Array, masks: Dictionary, rocky: Array = []) -> Array:
+	var amount := _overhang_amount(f, body, x, y, z, norm, profile, masks, rocky)
+	if amount.is_empty():
+		return sdf
+	return _add(f, sdf, amount, Vector2(1000, 2000))
+
+## The overhang term alone (added to the SDF, so it moves the surface radially by exactly -amount): built before the
+## strata so they can take it back out of the radius, like the rock relief. Cached per graph.
+static func _overhang_amount(f: VoxelGraphFunction, body: CelestialBody,
+		x: int, y: int, z: int, norm: int, profile: PlanetProfile,
+		masks: Dictionary, rocky: Array = []) -> Array:
+	if not _last_overhang.is_empty():
+		return _last_overhang
+	var sdf: Array = []
 	# Feature size of the undercuts, in voxels. Around a player height: big
 	# enough to shelter under, small enough that it reads as rock rather than
 	# landform.
@@ -1218,7 +1233,8 @@ static func _carve_overhangs(f: VoxelGraphFunction, body: CelestialBody,
 	var amount := _mul(f,
 		_mul(f, n, _const(f, OVERHANG_VOXELS, Vector2(620, 2000)), Vector2(700, 2000)),
 		gate, Vector2(800, 2020))
-	return _add(f, sdf, amount, Vector2(1000, 2000))
+	_last_overhang = amount
+	return amount
 
 ## Sphere SDF with the height field subtracted from it.
 static func _build_sphere_sdf(f: VoxelGraphFunction, body: CelestialBody,
@@ -2114,8 +2130,11 @@ static func _build_ores(f: VoxelGraphFunction, body: CelestialBody, norm: int, d
 ##   secondary traits     (9, 14) claim regions by their spatial mode, sized by their weight, replacing the ground
 ##   strata (13) / bedrock (12)  below the topsoil: warped depth bands alternating, so a dig shows layers
 ## Slot roles are filled by PaletteBuilder from the same mix, so generator and palette always agree.
-const STRATA_MIN_M := 2.5
-const STRATA_MAX_M := 6.5
+## Bed thickness (one hard + one soft bed per cycle). Thick enough that a hard bed (34% of a cycle) stays several
+## voxels tall on a steep face at LOD 1-2 (thinner beds aliased into blotches at 100 m); the fine layering inside
+## them is drawn per pixel by the terrain shader (strata_lamination).
+const STRATA_MIN_M := 4.0
+const STRATA_MAX_M := 9.0
 ## Ledges: the hard bed stands out by up to this much (radially) where the face is steep, times the planet's ledge
 ## strength (traits). Capped so the field stays monotonic along the radius (no slivers): see _build_ledges.
 const LEDGE_AMPLITUDE_M := 1.4
@@ -2134,40 +2153,46 @@ const LEDGE_SLOPE_FULL := 0.85
 const STRATA_HARD_SHARE := 0.34
 const STRATA_RISER_SHARE := 0.25
 
+## The bed function's numbers, shared with the terrain shader (Planet sets them as uniforms) so the shader draws the
+## beds per pixel exactly where the generator puts the ledges and the underground strata:
+##   t = (r - base) / period;  t += WOB_AMP * sin(TAU * WOB_RATIO * t + phase);  fr = fract(t)
+##   hard bed: fr in [0, STRATA_HARD_SHARE)
+## r is the distance from the planet's centre in metres. Level beds, no warp: the shader must reproduce it exactly.
+const STRATA_WOB_RATIO := 0.381966
+const STRATA_WOB_AMP := 0.35 / (TAU * 0.381966)      # +-35% bed-to-bed thickness
+
+static func strata_params(body: CelestialBody, profile: PlanetProfile) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([body.seed, "strata"])
+	var period_m := rng.randf_range(STRATA_MIN_M, STRATA_MAX_M) * 2.0     # one hard + one soft bed
+	var phase := rng.randf() * TAU
+	var vox_per_m: float = profile.rock_amplitude / PlanetProfile.ROCK_AMPLITUDE_M if profile.rock_amplitude > 0.0 else 1.0
+	var period_vox := period_m * vox_per_m
+	return {"period_m": period_m, "period_vox": period_vox, "phase": phase, "vox_per_m": vox_per_m,
+		"base_vox": floorf(body.radius / period_vox) * period_vox}
+
 static func _strata(f: VoxelGraphFunction, body: CelestialBody, x: int, y: int, z: int, norm: int,
 		profile: PlanetProfile) -> Array:
 	if not _strata_band.is_empty():
 		return [_strata_soft, _strata_band]
 	var P := Vector2(400, 2500)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash([body.seed, "strata"])
-	var thickness := rng.randf_range(STRATA_MIN_M, STRATA_MAX_M) * 2.0     # one hard + one soft bed
-	var vox_per_m: float = profile.rock_amplitude / PlanetProfile.ROCK_AMPLITUDE_M if profile.rock_amplitude > 0.0 else 1.0
+	var sp_ := strata_params(body, profile)
+	var period_vox: float = sp_.period_vox
 	var sp := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE, P)
 	var r0 := _const(f, 0.0, P)
 	f.add_connection(r0[0], r0[1], sp, 3)
 	f.add_connection(x, 0, sp, 0)
 	f.add_connection(y, 0, sp, 1)
 	f.add_connection(z, 0, sp, 2)
-	var period_vox := thickness * vox_per_m
-	var cycles := floorf(body.radius / period_vox)
-	# level beds measured from the smooth landform: take the metre-scale rock relief back out of the radius
-	var r_eff: Array = [sp, 0]
-	if not _last_relief.is_empty():
-		r_eff = _sub(f, r_eff, _last_relief, P + Vector2(100, 0))
-	# t in cycles, near 0 (precision); plus an incommensurate wobble so bed thickness varies bed to bed (+-35%)
-	var t := _mul(f, _sub(f, r_eff, _const(f, cycles * period_vox, P), P), _const(f, 1.0 / period_vox, P), P)
+	# t in cycles near 0 (precision), plus the bed-to-bed thickness wobble
+	var t := _mul(f, _sub(f, [sp, 0], _const(f, float(sp_.base_vox), P), P), _const(f, 1.0 / period_vox, P), P)
 	var wob := f.create_node(VoxelGraphFunction.NODE_SIN, P + Vector2(200, 60))
-	var wob_in := _add(f, _mul(f, t, _const(f, TAU * 0.381966, P), P), _const(f, rng.randf() * TAU, P), P)
+	var wob_in := _add(f, _mul(f, t, _const(f, TAU * STRATA_WOB_RATIO, P), P), _const(f, float(sp_.phase), P), P)
 	f.add_connection(wob_in[0], wob_in[1], wob, 0)
-	t = _add(f, t, _mul(f, [wob, 0], _const(f, 0.35 / (TAU * 0.381966), P), P), P)
-	var warp := _noise_on(f, norm, body.seed + 610, profile.continent_freq * 3.0, P + Vector2(0, 100))
-	if not warp.is_empty():
-		t = _add(f, t, _mul(f, warp, _const(f, 0.6, P), P), P)
+	t = _add(f, t, _mul(f, [wob, 0], _const(f, STRATA_WOB_AMP, P), P), P)
 	# fract(t) = t - floor(t); STEPIFY rounds to nearest, so floor(t) = stepify(t - 0.5, 1)
 	var fl := _stepify(f, _sub(f, t, _const(f, 0.5, P), P), _const(f, 1.0, P), P + Vector2(300, 0))
 	var fr := _sub(f, t, fl, P + Vector2(360, 0))
-	# step: riser 0 -> 1 over the first RISER share, then a straight slope back to 0 at the end of the cycle
 	var rise := _smoothstep(f, fr, 0.0, STRATA_RISER_SHARE, P + Vector2(420, 0))
 	var fall := _smoothstep(f, fr, STRATA_RISER_SHARE, 1.0, P + Vector2(420, 60))
 	_strata_soft = _sub(f, rise, fall, P + Vector2(480, 0))
@@ -2188,9 +2213,7 @@ static func _build_ledges(f: VoxelGraphFunction, body: CelestialBody, x: int, y:
 		return _const(f, 0.0, pos)
 	var beds := _strata(f, body, x, y, z, norm, profile)
 	var vox_per_m: float = profile.rock_amplitude / PlanetProfile.ROCK_AMPLITUDE_M if profile.rock_amplitude > 0.0 else 1.0
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash([body.seed, "strata"])
-	var period := rng.randf_range(STRATA_MIN_M, STRATA_MAX_M) * 2.0 * (1.0 - 0.35)    # thinnest cycle after wobble
+	var period: float = float(strata_params(body, profile).period_m) * (1.0 - 0.35)    # thinnest cycle after wobble
 	var amp := minf(LEDGE_AMPLITUDE_M * strength, 0.8 * STRATA_RISER_SHARE * period / 1.5) * vox_per_m
 	var gate := _smoothstep(f, slope01, LEDGE_SLOPE_START, LEDGE_SLOPE_FULL, pos)
 	return _mul(f, _mul(f, beds[0], _const(f, amp, pos), pos), gate, pos + Vector2(100, 0))
@@ -2213,16 +2236,10 @@ static func _build_trait_materials(f: VoxelGraphFunction, body: CelestialBody, m
 	var ground := surface
 	var cliff_strata: Array = []
 	if not cliffw.is_empty():
-		# steep faces show the beds: the hard bed as strata rock, the soft one as the cliff rock, same bands as the
-		# ledges in the shape (on planets whose traits make ledges; others keep one cliff rock)
+		# one cliff rock: the beds on exposed faces are drawn per pixel by the terrain shader (strata_* uniforms),
+		# from the same function as the ledges. As voxel weights they aliased into dashes at LOD 1-2.
 		var cliff_surface := _mul(f, cliffw, surface, P)
-		if float(TraitMixer.landform(body).ledges) > 0.0:
-			var beds: Array = _strata(f, body, x, y, z, norm, profile)[1]
-			_weight_out(f, VoxelMaterials.CLIFF_ROCK,
-				_cutoff(f, _mul(f, cliff_surface, _sub(f, _const(f, 1.0, P), beds, P), P), P), P + Vector2(600, 200))
-			cliff_strata = _mul(f, cliff_surface, beds, P)
-		else:
-			_weight_out(f, VoxelMaterials.CLIFF_ROCK, _cutoff(f, cliff_surface, P), P + Vector2(600, 200))
+		_weight_out(f, VoxelMaterials.CLIFF_ROCK, _cutoff(f, cliff_surface, P), P + Vector2(600, 200))
 		ground = _mul(f, surface, _sub(f, _const(f, 1.0, P), cliffw, P), P)
 
 	# --- secondary traits claim regions (replace mode), each into its own slot

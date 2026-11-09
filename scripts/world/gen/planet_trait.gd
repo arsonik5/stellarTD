@@ -63,8 +63,6 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var ray_strength: float = 0.3
 ## Hard and soft rock layers eroded unevenly into benches on steep faces (0 = smooth faces).
 @export_range(0.0, 2.0, 0.01) var ledge_strength: float = 0.0
-## Contraction cracks on this trait's flat ground: polygon size in metres (0 = none). Mud ~0.5, permafrost 5-20.
-@export_range(0.0, 30.0, 0.05) var crack_cell_m: float = 0.0
 ## Drained lava tubes under this trait's ground, with skylights and collapse trenches (0 = none, 1 = common).
 @export_range(0.0, 1.0, 0.01) var lava_tubes: float = 0.0
 

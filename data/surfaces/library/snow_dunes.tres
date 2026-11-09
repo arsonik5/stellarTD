@@ -13,3 +13,4 @@ specular = 0.55
 normal_strength = 1.1
 texture_scale_m = 6.0
 saturation = 0.5
+crack_cell_m = 0.0

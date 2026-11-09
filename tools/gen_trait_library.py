@@ -11,7 +11,7 @@ TRAITS = "data/traits"
 
 # name: (texture, tint rgb, roughness_scale, metallic, specular, normal_strength, tile m)
 MATERIALS = {
-    "regolith_fine":   ("ground091",        (0.80, 0.80, 0.84), 1.45, 0.0, 0.40, 1.1, 2.5),
+    "regolith_fine":   ("ground091",        (0.42, 0.42, 0.44), 1.45, 0.0, 0.40, 1.1, 2.5),
     "regolith_pebbly": ("gravel043",        (1.00, 1.00, 1.02), 1.35, 0.0, 0.40, 1.2, 2.0),
     "regolith_dark":   ("gravel024",        (1.00, 1.00, 1.00), 1.40, 0.0, 0.42, 1.2, 1.6),
     "gravel_grey":     ("gravel022",        (1.00, 1.00, 1.00), 1.30, 0.0, 0.42, 1.2, 1.8),
@@ -116,17 +116,22 @@ TRAITS_DEF = {
 
 
 # landforms per trait: crater density (1 = airless, never resurfaced), ray strength, ledge strength (hard/soft layers
-# on steep faces), contraction crack polygon size in m (0 = none), lava tubes
+# on steep faces), lava tubes. (Cracks are a material property: CRACKS below.)
 LANDFORMS = {
-    "airless":     dict(craters=1.0, rays=1.0, ledges=0.3, cracks=0.0, tubes=0.0),
-    "rocky":       dict(craters=0.35, rays=0.45, ledges=1.0, cracks=0.0, tubes=0.0),
-    "icy":         dict(craters=0.5, rays=0.8, ledges=0.5, cracks=9.0, tubes=0.0),
-    "volcanic":    dict(craters=0.12, rays=0.3, ledges=0.8, cracks=0.0, tubes=1.0),
-    "crystalline": dict(craters=0.5, rays=0.5, ledges=0.0, cracks=0.0, tubes=0.0),
-    "desert":      dict(craters=0.12, rays=0.1, ledges=1.4, cracks=0.7, tubes=0.0),
-    "sulfur":      dict(craters=0.15, rays=0.2, ledges=0.0, cracks=0.35, tubes=0.0),
-    "life":        dict(craters=0.05, rays=0.05, ledges=0.0, cracks=0.0, tubes=0.0),
+    "airless":     dict(craters=1.0, rays=1.0, ledges=0.3, tubes=0.0),
+    "rocky":       dict(craters=0.35, rays=0.45, ledges=1.0, tubes=0.0),
+    "icy":         dict(craters=0.5, rays=0.8, ledges=0.5, tubes=0.0),
+    "volcanic":    dict(craters=0.12, rays=0.3, ledges=0.8, tubes=1.0),
+    "crystalline": dict(craters=0.5, rays=0.5, ledges=0.0, tubes=0.0),
+    "desert":      dict(craters=0.12, rays=0.1, ledges=1.4, tubes=0.0),
+    "sulfur":      dict(craters=0.15, rays=0.2, ledges=0.0, tubes=0.0),
+    "life":        dict(craters=0.05, rays=0.05, ledges=0.0, tubes=0.0),
 }
+
+
+# contraction crack polygon size (m) per material: only ground that really cracks and whose scan doesn't already show
+# it. Permafrost polygons on frozen ground. Sand doesn't crack; the playa and sulfur scans have their own cracks.
+CRACKS = {"frozen_ground": 9.0}
 
 
 def style_tres(name, m):
@@ -146,6 +151,7 @@ specular = {spec}
 normal_strength = {nrm}
 texture_scale_m = {scale}
 saturation = {SATURATION.get(name, 1.0)}
+crack_cell_m = {CRACKS.get(name, 0.0)}
 '''
 
 
@@ -189,7 +195,6 @@ emissive = {str(d['emissive']).lower()}
 crater_density = {LANDFORMS[tid]['craters']}
 ray_strength = {LANDFORMS[tid]['rays']}
 ledge_strength = {LANDFORMS[tid]['ledges']}
-crack_cell_m = {LANDFORMS[tid]['cracks']}
 lava_tubes = {LANDFORMS[tid]['tubes']}
 asset_lines = {sn(d['lines'])}
 landmarks = {sn(d['landmarks'])}

@@ -41,7 +41,6 @@ emissive = true
 crater_density = 0.12
 ray_strength = 0.3
 ledge_strength = 0.8
-crack_cell_m = 0.0
 lava_tubes = 1.0
 asset_lines = Array[StringName]([&"columnar_basalt", &"vent_cones", &"lava_tubes", &"flow_fronts", &"stain_rings", &"pebbles"])
 landmarks = Array[StringName]([&"basalt_cliff", &"caldera"])
