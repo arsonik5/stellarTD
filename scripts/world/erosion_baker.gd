@@ -142,6 +142,11 @@ class Settings extends RefCounted:
 	## later call and a half-written cache file.
 	var batches: int = 40
 
+	## Impact craters to add before erosion (CraterField.build), and the body radius in metres they are measured on.
+	## Empty -> no crater pass, and the "fresh" / "crater_floor" masks come back blank.
+	var craters: Dictionary = {}
+	var planet_radius_m: float = 0.0
+
 var last_stats: Dictionary = {}
 
 ## The erosion masks from the last bake: "flow", "wear", "deposition", each a
@@ -155,6 +160,18 @@ const FLOW_SCALE := 1024.0
 ## Resolution the masks are kept at, regardless of the height map's size. See
 ## the downsample in bake() for why.
 const MASK_WIDTH := 2048
+## The crater "fresh" mask (ejecta, rays) is shown by the terrain shader directly, and a ray is a few hundred metres
+## wide, so it keeps twice the other masks' resolution.
+const FRESH_WIDTH := 4096
+const CRATER_SHADER := "res://shaders/erosion/craters.glsl"
+const REPROJECT_SHADER := "res://shaders/erosion/reproject.glsl"
+const CRATER_TILE_PX := 64
+## Rows per crater dispatch, so no single dispatch runs long enough for the driver to call the GPU hung.
+const CRATER_STRIP_ROWS := 512
+## Craters older than this go in before erosion (worn, partly filled); younger ones after it (fresh).
+const CRATER_AGE_SPLIT := 0.45
+## Talus passes after the young craters go in.
+const CRATER_SETTLE_PASSES := 6
 
 ## Emitted as the bake advances, 0..1, with a short label. The bake is ~56 s at
 ## full resolution and the window cannot paint during a synchronous GPU
@@ -212,6 +229,12 @@ func bake(settings: Settings) -> Image:
 	gen_pc.encode_float(44, settings.mass_high)
 	_dispatch(rd, gen_pipe, gen_set, gen_pc,
 		int(ceil(settings.width / 8.0)), int(ceil(settings.height / 8.0)), 1)
+
+	# ------------------------------------------------------------- craters
+	# Before erosion, so the same water and talus passes weather them like every other landform.
+	var tex_fresh := _make_float_texture(rd, settings.width, settings.height)
+	var tex_floor := _make_float_texture(rd, settings.width, settings.height)
+	var crater_ms := _craters(rd, settings, tex_a, tex_fresh, tex_floor, CRATER_AGE_SPLIT, 2.0, false)
 
 	var t_base := Time.get_ticks_msec()
 
@@ -279,6 +302,25 @@ func bake(settings: Settings) -> Image:
 			current = other
 			other = swap
 
+	# Young craters after the water: a fresh bowl on a dry world is not a sediment trap. Then a few talus passes,
+	# so their walls slump to the angle of repose and drop scree on the floor like every other slope.
+	crater_ms += _craters(rd, settings, current, tex_fresh, tex_floor, -1.0, CRATER_AGE_SPLIT, true)
+	if int(settings.craters.get("count", 0)) > 0:
+		for _i in CRATER_SETTLE_PASSES:
+			var sset := _image_set(rd, therm_shader, [current, other, tex_talus])
+			var spc := PackedByteArray()
+			spc.resize(32)
+			spc.encode_s32(0, settings.width)
+			spc.encode_s32(4, settings.height)
+			spc.encode_float(8, FIXED_SCALE)
+			spc.encode_float(12, settings.talus)
+			spc.encode_float(16, settings.thermal_rate)
+			_dispatch(rd, therm_pipe, sset, spc,
+				int(ceil(settings.width / 8.0)), int(ceil(settings.height / 8.0)), 1)
+			var sw := current
+			current = other
+			other = sw
+
 	var t_erode := Time.get_ticks_msec()
 
 	# ------------------------------------------------------------- readback
@@ -307,8 +349,10 @@ func bake(settings: Settings) -> Image:
 	# free, without a second CPU pass over 52 million pixels.
 	# Kept on the GPU rather than read back through _gpu_mask, because the
 	# slope pass below reads it at full resolution.
+	# SOFT: the extremes are rolled off past 0 and 1 rather than clamped. A clamp cut the deepest crater floors and
+	# the highest summits into flat plates with a hard edge (2026-11-09, the first complex crater).
 	var height_rid := _gpu_normalize(rd, norm_shader, mantled, settings,
-		FIXED_SCALE, false, 0.00135, 0.99865)
+		FIXED_SCALE, false, 0.00135, 0.99865, true)
 	var img := _read_float_image(rd, height_rid, settings.width, settings.height)
 	var slope_img := _slope_mask(rd, settings, height_rid)
 	rd.free_rid(height_rid)
@@ -358,6 +402,32 @@ func bake(settings: Settings) -> Image:
 	if slope_img != null:
 		last_masks["slope"] = slope_img
 
+	# Crater masks: already 0..1. `fresh` (rays) is kept sharper than the other masks because the terrain shader
+	# shows it directly and a ray is narrow; `crater_floor` only answers "is this inside a crater".
+	var fresh_img := _read_float_image(rd, tex_fresh, settings.width, settings.height)
+	var floor_img := _read_float_image(rd, tex_floor, settings.width, settings.height)
+	var fw := mini(FRESH_WIDTH, settings.width)
+	if fresh_img.get_width() > fw:
+		fresh_img.resize(fw, fw / 2, Image.INTERPOLATE_LANCZOS)
+	var mw := mini(MASK_WIDTH, settings.width)
+	if floor_img.get_width() > mw:
+		floor_img.resize(mw, mw / 2, Image.INTERPOLATE_LANCZOS)
+	last_masks["fresh"] = fresh_img
+	last_masks["crater_floor"] = floor_img
+	rd.free_rid(tex_fresh)
+	rd.free_rid(tex_floor)
+
+	# Everything above works on an equirectangular grid (the erosion's metric assumes it). The terrain reads these
+	# maps through godot_voxel's own projection, so hand it every map in that projection (SphereUV).
+	var rshader := _load_shader(rd, REPROJECT_SHADER)
+	if rshader.is_valid():
+		img = _reproject(rd, rshader, img)
+		for k in last_masks:
+			last_masks[k] = _reproject(rd, rshader, last_masks[k])
+		rd.free_rid(rshader)
+	else:
+		push_error("ErosionBaker: reproject shader missing; maps stay equirectangular and will be distorted in game")
+
 	rd.free_rid(tex_a)
 	rd.free_rid(tex_b)
 	rd.free_rid(tex_flow)
@@ -376,11 +446,92 @@ func bake(settings: Settings) -> Image:
 		"droplets": total_droplets,
 		"thermal_iterations": settings.thermal_iterations,
 		"base_ms": t_base - t_start,
+		"crater_ms": crater_ms,
+		"craters": int(settings.craters.get("count", 0)),
 		"erode_ms": t_erode - t_base,
 		"readback_ms": t_end - t_erode,
 		"total_ms": t_end - t_start,
 	}
 	return img
+
+## Adds CraterField's craters to the fixed-point height and writes the fresh / floor masks. Returns ms spent.
+func _craters(rd: RenderingDevice, settings: Settings, height_rid: RID, fresh_rid: RID, floor_rid: RID,
+		age_lo: float, age_hi: float, accumulate: bool) -> int:
+	var t0 := Time.get_ticks_msec()
+	var field := settings.craters
+	if field.is_empty() or int(field.get("count", 0)) <= 0 or settings.planet_radius_m <= 0.0 \
+			or settings.relief_m <= 0.0:
+		return 0
+	var shader := _load_shader(rd, CRATER_SHADER)
+	if not shader.is_valid():
+		return 0
+	var bins := CraterField.bin_tiles(field, settings.width, settings.height, settings.planet_radius_m,
+		CRATER_TILE_PX)
+	var cr_bytes := (field.data as PackedFloat32Array).to_byte_array()
+	var st_bytes := (bins.start as PackedInt32Array).to_byte_array()
+	var li_bytes := (bins.list as PackedInt32Array).to_byte_array()
+	var cr_buf := rd.storage_buffer_create(cr_bytes.size(), cr_bytes)
+	var st_buf := rd.storage_buffer_create(st_bytes.size(), st_bytes)
+	var li_buf := rd.storage_buffer_create(li_bytes.size(), li_bytes)
+	var us: Array[RDUniform] = []
+	var ids := [height_rid, fresh_rid, floor_rid, cr_buf, st_buf, li_buf]
+	for i in ids.size():
+		var u := RDUniform.new()
+		u.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE if i < 3 else RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		u.binding = i
+		u.add_id(ids[i])
+		us.append(u)
+	var set_rid := rd.uniform_set_create(us, shader, 0)
+	var pipe := rd.compute_pipeline_create(shader)
+	var y := 0
+	while y < settings.height:
+		var rows := mini(CRATER_STRIP_ROWS, settings.height - y)
+		var pc := PackedByteArray()
+		pc.resize(64)
+		pc.encode_s32(0, settings.width)
+		pc.encode_s32(4, settings.height)
+		pc.encode_s32(8, CRATER_TILE_PX)
+		pc.encode_s32(12, int(bins.tiles_x))
+		pc.encode_s32(16, y)
+		pc.encode_s32(20, 1 if accumulate else 0)
+		pc.encode_float(56, age_lo)
+		pc.encode_float(60, age_hi)
+		pc.encode_float(32, settings.planet_radius_m)
+		pc.encode_float(36, FIXED_SCALE / settings.relief_m)
+		pc.encode_float(40, float(field.get("ray_strength", 0.0)))
+		pc.encode_float(44, CraterField.YOUNG_AGE)
+		_dispatch(rd, pipe, set_rid, pc, int(ceil(settings.width / 8.0)), int(ceil(rows / 8.0)), 1)
+		y += rows
+	rd.free_rid(pipe)
+	rd.free_rid(cr_buf)
+	rd.free_rid(st_buf)
+	rd.free_rid(li_buf)
+	rd.free_rid(shader)
+	return Time.get_ticks_msec() - t0
+
+## One FORMAT_RF image from the bake's equirectangular grid into SphereUV's projection, same size. See reproject.glsl.
+func _reproject(rd: RenderingDevice, shader: RID, src_img: Image) -> Image:
+	var w := src_img.get_width()
+	var h := src_img.get_height()
+	var fmt := RDTextureFormat.new()
+	fmt.width = w
+	fmt.height = h
+	fmt.format = RenderingDevice.DATA_FORMAT_R32_SFLOAT
+	fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT | RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT 		| RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT
+	var src_rid := rd.texture_create(fmt, RDTextureView.new(), [src_img.get_data()])
+	var dst := _make_float_texture(rd, w, h)
+	var pipe := rd.compute_pipeline_create(shader)
+	var set_rid := _image_set(rd, shader, [src_rid, dst])
+	var pc := PackedByteArray()
+	pc.resize(16)
+	pc.encode_s32(0, w)
+	pc.encode_s32(4, h)
+	_dispatch(rd, pipe, set_rid, pc, int(ceil(w / 8.0)), int(ceil(h / 8.0)), 1)
+	var out := _read_float_image(rd, dst, w, h)
+	rd.free_rid(pipe)
+	rd.free_rid(src_rid)
+	rd.free_rid(dst)
+	return out
 
 ## Normalises one accumulator on the GPU and reads back a finished Image.
 ##
@@ -391,7 +542,7 @@ func bake(settings: Settings) -> Image:
 ## Three dispatches: find the range, bin it, then map [lo, hi] -> [0, 1].
 ## The percentile lookup happens on the CPU, on 2048 integers.
 func _gpu_normalize(rd: RenderingDevice, shader: RID, src: RID, settings: Settings,
-		scale: float, logarithmic: bool, lo_pct: float, hi_pct: float) -> RID:
+		scale: float, logarithmic: bool, lo_pct: float, hi_pct: float, soft: bool = false) -> RID:
 	var w := settings.width
 	var h := settings.height
 	var pipe := rd.compute_pipeline_create(shader)
@@ -465,7 +616,7 @@ func _gpu_normalize(rd: RenderingDevice, shader: RID, src: RID, settings: Settin
 			break
 
 	# --- pass 3: apply
-	_dispatch(rd, pipe, set_rid, _norm_pc(w, h, 2, logarithmic, scale, lo, hi), gx, gy, 1)
+	_dispatch(rd, pipe, set_rid, _norm_pc(w, h, 3 if soft else 2, logarithmic, scale, lo, hi), gx, gy, 1)
 	rd.free_rid(buf)
 	rd.free_rid(pipe)
 	return dst

@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://i0s32t0b6006"
+path="res://.godot/imported/craters.glsl-4d7e4d428051b835ccfaf173aebdabde.res"
+
+[deps]
+
+source_file="res://shaders/erosion/craters.glsl"
+dest_files=["res://.godot/imported/craters.glsl-4d7e4d428051b835ccfaf173aebdabde.res"]
+
+[params]
+

@@ -33,6 +33,9 @@ extends Resource
 @export var slope_max_deg: float = 40.0
 ## Ground roles it may sit on (palette slots): fine, worked, scree, secondary, cliff. Empty = any.
 @export var on_ground: Array[String] = []
+## Density multiplier per ground role (role -> 0..1), for roles it lies on more sparsely. Missing role = 1. Example:
+## pebbles thin out on the fine ground, where fines have buried most of them.
+@export var ground_density: Dictionary = {}
 ## Clumping: rocks come in groups. Size of a clump region (m) and how much of the ground is in clumps (0..1).
 @export var clump_m: float = 40.0
 @export_range(0.0, 1.0) var clump_cover: float = 0.5

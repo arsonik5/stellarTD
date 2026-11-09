@@ -135,6 +135,24 @@ static func facts_for(body: CelestialBody) -> Dictionary:
 		"geologically_active": r > 2000.0,
 	}
 
+## The planet's landform numbers: each trait's, weighted by its share of the mix. Air erases rays (a thin atmosphere
+## halves them by ~0.1 kg/m3), so `rays` already carries that. Empty mix -> all zero (hand-authored bodies).
+static func landform(body: CelestialBody) -> Dictionary:
+	var out := {"craters": 0.0, "rays": 0.0, "ledges": 0.0, "lava_tubes": 0.0, "lava_region": 0.0}
+	var m := of(body)
+	for o in m:
+		var t: PlanetTrait = o.trait
+		var w: float = o.weight
+		out.craters += t.crater_density * w
+		out.rays += t.ray_strength * w
+		out.ledges += t.ledge_strength * w
+		out.lava_tubes = maxf(out.lava_tubes, t.lava_tubes)
+		if t.lava_tubes > 0.0:
+			out.lava_region = maxf(out.lava_region, w)
+	var air: float = body.atmosphere.surface_air_density if body != null and body.atmosphere != null else 0.0
+	out.rays *= 1.0 / (1.0 + air * 10.0)
+	return out
+
 ## A short human-readable form: "airless 0.70 + crystalline 0.30".
 static func describe(m: Array) -> String:
 	var parts: Array[String] = []

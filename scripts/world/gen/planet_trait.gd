@@ -55,6 +55,19 @@ extends Resource
 ## Light emitted at night (crystal glow, lava): counts against the planet's saturation budget.
 @export var emissive: bool = false
 
+@export_group("Landforms")
+## Impact craters per area, relative to a fully airless, never-resurfaced body (1). Volcanic and wind-worked worlds
+## bury or erase theirs. Feeds CraterField (baked into the heightmap before erosion, so erosion weathers them).
+@export_range(0.0, 1.0, 0.01) var crater_density: float = 0.3
+## How bright and long the rays and ejecta of young craters are. Space weathering and air both erase them.
+@export_range(0.0, 1.0, 0.01) var ray_strength: float = 0.3
+## Hard and soft rock layers eroded unevenly into benches on steep faces (0 = smooth faces).
+@export_range(0.0, 2.0, 0.01) var ledge_strength: float = 0.0
+## Contraction cracks on this trait's flat ground: polygon size in metres (0 = none). Mud ~0.5, permafrost 5-20.
+@export_range(0.0, 30.0, 0.05) var crack_cell_m: float = 0.0
+## Drained lava tubes under this trait's ground, with skylights and collapse trenches (0 = none, 1 = common).
+@export_range(0.0, 1.0, 0.01) var lava_tubes: float = 0.0
+
 @export_group("Content (later stages)")
 ## Asset lines this trait brings (rock kits, crystals, flora...), by line id. Stage 4.
 @export var asset_lines: Array[StringName] = []

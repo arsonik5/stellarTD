@@ -55,10 +55,13 @@ func setup(p: Node3D, t: VoxelLodTerrain, b: CelestialBody, near_lines: Array, t
 		n.seed = b.seed * 31 + String(line.id).hash() % 997
 		n.frequency = 1.0 / maxf(line.clump_m, 1.0)
 		var slots := PackedInt32Array()
+		var slot_density := {}
 		for role in line.on_ground:
 			for s in ScatterEngine.ROLE_SLOTS.get(role, []):
 				slots.append(s)
-		lines.append({"line": line, "weight": float(e.weight), "variants": variants, "noise": n, "slots": slots})
+				slot_density[s] = float(line.ground_density.get(role, 1.0))
+		lines.append({"line": line, "weight": float(e.weight), "variants": variants, "noise": n, "slots": slots,
+				"slot_density": slot_density})
 
 ## Rebuild the chunks around a bite (world position, metres) once the terrain has re-meshed there.
 func invalidate(world_pos: Vector3, radius: float) -> void:
@@ -207,6 +210,9 @@ func _build_chunk(key: Vector3i) -> Array:
 			var m := TerrainDrill.dominant_from_packed(mats.get_voxel(q.x, q.y, q.z, VoxelBuffer.CHANNEL_INDICES),
 					mats.get_voxel(q.x, q.y, q.z, VoxelBuffer.CHANNEL_WEIGHTS))
 			if not (L.slots as PackedInt32Array).is_empty() and not (L.slots as PackedInt32Array).has(m):
+				stats.ground += 1
+				continue
+			if rng.randf() > float((L.slot_density as Dictionary).get(m, 1.0)):
 				stats.ground += 1
 				continue
 			var n: Vector3 = hit.normal

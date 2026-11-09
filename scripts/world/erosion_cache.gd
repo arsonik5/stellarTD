@@ -21,7 +21,7 @@ const DIR := "user://erosion_cache"
 ## a shader edit, a settings default, a new mask. Without it, a stale cache
 ## silently serves the old terrain and every measurement afterwards is of
 ## something that is no longer in the source.
-const FORMAT_VERSION := 10
+const FORMAT_VERSION := 14
 
 ## Layers in a cache entry, in write order. Height first so a truncated file
 ## still fails cleanly rather than loading masks against no terrain.
@@ -31,14 +31,17 @@ const FORMAT_VERSION := 10
 ## cheap, but at ~61 m per texel it read a 54 degree cliff as near-flat.
 ## Differencing the full map instead cost 3.0 -> 8.8 us/voxel in cache
 ## misses, so the gradient moved into the bake.
-const LAYERS := ["height", "flow", "wear", "deposition", "talus", "slope"]
+## `fresh` and `crater_floor` come from the crater pass (CraterField, craters.glsl).
+const LAYERS := ["height", "flow", "wear", "deposition", "talus", "slope", "fresh", "crater_floor"]
 
-static func key(seed_value: int, width: int, height: int) -> String:
-	return "%s/v%d_s%d_%dx%d.bin" % [DIR, FORMAT_VERSION, seed_value, width, height]
+## `features` is a hash of what was baked into the base before erosion (the crater list), so changing a planet's
+## traits rebakes it instead of serving the old craters.
+static func key(seed_value: int, width: int, height: int, features: int = 0) -> String:
+	return "%s/v%d_s%d_%dx%d_f%x.bin" % [DIR, FORMAT_VERSION, seed_value, width, height, features & 0xffffffff]
 
 ## Returns {"height": Image, "flow": Image, ...} or an empty Dictionary.
-static func load_entry(seed_value: int, width: int, height: int) -> Dictionary:
-	var path := key(seed_value, width, height)
+static func load_entry(seed_value: int, width: int, height: int, features: int = 0) -> Dictionary:
+	var path := key(seed_value, width, height, features)
 	if not FileAccess.file_exists(path):
 		return {}
 	var f := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_ZSTD)
@@ -65,10 +68,17 @@ static func load_entry(seed_value: int, width: int, height: int) -> Dictionary:
 	return out
 
 static func save_entry(seed_value: int, width: int, height: int,
-		height_img: Image, masks: Dictionary) -> bool:
+		height_img: Image, masks: Dictionary, features: int = 0) -> bool:
 	DirAccess.make_dir_recursive_absolute(DIR)
 	_prune_old_versions()
-	var path := key(seed_value, width, height)
+	var path := key(seed_value, width, height, features)
+	# the same planet baked with an older feature list is dead weight (hundreds of MB): drop it
+	var same := "v%d_s%d_%dx%d_" % [FORMAT_VERSION, seed_value, width, height]
+	var dir := DirAccess.open(DIR)
+	if dir != null:
+		for fname in dir.get_files():
+			if fname.begins_with(same) and DIR + "/" + fname != path:
+				dir.remove(fname)
 	var f := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_ZSTD)
 	if f == null:
 		push_warning("ErosionCache: cannot write %s" % path)

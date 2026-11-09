@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://ktd0vvggax1b"
+path="res://.godot/imported/reproject.glsl-35d65fc43b466b1db1b2f1d97f4cfba7.res"
+
+[deps]
+
+source_file="res://shaders/erosion/reproject.glsl"
+dest_files=["res://.godot/imported/reproject.glsl-35d65fc43b466b1db1b2f1d97f4cfba7.res"]
+
+[params]
+

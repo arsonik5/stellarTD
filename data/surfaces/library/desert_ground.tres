@@ -6,7 +6,7 @@
 script = ExtResource("1")
 display_name = "Desert ground"
 texture_name = "ground096b"
-albedo_tint = Color(1.0, 1.0, 1.0, 1)
+albedo_tint = Color(0.8, 0.8, 0.8, 1)
 roughness_scale = 1.3
 metallic = 0.0
 specular = 0.4

@@ -175,6 +175,9 @@ var _eroded_map: Image
 ## failed, and every consumer falls back rather than failing.
 var _erosion_masks: Dictionary = {}
 
+## This body's impact craters (CraterField.build), kept for the logs and for landmark placement later.
+var _craters: Dictionary = {}
+
 ## Emitted once the terrain generator is live and the planet can be queried.
 ##
 ## Needed because _ready() is now a COROUTINE: the erosion bake yields between
@@ -698,6 +701,7 @@ func _build_surface_material() -> ShaderMaterial:
 	mat.set_shader_parameter("pal_far", palette["far"])
 	mat.set_shader_parameter("tex_albedo", palette["albedo_array"])
 	mat.set_shader_parameter("tex_normal", palette["normal_array"])
+	_apply_feature_map(mat)
 	if TerrainLog.enabled:
 		var assigned: Array[String] = []
 		var names: Array = palette["names"]
@@ -713,6 +717,26 @@ func _build_surface_material() -> ShaderMaterial:
 			name, assigned.size(), SurfacePalette.SLOTS, ", ".join(assigned),
 			"  UNTEXTURED: " + ", ".join(missing) if not missing.is_empty() else ""])
 	return mat
+
+## The planet-wide feature map for the terrain shader (stage 4b): the crater "fresh" mask (young ejecta and rays) as
+## an 8-bit mipmapped texture, sampled by direction from the planet's centre. Planets don't move, so the centre and
+## basis are set once here; the voxel engine gives each block its own copy of the material, so later changes would
+## not reach the blocks anyway.
+func _apply_feature_map(mat: ShaderMaterial) -> void:
+	var fresh: Image = _erosion_masks.get("fresh")
+	var rays: float = float(_craters.get("ray_strength", 0.0))
+	if fresh == null or rays <= 0.0:
+		mat.set_shader_parameter("has_features", false)
+		return
+	var img := fresh.duplicate() as Image
+	img.convert(Image.FORMAT_L8)
+	img.generate_mipmaps()
+	mat.set_shader_parameter("feature_map", ImageTexture.create_from_image(img))
+	mat.set_shader_parameter("has_features", true)
+	mat.set_shader_parameter("planet_center", global_position)
+	mat.set_shader_parameter("planet_basis_inv", global_transform.basis.orthonormalized().inverse())
+	mat.set_shader_parameter("feature_texel_m", TAU * radius_world() / float(img.get_width()))
+	mat.set_shader_parameter("ray_strength", clampf(rays * 1.6, 0.0, 1.0))
 
 ## How much of the surface the dust field actually mantles.
 ##
@@ -832,10 +856,15 @@ func _bake_eroded_heightmap() -> Image:
 	# before the bake (see _ready), so the relief is already known here.
 	settings.relief_m = profile.relief_voxels * VOXEL_SCALE
 	settings.metres_per_texel = TAU * radius_world() / float(width)
+	# Impact craters from the trait mix, baked in before erosion (CraterField, stage 4b).
+	settings.planet_radius_m = radius_world()
+	settings.craters = CraterField.build(body, radius_world(), settings.metres_per_texel)
+	_craters = settings.craters
+	var feature_key: int = settings.craters.get("key", 0)
 
 	# Cache hit: the bake is 6x the pixels it used to be and is deterministic in
 	# the seed, so it is stored rather than repeated at every load.
-	var cached := ErosionCache.load_entry(body.seed, settings.width, settings.height)
+	var cached := ErosionCache.load_entry(body.seed, settings.width, settings.height, feature_key)
 	if not cached.is_empty():
 		_erosion_masks = {}
 		for k in cached:
@@ -844,7 +873,8 @@ func _bake_eroded_heightmap() -> Image:
 		TerrainLog.write_fields("erosion", "%s: eroded heightmap from cache" % name, {
 			"size": "%dx%d" % [settings.width, settings.height],
 			"metres_per_texel": TAU * radius_world() / float(settings.width),
-			"path": ErosionCache.key(body.seed, settings.width, settings.height),
+			"path": ErosionCache.key(body.seed, settings.width, settings.height, feature_key),
+			"craters": int(settings.craters.get("count", 0)),
 		})
 		return cached["height"]
 	baker.progress.connect(_on_bake_progress)
@@ -854,7 +884,7 @@ func _bake_eroded_heightmap() -> Image:
 		return null
 	_erosion_masks = baker.last_masks
 	ErosionCache.save_entry(body.seed, settings.width, settings.height,
-		img, _erosion_masks)
+		img, _erosion_masks, feature_key)
 	if TerrainLog.enabled:
 		# Dump what the game actually baked, plus its height distribution. A map
 		# that looks right in isolation can still be applied with too little
@@ -955,10 +985,8 @@ func suggested_spawn_direction() -> Vector3:
 			score -= absf(centre - (lo + nearby_relief * 0.35)) * 0.5
 			if score > best_score:
 				best_score = score
-				var lon := (float(x) + 0.5) / float(w) * TAU - PI
-				var lat := PI * 0.5 - (float(y) + 0.5) / float(h) * PI
-				best_dir = Vector3(
-					cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+				# the map is in the voxel node's projection (SphereUV), not plain equirectangular
+				best_dir = SphereUV.dir_of_pixel(float(x), float(y), w, h)
 
 	TerrainLog.write("spawn", "%s: suggested spawn score %.4f dir %s" % [
 		name, best_score, best_dir])

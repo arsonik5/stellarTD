@@ -9,6 +9,9 @@ traits; never lower the bar. This file is what exists now and how it fits togeth
 ```
 seed + body facts (radius, air, temperature, activity)
   -> TraitMixer.mix            weighted trait mix: one dominant, <=2 secondaries, one accent      scripts/world/gen/trait_mixer.gd
+  -> CraterField.build         seeded crater list (power-law sizes, morphometry, age)             scripts/world/gen/crater_field.gd
+  -> ErosionBaker              base -> old craters -> erosion -> young craters -> masks,         scripts/world/erosion_baker.gd
+                               reprojected into the voxel node's projection (SphereUV)
   -> PaletteBuilder.build      16 MIXEL4 slots by ROLE + OKLCH harmony report                      scripts/world/gen/palette_builder.gd
   -> SurfacePalette.build      BC7 Texture2DArrays + pal_* uniforms                                scripts/world/surface_palette.gd
   -> PlanetGraphGenerator      ground rules write the same roles per voxel                          _build_trait_materials
@@ -59,12 +62,45 @@ precision-safe everywhere (block-relative uv).
 
 ## Scatter (stage 4a)
 
-`data/asset_lines` (tools/gen_asset_lines.py): boulder_fields (talus), ejecta_blocks (wear), talus_aprons, and the
+`data/asset_lines` (tools/gen_asset_lines.py): boulder_fields (talus), ejecta_blocks (crater "fresh"), talus_aprons, and the
 near-field lines pebbles, gravel_patches, regolith_clods. Instancer lines: per variant x ground role, filtered to the
 dominant material, shaded to that ground (scatter_rock.gdshader: colour match, burial blend into the terrain array,
 dust), max 3 variants each (draw calls). Near-field lines: 12 m chunks within 30 m at 1-3 stones / m2, placed on the
 physics surface, ground role and colour from the generator, rebuilt around drill bites. Rock models: 18 CC0 Poly
 Haven scans split + decimated in Blender (`tools/decimate_rocks.py`: boulder 6k, rock 2.5k, stone 1.2k tris + LOD1).
+
+## Map projection (read this before touching any planet-wide map)
+
+Every planet-wide map (height, flow, wear, deposition, talus, slope, fresh, crater_floor) is stored in the projection
+godot_voxel's SdfSphereHeightmap node reads, because that node reads them per voxel: `u = 0.5 - atan2(z, x) / TAU`,
+`v = 0.5 - (y^3 + y) / 4` (a cubic stand-in for asin), bilinear at pixel corners. `SphereUV` (scripts/world/gen/
+sphere_uv.gd) is the one copy in GDScript; reproject.glsl and the terrain shader carry the same formula. The bake
+itself runs on a plain equirectangular grid (the erosion's metric needs it) and ErosionBaker reprojects at the end.
+Until 2026-11-09 the maps went in unconverted: the planet was mirrored east-west and stretched ~27% north-south.
+
+Masks are read in the graph with `PlanetGraphGenerator.sample_mask_on_sphere`: the voxel direction put on a 1000 m
+sphere. Fed the real voxel position, the node's early-out (more than ~2 m off its radius) returned plain distance
+and every mask read 0 almost everywhere; that was why slope, dust and talus rules did nothing before 2026-11-09.
+
+## Landforms (stage 4b)
+
+Per-trait numbers in PlanetTrait "Landforms", mixed by weight in `TraitMixer.landform(body)`: crater density, ray
+strength (air erases rays: x 1 / (1 + 10 air)), ledge strength, crack polygon size, lava tubes.
+- **Craters**: CraterField, baked by shaders/erosion/craters.glsl (tile-binned). Simple (parabolic, depth 0.2 D, rim
+  0.04 D, ejecta ~ r^-3), complex above D_t (flat floor, terraced walls) and with a central peak above 1.6 D_t;
+  irregular outlines. Age > 0.45 goes in before erosion (worn, filled); younger after it, then 6 talus passes.
+  Masks: `fresh` (young walls, ejecta blanket, rays; 4096 wide) drives the terrain shader's brighter immature
+  regolith and the ejecta_blocks line; `crater_floor` places crater-floor traits (the crystal moon's crystal fields).
+  The graph's cellular craters stay for sizes under the map's resolution.
+- **Strata ledges**: level beds on absolute radius minus the rock relief (so a bed crosses a rough face as a band),
+  cycle 5-13 m with +-35% thickness wobble; hard bed = lower 34% of a cycle (STRATA_A), soft above. Steep faces
+  (slope01 0.6-0.85) get a sawtooth offset: a riser at each hard bed, a long slope back (amplitude capped so the
+  field never folds). Cliff faces are painted cliff rock / strata by the same bands; underground the same beds.
+- **Lava tubes** (volcanic, in its region): warped Voronoi edge network (F2 - F1) at 13 m depth, ~12 m wide, 8 m high,
+  in segments; roof collapses (skylights, trenches) on ~15% of the length. Cave and tube walls take the material of
+  their depth (materials measure depth from the ground before any carving). Measured: scripts/dev/tube_probe.gd.
+- **Cracks**: Voronoi polygons in the terrain shader on the flat-ground slots of traits with a crack size
+  (pal_grade.w): desert 0.7 m, sulfur 0.35 m, icy permafrost 9 m; near only, anti-aliased by pixel footprint.
 
 ## Checks
 
@@ -72,10 +108,14 @@ Haven scans split + decimated in Blender (`tools/decimate_rocks.py`: boulder 6k,
   10 m, 50 m, 500 m, orbit, top 40 m, close), GPU ms, draw calls, primitives, scatter census. Baseline s0 5.4-7.0 ms;
   now ~7.5 ms with all of the above (measure with and without scatter in the same session: other GPU load swings it).
 - `res://scenes/dev/dig_reel.tscn`: the drill in the real world.
+- `ground_shots ... only=cliff`: the steepest landform within 1.2 km, lit from the camera side, plus the generator's
+  slots there and the slope mask read both ways (CPU and node): they must agree.
+- Headless (from the erosion cache): `crater_preview.gd -- tag=x [crop=x,y,w,h]` (hillshade + crater masks),
+  `crater_round_check.gd`, `tube_probe.gd`, `gen_cost_probe.gd`, `mat_lightness.gd` (OKLCH of every material).
 
 ## Not there yet (against the north star)
 
-Terrain features (crater rims as SDF, outcrops, strata ledges, lava tubes), generator kits per trait (crystals, ice,
+Generator kits per trait (crystals, ice,
 basalt columns, desert forms), life, landmarks, density AO / parallax / micro-shadows, distance normalmaps, then the
 seeded universe (cluster -> systems -> 20 mixed seeds). Godot 4 limits to engineer around: no tessellation, no dynamic
 GI on edited voxels (dug caves read flatter than SE2).

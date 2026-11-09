@@ -80,6 +80,7 @@ static func _builtin_styles() -> Dictionary:
 ## Returns { tint_rough, extra, albedo_array, normal_array, names }.
 static func build(body: CelestialBody) -> Dictionary:
 	var styles: Dictionary = _builtin_styles()
+	var cracks := {}
 
 	if body != null:
 		for biome: Biome in body.biomes:
@@ -92,6 +93,7 @@ static func build(body: CelestialBody) -> Dictionary:
 			var pal := PaletteBuilder.build(mix)
 			for idx in pal.styles:
 				styles[idx] = pal.styles[idx]
+			cracks = pal.get("cracks", {})
 		for ore: OreType in body.ore_types:
 			if ore != null and ore.surface != null:
 				styles[ore.material_index] = ore.surface
@@ -111,7 +113,8 @@ static func build(body: CelestialBody) -> Dictionary:
 		tint_rough.append(Vector4(tr.x, tr.y, tr.z, tr.d))
 		extra.append(Vector4(ex.x, ex.y, ex.z, ex.d))
 		var gr := style.grade_params()
-		grade.append(Vector4(gr.x, gr.y, gr.z, gr.d))
+		# w: contraction crack polygon size in metres for this slot (0 = none), from the traits (PaletteBuilder)
+		grade.append(Vector4(gr.x, gr.y, gr.z, float(cracks.get(i, 0.0))))
 		var fc := style.far_colour()
 		far.append(Vector4(fc.x, fc.y, fc.z, fc.d))
 		names.append(style.display_name if styles.has(i) else "-")

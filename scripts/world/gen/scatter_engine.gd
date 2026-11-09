@@ -259,16 +259,8 @@ static func _placement_graph(line: AssetLine, body: CelestialBody, masks: Dictio
 	var value := [_k(f, 1.0), 0]
 	var img: Image = masks.get(line.signal_mask) if line.signal_mask != "none" else null
 	if img != null:
-		var hm := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE_HEIGHTMAP, Vector2(200, 0))
-		f.set_node_param(hm, 0, img)
-		f.set_node_param(hm, 1, body.radius)
-		f.set_node_param(hm, 2, 1.0)
-		var sp := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE, Vector2(200, 160))
-		for i in 3:
-			f.add_connection([x, y, z][i], 0, hm, i)
-			f.add_connection([x, y, z][i], 0, sp, i)
-		f.add_connection(_k(f, body.radius), 0, sp, 3)
-		var sig := _op(f, VoxelGraphFunction.NODE_SUBTRACT, [sp, 0], [hm, 0])
+		# on the nominal sphere: see PlanetGraphGenerator.sample_mask_on_sphere (the node's early-out read 0 off it)
+		var sig := PlanetGraphGenerator.sample_mask_on_sphere(f, x, y, z, img, Vector2(200, 0))
 		var ss := f.create_node(VoxelGraphFunction.NODE_SMOOTHSTEP, Vector2(400, 60))
 		f.set_node_param(ss, 0, line.signal_low)
 		f.set_node_param(ss, 1, line.signal_high)

@@ -31,3 +31,4 @@ dust = 0.3
 view_ratio = 1.0
 low_poly = false
 near_field = false
+ground_density = {}

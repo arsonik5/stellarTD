@@ -32,10 +32,10 @@ MATERIALS = {
     "frozen_ground":   ("snow014",          (1.00, 1.00, 1.00), 0.80, 0.0, 0.60, 1.1, 3.0),
     "snow_clean":      ("snow010a",         (1.00, 1.00, 1.00), 0.85, 0.0, 0.55, 1.0, 3.0),
     "snow_dunes":      ("snow008a",         (1.00, 1.00, 1.00), 0.85, 0.0, 0.55, 1.1, 6.0),
-    "desert_ground":   ("ground096b",       (1.00, 1.00, 1.00), 1.30, 0.0, 0.40, 1.1, 3.0),
+    "desert_ground":   ("ground096b",       (0.80, 0.80, 0.80), 1.30, 0.0, 0.40, 1.1, 3.0),
     "gravel_red":      ("gravel025",        (1.00, 1.00, 1.00), 1.30, 0.0, 0.40, 1.2, 2.0),
     "cracked_crust":   ("sandstone_cracks", (1.00, 1.00, 1.00), 1.20, 0.0, 0.42, 1.3, 4.0),
-    "desert_cliff":    ("rock029",          (1.00, 1.00, 1.00), 1.15, 0.0, 0.45, 1.3, 7.0),
+    "desert_cliff":    ("rock029",          (1.25, 1.25, 1.25), 1.15, 0.0, 0.45, 1.3, 7.0),
     "strata_beige":    ("rock052",          (1.00, 1.00, 1.00), 1.15, 0.0, 0.45, 1.3, 6.0),
     "strata_brown":    ("rock055",          (1.00, 1.00, 1.00), 1.15, 0.0, 0.45, 1.3, 6.0),
     # generated sets (Qwen) until scans exist for these minerals
@@ -50,6 +50,8 @@ SATURATION = {
     "cliff_grey": 0.5, "rock_cracked": 0.6, "rock_aged": 0.3, "rock_rough": 0.6, "rock_mountain": 0.6,
     "rock_face": 0.7, "riverbed_rock": 0.8, "basalt_dark": 0.6, "basalt_black": 0.6, "rock_dark_rough": 0.6,
     "obsidian": 0.6, "ice_clear": 0.8, "frozen_ground": 0.6, "snow_clean": 0.5, "snow_dunes": 0.5,
+    # desert rock keeps its warmth, but under the base-ground chroma budget so an accent can still read
+    "desert_cliff": 0.8,
 }
 
 # id: dict
@@ -73,9 +75,10 @@ TRAITS_DEF = {
     "icy": dict(name="Icy", base=0.9, temp=(0.0, 0.28), tsoft=0.12, air=(0.0, 100.0), asoft=1.0,
                 spatial="global", mode="replace", hue=230, chroma=0.03, accent=False, emissive=False,
                 excludes=["desert", "life"], affinity={"crystalline": 1.4, "volcanic": 0.7},
+                # an icy world's crust IS ice: bedrock is ice, rock only comes in as darker layers in it
                 mats={"surface": "frozen_ground", "surface_alt": "snow_dunes", "regional": "snow_clean",
-                      "cliff": "ice_clear", "bedrock": "rock_cracked", "strata_a": "ice_clear",
-                      "strata_b": "frozen_ground", "fresh_cut": "ice_clear"},
+                      "cliff": "ice_clear", "bedrock": "ice_clear", "strata_a": "frozen_ground",
+                      "strata_b": "rock_cracked", "fresh_cut": "ice_clear"},
                 lines=["penitentes", "frost_overlay", "ice_cliffs", "cryo_geysers", "polygonal_ground", "pebbles"],
                 landmarks=["cryo_geyser", "ice_arch"]),
     "volcanic": dict(name="Volcanic", base=0.75, temp=(0.3, 1.0), tsoft=0.2, air=(0.0, 100.0), asoft=1.0,
@@ -109,6 +112,20 @@ TRAITS_DEF = {
                  emissive=False, excludes=["airless"], affinity={},
                  mats={}, lines=["lichen_crust", "microbial_mats", "low_cover", "shrubs", "alien_flora"],
                  landmarks=["great_tree"]),
+}
+
+
+# landforms per trait: crater density (1 = airless, never resurfaced), ray strength, ledge strength (hard/soft layers
+# on steep faces), contraction crack polygon size in m (0 = none), lava tubes
+LANDFORMS = {
+    "airless":     dict(craters=1.0, rays=1.0, ledges=0.3, cracks=0.0, tubes=0.0),
+    "rocky":       dict(craters=0.35, rays=0.45, ledges=1.0, cracks=0.0, tubes=0.0),
+    "icy":         dict(craters=0.5, rays=0.8, ledges=0.5, cracks=9.0, tubes=0.0),
+    "volcanic":    dict(craters=0.12, rays=0.3, ledges=0.8, cracks=0.0, tubes=1.0),
+    "crystalline": dict(craters=0.5, rays=0.5, ledges=0.0, cracks=0.0, tubes=0.0),
+    "desert":      dict(craters=0.12, rays=0.1, ledges=1.4, cracks=0.7, tubes=0.0),
+    "sulfur":      dict(craters=0.15, rays=0.2, ledges=0.0, cracks=0.35, tubes=0.0),
+    "life":        dict(craters=0.05, rays=0.05, ledges=0.0, cracks=0.0, tubes=0.0),
 }
 
 
@@ -169,6 +186,11 @@ hue = {d['hue']}
 chroma_max = {d['chroma']}
 accent = {str(d['accent']).lower()}
 emissive = {str(d['emissive']).lower()}
+crater_density = {LANDFORMS[tid]['craters']}
+ray_strength = {LANDFORMS[tid]['rays']}
+ledge_strength = {LANDFORMS[tid]['ledges']}
+crack_cell_m = {LANDFORMS[tid]['cracks']}
+lava_tubes = {LANDFORMS[tid]['tubes']}
 asset_lines = {sn(d['lines'])}
 landmarks = {sn(d['landmarks'])}
 '''

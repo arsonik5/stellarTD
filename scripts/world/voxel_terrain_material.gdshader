@@ -27,7 +27,7 @@ uniform sampler2DArray tex_normal : hint_default_transparent, filter_linear_mipm
 // Per-material palette, uploaded by the owning Planet (SurfacePalette). Zero defaults mean "unchanged".
 uniform vec4 pal_tint_rough[16];   // rgb = albedo tint, a = roughness scale
 uniform vec4 pal_extra[16];        // x = normal strength, y = metallic, z = specular, w = tile size (m)
-uniform vec4 pal_grade[16];        // x = saturation - 1, y = height blend scale - 1, z = height offset, w = unused
+uniform vec4 pal_grade[16];        // x = saturation - 1, y = height blend scale - 1, z = height offset, w = crack polygon m (0 = none)
 uniform vec4 pal_far[16];          // rgb = far colour (linear, tinted), a = 1 when set (0 = derive from the ladder)
 
 uniform float macro_scale : hint_range(4.0, 600.0) = 140.0;
@@ -54,6 +54,16 @@ uniform float spec_occlusion : hint_range(0.0, 1.0) = 0.8;
 //   7 = ladder step (blue = near, red = far colour)
 uniform int debug_view : hint_range(0, 7) = 0;
 // Kept so older materials / the terrain lab that still set them don't error; no longer used.
+// Planet-wide feature map (stage 4b), equirectangular on the planet's own directions: R = "fresh" (bright, unweathered
+// ejecta and rays of young craters, CraterField / craters.glsl). Space weathering darkens and reddens exposed regolith
+// over time; fresh ejecta has not had that time, so it reads brighter and greyer from orbit down to the ground.
+uniform sampler2D feature_map : hint_default_black, filter_linear_mipmap, repeat_enable;
+uniform bool has_features = false;
+uniform vec3 planet_center = vec3(0.0);
+uniform mat3 planet_basis_inv = mat3(1.0);
+uniform float feature_texel_m = 30.0;
+uniform float ray_strength : hint_range(0.0, 1.0) = 0.0;
+uniform float ray_brighten = 0.55;
 uniform float triplanar_sharpness = 6.0;
 uniform int antitile = 1;
 uniform float antitile_scale = 0.37;
@@ -128,6 +138,58 @@ void sample_plane(int layer, ivec3 a, float sgn, vec3 p, vec3 dpx, vec3 dpy, flo
 	oh = nm.ba;
 }
 
+// --- contraction cracks (stage 4b): Voronoi polygons on flat ground (mud, permafrost, sulfur crust) ---------------
+// Periodic hash: cell indices wrap every `per` cells, so a pattern computed from block-relative coordinates (origin
+// reduced modulo per * cell) joins exactly across blocks.
+vec2 crack_hash(vec2 c, float per) {
+	c = mod(c, per);
+	vec3 q = fract(vec3(c.xyx) * vec3(0.1031, 0.1030, 0.0973));
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.xx + q.yz) * q.zy);
+}
+
+// Distance to the nearest polygon edge in cell units (IQ's exact Voronoi border distance, 3x3 second pass).
+float crack_edge(vec2 x, float per) {
+	vec2 n = floor(x);
+	vec2 f = x - n;
+	vec2 mr = vec2(0.0);
+	vec2 mg = vec2(0.0);
+	float md = 8.0;
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			vec2 g = vec2(float(i), float(j));
+			vec2 r = g + crack_hash(n + g, per) * 0.8 + 0.1 - f;
+			float d = dot(r, r);
+			if (d < md) { md = d; mr = r; mg = g; }
+		}
+	}
+	md = 8.0;
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			vec2 g = mg + vec2(float(i), float(j));
+			vec2 r = g + crack_hash(n + g, per) * 0.8 + 0.1 - f;
+			vec2 dd = r - mr;
+			if (dot(dd, dd) > 1e-5) { md = min(md, dot(0.5 * (mr + r), normalize(dd))); }
+		}
+	}
+	return md;
+}
+
+// 0..1 crack coverage at block-relative position for polygons of `cell` metres, on the biplanar projections.
+float cracks_at(vec3 rel, vec3 origin, float cell, Biplanar b, float px_m) {
+	const float PER = 64.0;
+	vec3 pc = (rel + mod(origin, cell * PER)) / cell;
+	float e = crack_edge(vec2(pc[b.ma.y], pc[b.ma.z]), PER);
+	if (b.w.y > 0.01) {
+		e = mix(e, crack_edge(vec2(pc[b.me.y], pc[b.me.z]), PER), b.w.y);
+	}
+	// trough 3.5% of the polygon (mud ~3 cm, permafrost ~0.3 m), softened over one pixel (the pixel's ground size is
+	// passed in: derivatives inside the branch that calls this would be undefined) so it never aliases into sparkle
+	float w = 0.035;
+	float aa = max(px_m / cell, 1e-4);
+	return 1.0 - smoothstep(w - aa, w + aa * 1.5, e);
+}
+
 // One layer at one scale, both projections blended.
 void sample_layer(int layer, Biplanar b, vec3 p, vec3 dpx, vec3 dpy, float s, vec3 wn,
 		out vec4 alb, out vec3 nw, out vec2 oh) {
@@ -162,6 +224,7 @@ void fragment() {
 	vec3 dpx = dFdx(v_rel_pos);
 	vec3 dpy = dFdy(v_rel_pos);
 	float dist = length(VERTEX);
+	float px_m = max(length(fwidth(v_rel_pos)), 1e-4);              // ground metres under one pixel
 
 	// distance ladder position: step 0 below ladder_start, then one step per x4 in distance
 	float lad = max(log2(max(dist, 0.01) / ladder_start) * 0.5 + 1.0, 0.0);   // log4(d / start) + 1
@@ -176,6 +239,9 @@ void fragment() {
 	float macro = texture(tex_albedo, vec3(muv, float(ids[0]))).r;
 	vec3 np = v_rel_pos / 9.7 + mod(v_origin, 9.7) / 9.7;
 	float wander = texture(tex_normal, vec3(np[bp.ma.y], np[bp.ma.z], float(ids[0]))).a;
+	// slow field for the anti-tiling blend below (a height map read at ~60x its tile, so it varies over tens of metres)
+	float tile_mix = smoothstep(0.3, 0.7, texture(tex_normal, vec3(muv * 2.3 + 0.37, float(ids[0]))).a);
+	float antitile_t = smoothstep(0.3, 0.8, lad);                           // from ~16 m out
 
 	// --- layers -------------------------------------------------------------------------------------------------
 	vec4 L_alb[4];
@@ -204,6 +270,18 @@ void fragment() {
 				nw = normalize(mix(nw, nw2, band_t));
 				oh = mix(oh, oh2, band_t);
 			}
+			// anti-tiling: a second read at 5/4 the frequency (both periods divide this step's precision period, so no
+			// block seams) blended by a slow field. Two lattices at a 5:4 ratio only repeat every 4 tiles, and the blend
+			// wanders, so the regular dot grid of a single repeating scan is gone; the mean colour is unchanged.
+			if (antitile != 0 && antitile_t > 0.01) {
+				vec4 alb3; vec3 nw3; vec2 oh3;
+				sample_layer(id, bp, p + vec3(0.37, 0.61, 0.13) * ts * pow(4.0, step0), dpx, dpy, s0 * 1.25, wn,
+					alb3, nw3, oh3);
+				float m3 = mix(0.2, 0.8, tile_mix) * antitile_t;
+				alb = mix(alb, alb3, m3);
+				nw = normalize(mix(nw, nw3, m3));
+				oh = mix(oh, oh3, m3);
+			}
 		} else {
 			alb = vec4(0.18, 0.18, 0.18, 0.9); nw = wn; oh = vec2(1.0, 0.5);
 		}
@@ -216,6 +294,17 @@ void fragment() {
 		// grade: saturation around the layer's own luminance
 		float lum = dot(alb.rgb, vec3(0.299, 0.587, 0.114));
 		alb.rgb = mix(vec3(lum), alb.rgb, 1.0 + gr.x);
+		// contraction cracks on this slot's ground, near only (the polygons are under a pixel past ~40 cells)
+		if (gr.w > 0.0) {
+			float cfade = (1.0 - smoothstep(gr.w * 25.0, gr.w * 45.0, dist)) * (1.0 - smoothstep(90.0, 160.0, dist));
+			if (cfade > 0.01) {
+				float cr = cracks_at(v_rel_pos, v_origin, gr.w, bp, px_m) * cfade;
+				alb.rgb *= 1.0 - 0.6 * cr;
+				alb.a = mix(alb.a, 1.0, cr);
+				oh.x *= 1.0 - 0.55 * cr;
+				oh.y -= 0.35 * cr;           // the trough is low: the other layers' height blend shows there first
+			}
+		}
 		// normal strength per material
 		nw = normalize(mix(wn, nw, ex.x));
 		L_alb[k] = alb;
@@ -259,6 +348,19 @@ void fragment() {
 		specular += pal_extra[id].z * b;
 	}
 	n_mat = normalize(n_mat + wn * 1e-4);
+
+	// --- planet features: crater ejecta and rays (brighter, less weathered) ------------------------------------------
+	float fresh = 0.0;
+	if (has_features && ray_strength > 0.0) {
+		vec3 dir = normalize(planet_basis_inv * (v_world_pos - planet_center));
+		// SphereUV: godot_voxel's heightmap projection (u mirrored, v by skew3), sampled at pixel corners like the node
+		vec2 fuv = vec2(0.5 - atan(dir.z, dir.x) * 0.15915494, 0.5 - 0.25 * (dir.y * dir.y * dir.y + dir.y));
+		fuv += 0.5 / vec2(textureSize(feature_map, 0));
+		// mip from the ground a pixel covers (px_m: block-relative, continuous across the map's seam)
+		fresh = textureLod(feature_map, fuv, max(log2(px_m / feature_texel_m), 0.0)).r * ray_strength;
+		float lum0 = dot(alb_r.rgb, vec3(0.299, 0.587, 0.114));
+		alb_r.rgb = mix(alb_r.rgb, vec3(lum0), fresh * 0.35) * (1.0 + ray_brighten * fresh);
+	}
 	float macro_mul = mix(1.0 - macro_strength * 0.5, 1.0 + macro_strength * 0.5, macro);
 
 	if (debug_view != 0) {
@@ -268,6 +370,7 @@ void fragment() {
 		else if (debug_view == 3) { dbg = vec3(bp.w.x, bp.w.y, 0.0); }
 		else if (debug_view == 4) { dbg = v_world_normal * 0.5 + 0.5; }
 		else if (debug_view == 6) { dbg = vec3(bw[0] / max(bsum, 1e-5), bw[1] / max(bsum, 1e-5), L_oh[0].y); }
+		else if (debug_view == 5) { dbg = vec3(fresh); }
 		else if (debug_view == 7) { dbg = vec3(far_t, frac_s * 0.5, 1.0 - min(lad / 4.0, 1.0)); }
 		ALBEDO = dbg;
 		ROUGHNESS = 1.0; METALLIC = 0.0; SPECULAR = 0.0; AO = 1.0;
