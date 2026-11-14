@@ -1,32 +1,48 @@
 class_name WorldGrid
 extends RefCounted
 
-## Tile data for one flat 2D world (docs/game/design/pivot-2d.md section 4). Tiles are DATA, never nodes: one byte
-## array per layer for the whole map, read by the chunk renderer, the build grid and (later) pathing.
+## Tile data for one flat 2D world (docs/game/design/pivot-2d.md section 4). Tiles are DATA, never nodes: one packed
+## array per layer for the whole map, read by the renderer, movement, the build grid and (later) pathing.
 ##
-## Elevation is stored as level + LEVEL_OFFSET so it fits a byte: levels MIN_LEVEL..MAX_LEVEL (-3..+5).
+## Elevation: levels MIN_LEVEL..MAX_LEVEL (-4..+20), stored as level + LEVEL_OFFSET in a byte.
+## Moving between neighbouring tiles is allowed when the levels match, or differ by one and either tile is a RAMP.
 
 const TILE_PX := 32            ## pixels per tile at 1x zoom (1 tile = 1 m)
-const LEVEL_PX := 16           ## how far one elevation level shifts a tile up on screen (the 2.5D trick)
+const LEVEL_PX := 16           ## legacy 3/4 shift used by the P0.2 spike renderer only
+const LEVEL_HEIGHT := 6.0      ## px of real height per level, for the perspective lean (WorldMapView)
 const CHUNK := 64              ## tiles per chunk side
-const MIN_LEVEL := -3
-const MAX_LEVEL := 5
-const LEVEL_OFFSET := 3
+const MIN_LEVEL := -4
+const MAX_LEVEL := 20
+const LEVEL_OFFSET := 4
 
-## Ground types (P0 spike set; the real list comes from trait ground rules in P1).
 enum Ground { REGOLITH, GRAVEL, SAND, BASALT, ICE }
+
+## flags bits
+const F_RAMP := 1
+const F_FLOOR := 2             ## a built floor tile
+const F_EXPLORED := 4
+
+## ore index -> item id paid when mined (0 = no ore). Matches the 3D drill's item table (terrain_drill.gd).
+const ORE_ITEMS := ["", "ore_a", "ore_b", "ore_coal", "ore_silica", "sulfur", "ore_crystal"]
+const ORE_IDS := ["", "iron", "copper", "coal", "silica", "sulfur", "crystal"]
 
 var width := 0
 var height := 0
 var seed_value := 0
-var elevation := PackedByteArray()   ## level + LEVEL_OFFSET per tile, row-major
-var ground := PackedByteArray()      ## Ground per tile
+var elevation := PackedByteArray()   ## level + LEVEL_OFFSET
+var ground := PackedByteArray()      ## Ground
+var ore := PackedByteArray()         ## index into ORE_ITEMS
+var ore_amount := PackedByteArray()  ## 0..255 units left (one unit = one item from a hand bite)
+var flags := PackedByteArray()
+
+signal tile_changed(x: int, y: int)
 
 func _init(w: int = 1024, h: int = 1024) -> void:
 	width = w
 	height = h
-	elevation.resize(w * h)
-	ground.resize(w * h)
+	for a: PackedByteArray in [elevation, ground, ore, ore_amount, flags]:
+		a.resize(w * h)
+	elevation.fill(LEVEL_OFFSET)
 
 func idx(x: int, y: int) -> int:
 	return y * width + x
@@ -34,7 +50,7 @@ func idx(x: int, y: int) -> int:
 func in_bounds(x: int, y: int) -> bool:
 	return x >= 0 and y >= 0 and x < width and y < height
 
-## Elevation level at a tile (MIN_LEVEL for out of bounds, so the map edge reads as a drop).
+## Elevation level at a tile (MIN_LEVEL off the map, so the edge reads as a drop).
 func level_at(x: int, y: int) -> int:
 	if not in_bounds(x, y):
 		return MIN_LEVEL
@@ -43,43 +59,50 @@ func level_at(x: int, y: int) -> int:
 func set_level(x: int, y: int, level: int) -> void:
 	elevation[y * width + x] = clampi(level, MIN_LEVEL, MAX_LEVEL) + LEVEL_OFFSET
 
+func is_ramp(x: int, y: int) -> bool:
+	return in_bounds(x, y) and (flags[y * width + x] & F_RAMP) != 0
+
+func ore_at(x: int, y: int) -> int:
+	return int(ore[y * width + x]) if in_bounds(x, y) else 0
+
+## Can something walking step from tile a to its neighbour b?
+func can_step(ax: int, ay: int, bx: int, by: int) -> bool:
+	if not in_bounds(bx, by):
+		return false
+	var d := level_at(bx, by) - level_at(ax, ay)
+	if d == 0:
+		return true
+	return absi(d) == 1 and (is_ramp(ax, ay) or is_ramp(bx, by))
+
 func chunks_x() -> int:
 	return int(ceil(float(width) / CHUNK))
 
 func chunks_y() -> int:
 	return int(ceil(float(height) / CHUNK))
 
-## Spike generator: a noise heightfield quantised into levels, so wide flats are separated by cliffs. The noise
-## runs in C++ (Image from FastNoiseLite), so a 1024^2 map takes well under a second. The real generator (traits,
-## landforms, erosion, ore, scatter) replaces this in P1.
+func tile_of(world_px: Vector2) -> Vector2i:
+	return Vector2i(floori(world_px.x / TILE_PX), floori(world_px.y / TILE_PX))
+
+## P0.2 spike generator, kept so the spike scene still runs. The game uses WorldGen.generate().
 func generate(seed_in: int) -> void:
-	seed_value = seed_in
-	var n := FastNoiseLite.new()
-	n.seed = seed_in
-	n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	n.frequency = 0.004
-	n.fractal_type = FastNoiseLite.FRACTAL_FBM
-	n.fractal_octaves = 4
-	var img := n.get_image(width, height, false, false, true)
-	var hdata := img.get_data()            # L8, one byte per pixel, 0..255
-	var g := FastNoiseLite.new()
-	g.seed = seed_in + 17
-	g.frequency = 0.012
-	var gdata := g.get_image(width, height, false, false, true).get_data()
-	var levels := MAX_LEVEL - MIN_LEVEL + 1
-	for i in width * height:
-		var v := float(hdata[i]) / 255.0
-		elevation[i] = clampi(int(v * levels), 0, levels - 1)
-		var gv := int(gdata[i])
-		ground[i] = Ground.GRAVEL if gv < 70 else (Ground.SAND if gv > 190 else Ground.REGOLITH)
-	# the highest ground is basalt, the lowest pits ice: enough variety to judge reading at a glance
-	for i in width * height:
-		var lv := int(elevation[i]) - LEVEL_OFFSET
-		if lv >= 4:
-			ground[i] = Ground.BASALT
-		elif lv <= -2:
-			ground[i] = Ground.ICE
+	WorldGen.generate(self, seed_in)
 
 ## Stable hash of the tile data (determinism test: same seed -> same map).
 func data_hash() -> int:
-	return hash(elevation) ^ (hash(ground) << 1)
+	return hash([elevation, ground, ore, ore_amount, flags])
+
+## --- save (world format v2): the whole grid, compressed. A 1024^2 map is ~5 MB raw, well under 1 MB packed.
+func to_bytes() -> PackedByteArray:
+	var raw := PackedByteArray()
+	for a: PackedByteArray in [elevation, ground, ore, ore_amount, flags]:
+		raw.append_array(a)
+	return raw.compress(FileAccess.COMPRESSION_ZSTD)
+
+func from_bytes(data: PackedByteArray) -> void:
+	var n := width * height
+	var raw := data.decompress(n * 5, FileAccess.COMPRESSION_ZSTD)
+	elevation = raw.slice(0, n)
+	ground = raw.slice(n, n * 2)
+	ore = raw.slice(n * 2, n * 3)
+	ore_amount = raw.slice(n * 3, n * 4)
+	flags = raw.slice(n * 4, n * 5)

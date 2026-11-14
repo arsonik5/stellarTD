@@ -1,0 +1,57 @@
+# 2D pivot: progress and to-do
+
+Working log for the 2D rebuild. Updated after every step. The plan itself is `docs/game/design/pivot-2d.md`;
+references are in `docs/game/reference/pivot-2026-11-14-references.md`. Branch: `pivot/2d`. Last 3D build: tag
+`last-3d` (master still runs the 3D game).
+
+## Where we are (2026-11-14)
+
+**Phase P1 (Landfall in 2D), systems first. Art is placeholder** (Michael: "we can always change sprites but all
+systems need rebuilding"). Look direction for later: shrunk Qwen for atmosphere ("felt like a different planet"),
+Mindustry-spirit pixel art, Unfallen camera (straight down, things lean by height), everything lit.
+
+## Decisions so far (details in pivot-2d.md section 9)
+
+- 2D, top-down, straight-down follow camera, perspective lean on raised things (Unfallen).
+- 32 px pixel tiles; 1 tile = 1 m; 25 height levels (-4..+20); ramps between levels; cliffs elsewhere.
+- Conveyors carry items, pipes carry fluids. Grid building. Same items/recipes/research data as 3D.
+- Lit sprites (normal maps), dark nights with light pools, lots of wear details (later).
+- Art production: code-drawn REJECTED ("feels AI, vibe-coded"). Qwen (shrunk/snapped, maybe a pixel LoRA) for
+  now; asset packs or an artist are fallbacks. pixelfx (MIT) for effects.
+- World generation budget: < 5 s new game to walking, < 2 s load (tested).
+
+## Done
+
+| Step | What | Where | Proof |
+|---|---|---|---|
+| P0 | Plan, references, branch, `last-3d` tag | docs/game/design/pivot-2d.md | - |
+| P0 | Tech spike: 1024^2 map, 2 000 buildings, 20 000 belts / 10 000 items | scripts/dev/spike2d.gd | 1 150+ fps, tick 0.3-0.45 ms |
+| P0 | Sprite tool: fit, palette, textures, dual-grid, cliff strips, normal maps, glow, snap-to-grid | tools/sprite_pipeline.py | `selftest` passes |
+| P0 | Lighting + lean proof (straight-down camera, roof lean with walls, shadows, night) | scripts/dev/lean_test.gd | screenshots sent |
+| P1.1 | **World data v2**: 25 levels, ground, ore + amount, flags (ramp/floor/explored), step rules, compressed save | scripts/world2d/world_grid.gd | world2d test |
+| P1.2 | **Generator v1**: continents, ridged ranges, canyons, mesas, detail; ramps on gentle slopes; ground rules; ore from data/ore_types | scripts/world2d/world_gen.gd | world2d test: 1.8 s for 1024^2, 25 levels, ramps 30%, cliffs 4%, all 6 ores, centre connects to 200k+ tiles, save 493 KB |
+
+## Next (in order)
+
+1. **Renderer v2**: straight-down camera, terrain draws by level with cliff walls that lean (vertex shader:
+   offset = (pos - camera) * height / CAM_H), ramps visible, ore overlay, placeholder colours. Replace
+   `world_map_view.gd` (spike version is 3/4-tilt).
+2. **Player**: top-down astronaut, WASD, mouse aim, tile collision via `WorldGrid.can_step`, follow camera.
+3. **Mining**: hold LMB on an ore/rock tile in reach -> cracks, pays items into `Inventory`, lowers the tile one level.
+4. **BuildingCore split**: logic out of `scripts/world/building.gd` (3D) into a shared core; `Building2D` on top.
+   20 machine types override hooks (idle_reason, output_ids, can_accept_input, save_state...) - keep them working.
+5. **Grid building**: ghost, rotate, drag lines, dismantle with refund, hotbar.
+6. **Belts** (turns, junction, router, bridge) on `BeltSystem`, **deposit drill**, **smelter**, **chest**.
+7. **Save/load v2** (world bytes + buildings + belts + game state), main menu wiring.
+8. Then P2 (power, research, uplink...) per the plan.
+
+## Open problems / notes
+
+- Qwen pixel-art test is queued (`art_src/qwen_px/run.sh`); it refuses while someone is at furryass - rerun later.
+  Pixel LoRAs found (prithivMLmods Qwen-Image-2512 Pixel-Art, PixelArtRedmond); compatibility with Qwen-Image 2.1
+  and licences NOT checked yet.
+- Generator v1 is a first port: erosion bake, craters (CraterField), trait ground rules, scatter, POIs and
+  roofs/caves/overhangs still to port (plan 4.3). Ramps cover 30% of tiles - may be too gentle a world; tune when
+  we can walk it.
+- Generation hot loops are GDScript (1.8 s). If more layers push it toward 5 s, move them to a GDExtension.
+- `scripts/dev/spike2d.gd` uses the old 3/4 renderer; it stays as the P0 record until renderer v2 replaces it.
