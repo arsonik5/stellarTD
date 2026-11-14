@@ -14,6 +14,9 @@ Commands (python -I tools/sprite_pipeline.py <cmd> ...):
                                                        16-tile dual-grid transition set between two textures
   cliff    --palette pal.png --tile 32 --level-px 8 --out OUT.png [--base "#7a6a58"]
                                                        cliff face strip (strata bands) for one level drop
+  lit      IN --out-dir DIR [--bevel 6] [--detail 1.0] [--strength 2.0]
+                                                       normal map (+ emissive mask) for a sprite or tile, for
+                                                       Godot CanvasTexture lighting (pivot-2d.md D11)
   sheet    IMG [IMG...] --out contact.png [--scale 4]  contact sheet for review (nearest upscale, labels)
   selftest                                             runs every command on generated input
 """
@@ -245,6 +248,90 @@ def cmd_cliff(args) -> None:
     print(f"cliff: {args.out} {t * 4}x{hpx} (4 tile widths, tile seamlessly)")
 
 
+# --- lighting maps (normal + emissive) -----------------------------------------------------------------------
+
+def _distance_inside(solid: np.ndarray, cap: int) -> np.ndarray:
+    """Steps from each solid pixel to the nearest edge (4-neighbour erosion), capped. Cheap and good enough for a
+    bevel on sprites a few hundred px wide."""
+    d = np.zeros(solid.shape, np.float32)
+    cur = solid.copy()
+    for k in range(1, cap + 1):
+        er = cur.copy()
+        er[1:, :] &= cur[:-1, :]
+        er[:-1, :] &= cur[1:, :]
+        er[:, 1:] &= cur[:, :-1]
+        er[:, :-1] &= cur[:, 1:]
+        er[0, :] = er[-1, :] = False
+        er[:, 0] = er[:, -1] = False
+        d[cur] = k
+        cur = er
+        if not cur.any():
+            break
+    d[cur] = cap
+    return d
+
+
+def make_normal(rgba: np.ndarray, bevel: int, detail: float, strength: float, wrap: bool = False) -> np.ndarray:
+    """Tangent-space normal map. Height = rounded bevel from the silhouette (so panels and modules read as raised
+    forms under a moving light) + fine relief from albedo luminance (seams, bolts, grime). Godot 2D normal maps use
+    green = up (+Y) in texture space, which is what this writes."""
+    a = rgba[..., 3] > 0 if rgba.shape[-1] == 4 else np.ones(rgba.shape[:2], bool)
+    lum = (rgba[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)) / 255.0
+    if wrap or a.all():
+        h_shape = np.zeros(a.shape, np.float32)
+    else:
+        d = _distance_inside(a, bevel)
+        h_shape = np.sin(np.clip(d / max(bevel, 1), 0, 1) * (math.pi / 2))      # rounded edge profile
+    # luminance detail, high-passed so big colour areas don't tilt whole panels
+    blur = lum.copy()
+    for _ in range(3):
+        blur = (np.roll(blur, 1, 0) + np.roll(blur, -1, 0) + np.roll(blur, 1, 1) + np.roll(blur, -1, 1) + blur) / 5
+    h = h_shape + (lum - blur) * detail
+    if wrap:
+        gx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) * 0.5
+        gy = (np.roll(h, -1, 0) - np.roll(h, 1, 0)) * 0.5
+    else:
+        hp = np.pad(h, 1, mode="edge")
+        gx = (hp[1:-1, 2:] - hp[1:-1, :-2]) * 0.5
+        gy = (hp[2:, 1:-1] - hp[:-2, 1:-1]) * 0.5
+    nx, ny, nz = -gx * strength, gy * strength, np.ones_like(h)    # image y grows down; +green = up
+    ln = np.sqrt(nx * nx + ny * ny + nz * nz)
+    n = np.stack([nx / ln, ny / ln, nz / ln], -1)
+    out = np.zeros((*h.shape, 4), np.uint8)
+    out[..., :3] = ((n * 0.5 + 0.5) * 255).astype(np.uint8)
+    out[..., 3] = 255 if wrap else np.where(a, 255, 0)
+    return out
+
+
+def make_emissive(rgba: np.ndarray, min_value: float = 0.85, min_sat: float = 0.45) -> np.ndarray:
+    """Glow mask: bright, saturated pixels (windows, furnace mouths, status lights). White on black."""
+    rgb = rgba[..., :3].astype(np.float32) / 255.0
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
+    m = (mx >= min_value) & (sat >= min_sat)
+    if rgba.shape[-1] == 4:
+        m &= rgba[..., 3] > 0
+    out = np.zeros((*m.shape, 4), np.uint8)
+    out[..., :3][m] = rgba[..., :3][m]
+    out[..., 3][m] = 255
+    return out
+
+
+def cmd_lit(args) -> None:
+    src = np.array(Image.open(args.input).convert("RGBA"))
+    stem = Path(args.input).stem
+    od = Path(args.out_dir)
+    od.mkdir(parents=True, exist_ok=True)
+    wrap = bool(args.wrap)
+    Image.fromarray(make_normal(src, args.bevel, args.detail, args.strength, wrap), "RGBA").save(od / f"{stem}_n.png")
+    em = make_emissive(src)
+    msg = f"lit: {od / (stem + '_n.png')}"
+    if em[..., 3].any():
+        Image.fromarray(em, "RGBA").save(od / f"{stem}_e.png")
+        msg += f" + {stem}_e.png ({int((em[..., 3] > 0).sum())} glowing px)"
+    print(msg)
+
+
 # --- review --------------------------------------------------------------------------------------------------
 
 def cmd_sheet(args) -> None:
@@ -309,6 +396,18 @@ def cmd_selftest(_args) -> None:
           "tile 0 is all A, tile 15 all B")
     run(["cliff", "--palette", str(tmp / "pal.png"), "--tile", "32", "--level-px", "8", "--out", str(tmp / "c.png")])
     check(Image.open(tmp / "c.png").size == (128, 8), "cliff strip 128x8")
+    run(["lit", str(tmp / "spr.png"), "--out-dir", str(tmp)])
+    nm = np.array(Image.open(tmp / "spr_n.png")).astype(int)
+    solid = s[..., 3] > 0
+    check(nm.shape[:2] == s.shape[:2], "normal map same size as sprite")
+    flat_ok = abs(nm[solid][:, 2].mean() - 255) < 80
+    check(flat_ok, f"normals mostly face the viewer (mean blue {nm[solid][:, 2].mean():.0f})")
+    left_edge = nm[40, np.argmax(solid[40])][0]
+    right_edge = nm[40, len(solid[40]) - 1 - np.argmax(solid[40][::-1])][0]
+    check(left_edge < 128 < right_edge, f"bevel tilts edges outward (left R {left_edge}, right R {right_edge})")
+    glow = Image.new("RGBA", (32, 32), (60, 60, 60, 255)); ImageDraw.Draw(glow).rectangle((10, 10, 20, 20), fill=(255, 170, 40, 255)); glow.save(tmp / "glow.png")
+    run(["lit", str(tmp / "glow.png"), "--out-dir", str(tmp)])
+    check((tmp / "glow_e.png").exists() and np.array(Image.open(tmp / "glow_e.png"))[15, 15, 3] == 255, "emissive mask catches the glowing window")
     run(["sheet", str(tmp / "spr.png"), str(tmp / "dg.png"), "--out", str(tmp / "sheet.png")])
     check((tmp / "sheet.png").exists(), "contact sheet written")
     print(f"SELFTEST DONE fails={fails}  ({tmp})")
@@ -323,6 +422,7 @@ def main(argv=None) -> None:
     p = sub.add_parser("texture"); p.add_argument("input"); p.add_argument("--size", type=int, default=64); p.add_argument("--out", required=True); p.add_argument("--palette"); p.set_defaults(fn=cmd_texture)
     p = sub.add_parser("dualgrid"); p.add_argument("a"); p.add_argument("b"); p.add_argument("--tile", type=int, default=32); p.add_argument("--out", required=True); p.add_argument("--seed", type=int, default=1); p.set_defaults(fn=cmd_dualgrid)
     p = sub.add_parser("cliff"); p.add_argument("--palette"); p.add_argument("--tile", type=int, default=32); p.add_argument("--level-px", type=int, default=8); p.add_argument("--base", default="#7a6a58"); p.add_argument("--out", required=True); p.set_defaults(fn=cmd_cliff)
+    p = sub.add_parser("lit"); p.add_argument("input"); p.add_argument("--out-dir", required=True); p.add_argument("--bevel", type=int, default=6); p.add_argument("--detail", type=float, default=1.0); p.add_argument("--strength", type=float, default=2.0); p.add_argument("--wrap", action="store_true", help="tileable texture: wrap edges, no silhouette bevel"); p.set_defaults(fn=cmd_lit)
     p = sub.add_parser("sheet"); p.add_argument("images", nargs="+"); p.add_argument("--out", required=True); p.add_argument("--scale", type=int, default=4); p.add_argument("--cols", type=int, default=6); p.set_defaults(fn=cmd_sheet)
     p = sub.add_parser("selftest"); p.set_defaults(fn=cmd_selftest)
     a = ap.parse_args(argv)
