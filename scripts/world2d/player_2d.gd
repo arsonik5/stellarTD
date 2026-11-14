@@ -18,6 +18,13 @@ var level := 0
 var aim := Vector2.RIGHT
 var velocity := Vector2.ZERO
 var input_override := Vector2.ZERO          ## tests drive movement through this (ignores the keyboard when set)
+
+## --- mining (Mining2D): hold LMB on a tile in reach
+var dig_target := Vector2i(-1, -1)
+var dig_progress := 0.0                     ## 0..1 of the current tile
+var dig_refused := ""                       ## why the tile under the cursor can't be dug ("" = it can)
+var mine_override := Vector2i(-1, -1)       ## tests: dig this tile as if LMB were held on it
+var _hit_cool := 0.0
 var _body: Node2D
 
 func setup(g: WorldGrid, v: WorldView, at_tile: Vector2i) -> void:
@@ -57,7 +64,48 @@ func _physics_process(dt: float) -> void:
 		var mouse := get_global_mouse_position()
 		if mouse.distance_to(position) > 2.0:
 			aim = (mouse - position).normalized()
+	_update_mining(dt)
 	_update_draw()
+
+func _update_mining(dt: float) -> void:
+	var held := mine_override.x >= 0 or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	var target := mine_override if mine_override.x >= 0 else grid.tile_of(_ground_point_under_mouse())
+	dig_refused = Mining2D.refuse_reason(grid, tile(), level, target)
+	if not held or dig_refused != "":
+		dig_progress = 0.0
+		dig_target = target
+		return
+	if target != dig_target:
+		dig_target = target
+		dig_progress = 0.0
+	aim = (Vector2(target) + Vector2(0.5, 0.5) - position / WorldGrid.TILE_PX).normalized()
+	dig_progress += dt / Mining2D.seconds_for(grid, target.x, target.y)
+	_hit_cool -= dt
+	if _hit_cool <= 0.0:
+		_hit_cool = 0.18
+		UiSound.play("mine_hit", randf_range(0.9, 1.1))
+	if dig_progress >= 1.0:
+		var paid := Mining2D.dig(grid, target.x, target.y)
+		for id: String in paid:
+			var took := Inventory.add(id, int(paid[id]))
+			GameEvents.item_mined.emit(id, took, self)
+		dig_progress = 0.0
+		UiSound.play("pickup")
+
+## The mouse points at the screen; terrain at level L is drawn leaned, so find the tile whose LEANED top is under
+## the cursor (check the levels around the player, highest first, so a cliff top in front wins).
+func _ground_point_under_mouse() -> Vector2:
+	var m := get_global_mouse_position()
+	if view == null or view.camera == null:
+		return m
+	var cam := view.camera.get_screen_center_position()
+	for lv in range(level + 3, level - 3, -1):
+		var k := 1.0 + float(lv) * WorldGrid.LEVEL_HEIGHT / WorldView.CAM_HEIGHT
+		var p := cam + (m - cam) / k          # undo the lean for a top at level lv
+		var tt := grid.tile_of(p)
+		if grid.level_at(tt.x, tt.y) == lv:
+			return p
+	return m
 
 func _try_move(d: Vector2) -> void:
 	if d == Vector2.ZERO:

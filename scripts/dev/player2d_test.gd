@@ -54,8 +54,49 @@ func _ready() -> void:
 	var tiles := (p.position.x - x0) / 32.0
 	_check(tiles > 4.5 and tiles < 6.5, "walk speed about 6 m/s (%.1f tiles in 1 s)" % tiles)
 
+	# 6) mining: a plain tile next to us drops one level and pays stone
+	p.position = Vector2(5.5, 35.5) * 32
+	p.level = 0
+	var stone0 := Inventory.get_count("stone")
+	p.mine_override = Vector2i(6, 35)
+	await _wait(Mining2D.seconds_for(g, 6, 35) + 0.25)
+	p.mine_override = Vector2i(-1, -1)
+	_check(g.level_at(6, 35) == -1 and Inventory.get_count("stone") >= stone0 + Mining2D.STONE_PER_DIG,
+		"digging drops the tile one level and pays stone (level %d, stone +%d)" % [g.level_at(6, 35), Inventory.get_count("stone") - stone0])
+	_check(g.is_ramp(6, 35), "a dug tile is rubble you can walk in and out of")
+
+	# 7) ore pays ore and runs down
+	g.ore[g.idx(5, 36)] = 1
+	g.ore_amount[g.idx(5, 36)] = 6
+	var iron0 := Inventory.get_count("ore_a")
+	p.mine_override = Vector2i(5, 36)
+	await _wait(Mining2D.seconds_for(g, 5, 36) + 0.25)
+	p.mine_override = Vector2i(-1, -1)
+	_check(Inventory.get_count("ore_a") == iron0 + 4 and int(g.ore_amount[g.idx(5, 36)]) == 2,
+		"ore tile pays 4 iron and keeps 2 (got %d, left %d)" % [Inventory.get_count("ore_a") - iron0, g.ore_amount[g.idx(5, 36)]])
+
+	# 8) refusals
+	_check(Mining2D.refuse_reason(g, Vector2i(5, 35), 0, Vector2i(5, 35)) == "Standing on it", "can't dig the tile you stand on")
+	_check(Mining2D.refuse_reason(g, Vector2i(5, 35), 0, Vector2i(9, 35)) == "Out of reach", "can't dig out of reach")
+
+	# 9) walk into the 1-deep pit and out again
+	p.position = Vector2(5.5, 35.5) * 32
+	p.input_override = Vector2.RIGHT
+	var lowest := 0
+	for i in 60:
+		await get_tree().physics_frame
+		lowest = mini(lowest, p.level)
+	p.input_override = Vector2.ZERO
+	_check(lowest == -1 and p.level == 0 and p.tile().x > 6, "walk down into a one-level pit and up out the far side (lowest %d, now level %d at %s)" % [lowest, p.level, p.tile()])
+
 	print("PLAYER2D DONE fails=%d" % _fails)
 	get_tree().quit(1 if _fails > 0 else 0)
+
+func _wait(secs: float) -> void:
+	var t := 0.0
+	while t < secs:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
 
 func _walk(p: Player2D, dir: Vector2, secs: float) -> void:
 	p.input_override = dir

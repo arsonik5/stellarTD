@@ -29,21 +29,24 @@ Mindustry-spirit pixel art, Unfallen camera (straight down, things lean by heigh
 | P0 | Sprite tool: fit, palette, textures, dual-grid, cliff strips, normal maps, glow, snap-to-grid | tools/sprite_pipeline.py | `selftest` passes |
 | P0 | Lighting + lean proof (straight-down camera, roof lean with walls, shadows, night) | scripts/dev/lean_test.gd | screenshots sent |
 | P1.1 | **World data v2**: 25 levels, ground, ore + amount, flags (ramp/floor/explored), step rules, compressed save | scripts/world2d/world_grid.gd | world2d test |
+| P1.5 | **Mining**: hold LMB on a tile in reach (2.6 tiles) -> cracks over hardness x 0.7 s -> pays 2 stone (+4 ore while the deposit lasts, `ore_amount` counts down) into `Inventory`, emits `item_mined`, tile drops one level and becomes rubble (ramp) so shallow pits are walkable, deep shafts are real holes; cliff faces can be cut back; refusals (on it, out of reach, bedrock, too far down, built floor). Cursor overlay with lean + cracks; mouse picks the LEANED tile under it; HUD shows the bag | scripts/world2d/mining_2d.gd, player_2d.gd, cursor_overlay_2d.gd | player2d test 11/11 |
 | P1.4 | **Player**: top-down astronaut (placeholder drawing), WASD + mouse aim, tile collision via `can_step` (cliffs block, ramps carry, no diagonal squeeze), leans with its level, follow camera, zoom 1-4x; playable scene `scenes/world2d.tscn` (class `GameWorld2D`; `World2D` is a Godot built-in name) with a debug HUD; spawn on open plains near the centre | scripts/world2d/player_2d.gd, player_body_2d.gd, world_2d.gd | player2d test 5/5; `world2d.tscn -- --shot` screenshot, ~1 900 fps |
 | P1.3 | **Renderer v2** (straight-down camera): per-vertex height + lean shader, one mesh per level per chunk (z by level), cliff walls with strata bands, slope shading, ore clumps, ramp marks; generator now terraces (flats 3 levels apart, cliffs where steep, ramps where gentle) | scripts/world2d/world_view.gd, shaders/world2d/lean.gdshader | world_view_test screenshots: walls lean and swap sides with the camera; 650-3000 fps; chunk build ~27 ms |
 | P1.2 | **Generator v1**: continents, ridged ranges, canyons, mesas, detail; ramps on gentle slopes; ground rules; ore from data/ore_types | scripts/world2d/world_gen.gd | world2d test: 1.8 s for 1024^2, 25 levels, ramps 30%, cliffs 4%, all 6 ores, centre connects to 200k+ tiles, save 493 KB |
 
 ## Next (in order)
 
-1. **Mining**: hold LMB on an ore/rock tile in reach -> cracks, pays items into `Inventory`, lowers the tile one level.
-2. **BuildingCore split**: logic out of `scripts/world/building.gd` (3D) into a shared core; `Building2D` on top.
+1. **BuildingCore split**: logic out of `scripts/world/building.gd` (3D) into a shared core; `Building2D` on top.
    20 machine types override hooks (idle_reason, output_ids, can_accept_input, save_state...) - keep them working.
-3. **Grid building**: ghost, rotate, drag lines, dismantle with refund, hotbar.
-4. **Belts** (turns, junction, router, bridge) on `BeltSystem`, **deposit drill**, **smelter**, **chest**.
-5. **Save/load v2** (world bytes + buildings + belts + game state), main menu wiring.
-6. Then P2 (power, research, uplink...) per the plan.
+2. **Grid building**: ghost, rotate, drag lines, dismantle with refund, hotbar.
+3. **Belts** (turns, junction, router, bridge) on `BeltSystem`, **deposit drill**, **smelter**, **chest**.
+4. **Save/load v2** (world bytes + buildings + belts + game state), main menu wiring.
+5. Then P2 (power, research, uplink...) per the plan.
 
 ## Open problems / notes
+
+- Mining is on LMB always for now; the hand rule (tool in left/right hand, `Inventory.has_tool_equipped`) comes
+  back with the build tool. No chip/dust effects yet (pixelfx later), sounds are the 3D game's UiSound ones.
 
 - Run the 2D game: `godot --path . res://scenes/world2d.tscn` (add `-- --seed=N`). It is not the main scene yet
   (main menu still starts the 3D game).

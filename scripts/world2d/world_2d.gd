@@ -39,6 +39,11 @@ func _ready() -> void:
 	player.setup(grid, view, find_spawn(grid))
 	cam.position = player.position
 	view.build_visible_now()
+	var cursor := Node2D.new()
+	cursor.set_script(preload("res://scripts/world2d/cursor_overlay_2d.gd"))
+	cursor.set("player", player)
+	cursor.set("view", view)
+	add_child(cursor)
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -95,9 +100,15 @@ func _process(dt: float) -> void:
 	cam.position = cam.position.lerp(player.position, clampf(10.0 * dt, 0.0, 1.0))
 	var mt := grid.tile_of(get_global_mouse_position())
 	var ore_name: String = WorldGrid.ORE_IDS[grid.ore_at(mt.x, mt.y)] if grid.in_bounds(mt.x, mt.y) else ""
-	hud.text = "%d fps   tile %s  level %d   cursor %s lv %d %s%s   gen %.0f ms   zoom %dx" % [
+	var bag := ""
+	for id: String in ["stone", "ore_a", "ore_b", "ore_coal", "ore_silica", "sulfur", "ore_crystal"]:
+		var c := Inventory.get_count(id)
+		if c > 0:
+			bag += "%s %d  " % [id, c]
+	hud.text = "%d fps   tile %s  level %d   cursor %s lv %d %s%s %s   gen %.0f ms   zoom %dx
+%s" % [
 		Engine.get_frames_per_second(), player.tile(), player.level, mt, grid.level_at(mt.x, mt.y),
-		ore_name, " ramp" if grid.is_ramp(mt.x, mt.y) else "", gen_ms, int(ZOOMS[_zoom_i])]
+		ore_name, " ramp" if grid.is_ramp(mt.x, mt.y) else "", player.dig_refused, gen_ms, int(ZOOMS[_zoom_i]), bag]
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed:
