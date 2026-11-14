@@ -29,21 +29,24 @@ Mindustry-spirit pixel art, Unfallen camera (straight down, things lean by heigh
 | P0 | Sprite tool: fit, palette, textures, dual-grid, cliff strips, normal maps, glow, snap-to-grid | tools/sprite_pipeline.py | `selftest` passes |
 | P0 | Lighting + lean proof (straight-down camera, roof lean with walls, shadows, night) | scripts/dev/lean_test.gd | screenshots sent |
 | P1.1 | **World data v2**: 25 levels, ground, ore + amount, flags (ramp/floor/explored), step rules, compressed save | scripts/world2d/world_grid.gd | world2d test |
+| P1.4 | **Player**: top-down astronaut (placeholder drawing), WASD + mouse aim, tile collision via `can_step` (cliffs block, ramps carry, no diagonal squeeze), leans with its level, follow camera, zoom 1-4x; playable scene `scenes/world2d.tscn` (class `GameWorld2D`; `World2D` is a Godot built-in name) with a debug HUD; spawn on open plains near the centre | scripts/world2d/player_2d.gd, player_body_2d.gd, world_2d.gd | player2d test 5/5; `world2d.tscn -- --shot` screenshot, ~1 900 fps |
 | P1.3 | **Renderer v2** (straight-down camera): per-vertex height + lean shader, one mesh per level per chunk (z by level), cliff walls with strata bands, slope shading, ore clumps, ramp marks; generator now terraces (flats 3 levels apart, cliffs where steep, ramps where gentle) | scripts/world2d/world_view.gd, shaders/world2d/lean.gdshader | world_view_test screenshots: walls lean and swap sides with the camera; 650-3000 fps; chunk build ~27 ms |
 | P1.2 | **Generator v1**: continents, ridged ranges, canyons, mesas, detail; ramps on gentle slopes; ground rules; ore from data/ore_types | scripts/world2d/world_gen.gd | world2d test: 1.8 s for 1024^2, 25 levels, ramps 30%, cliffs 4%, all 6 ores, centre connects to 200k+ tiles, save 493 KB |
 
 ## Next (in order)
 
-1. **Player**: top-down astronaut, WASD, mouse aim, tile collision via `WorldGrid.can_step`, follow camera.
-2. **Mining**: hold LMB on an ore/rock tile in reach -> cracks, pays items into `Inventory`, lowers the tile one level.
-3. **BuildingCore split**: logic out of `scripts/world/building.gd` (3D) into a shared core; `Building2D` on top.
+1. **Mining**: hold LMB on an ore/rock tile in reach -> cracks, pays items into `Inventory`, lowers the tile one level.
+2. **BuildingCore split**: logic out of `scripts/world/building.gd` (3D) into a shared core; `Building2D` on top.
    20 machine types override hooks (idle_reason, output_ids, can_accept_input, save_state...) - keep them working.
-4. **Grid building**: ghost, rotate, drag lines, dismantle with refund, hotbar.
-5. **Belts** (turns, junction, router, bridge) on `BeltSystem`, **deposit drill**, **smelter**, **chest**.
-6. **Save/load v2** (world bytes + buildings + belts + game state), main menu wiring.
-7. Then P2 (power, research, uplink...) per the plan.
+3. **Grid building**: ghost, rotate, drag lines, dismantle with refund, hotbar.
+4. **Belts** (turns, junction, router, bridge) on `BeltSystem`, **deposit drill**, **smelter**, **chest**.
+5. **Save/load v2** (world bytes + buildings + belts + game state), main menu wiring.
+6. Then P2 (power, research, uplink...) per the plan.
 
 ## Open problems / notes
+
+- Run the 2D game: `godot --path . res://scenes/world2d.tscn` (add `-- --seed=N`). It is not the main scene yet
+  (main menu still starts the 3D game).
 
 - Qwen pixel-art test is queued (`art_src/qwen_px/run.sh`); it refuses while someone is at furryass - rerun later.
   Pixel LoRAs found (prithivMLmods Qwen-Image-2512 Pixel-Art, PixelArtRedmond); compatibility with Qwen-Image 2.1
