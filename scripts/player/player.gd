@@ -763,6 +763,10 @@ func _try_resolve_spawn() -> bool:
 	query.exclude = [get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
+		# The first bake of a planet can take minutes (erosion map): that wait is not a generator failure, so the
+		# give-up clock only runs once the planet says its terrain is up.
+		if not nearest_planet.is_terrain_ready:
+			return false
 		_spawn_wait_frames += 1
 		# Every second of waiting, not every frame: this is the symptom of every
 		# generation problem so far, and the data-block count says whether the
@@ -819,6 +823,8 @@ func _try_resolve_loaded_spawn(planet: Planet) -> bool:
 		_spawn_resolved = true
 		return true
 
+	if not planet.is_terrain_ready:
+		return false          # first bake still running: not a failure, see _try_resolve_spawn
 	_spawn_wait_frames += 1
 	if _spawn_wait_frames >= SPAWN_WAIT_MAX_FRAMES:
 		push_warning("Player spawn: loaded position has no collider after %d frames, resuming anyway." % _spawn_wait_frames)
