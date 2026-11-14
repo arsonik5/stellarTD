@@ -1,9 +1,10 @@
 class_name GameWorld2D
 extends Node2D
 
-## The 2D game world scene (pivot-2d.md P1): generates (or later loads) a WorldGrid, draws it with WorldView,
-## spawns the player on open flat ground and follows them with the camera. Mouse wheel zooms in whole steps.
-##   godot --path . res://scenes/world2d.tscn [-- --seed=N]
+## The 2D game world scene (pivot-2d.md P1): continues the save in `slot` if there is one (Save2D), otherwise
+## generates a new world, spawns the player on open plains and lands the kit. F5 saves, F9 reloads the save, and
+## closing the window saves. Mouse wheel zooms in whole steps.
+##   godot --path . res://scenes/world2d.tscn [-- --seed=N --new --slot=NAME]
 
 const ZOOMS := [1.0, 2.0, 3.0, 4.0]
 
@@ -19,18 +20,37 @@ var _zoom_i := 1
 ## What a Voyager lands with (P1 placeholder for the landing pod's kit).
 const LANDING_KIT := {"deposit_drill": 2, "smelter": 1, "chest": 2, "conveyor_belt": 24, "refined_material": 10}
 var gen_ms := 0.0
+var load_ms := 0.0
+var loaded := false
+## Set before adding to the tree (tests) or from the command line.
+var slot := "main"
+var force_new := false
+var seed_v := 1
+static var _reload_from_save := false     ## F9: the reloaded scene continues the save whatever the args say
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.05, 0.05, 0.07))
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	var seed_v := 1
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--seed="):
 			seed_v = int(a.substr(7))
+		elif a.begins_with("--slot="):
+			slot = a.substr(7)
+		elif a == "--new" or a == "--shot":
+			force_new = true
+	if _reload_from_save:
+		force_new = false
+		_reload_from_save = false
 	var t0 := Time.get_ticks_usec()
-	grid = WorldGrid.new(1024, 1024)
-	WorldGen.generate(grid, seed_v)
-	gen_ms = (Time.get_ticks_usec() - t0) / 1000.0
+	var save := {} if force_new else Save2D.read(slot)
+	if not save.is_empty():
+		grid = save["grid"]
+		loaded = true
+		load_ms = (Time.get_ticks_usec() - t0) / 1000.0
+	else:
+		grid = WorldGrid.new(1024, 1024)
+		WorldGen.generate(grid, seed_v)
+		gen_ms = (Time.get_ticks_usec() - t0) / 1000.0
 
 	cam = Camera2D.new()
 	cam.zoom = Vector2.ONE * ZOOMS[_zoom_i]
@@ -45,6 +65,14 @@ func _ready() -> void:
 	player = Player2D.new()
 	add_child(player)
 	player.setup(grid, view, find_spawn(grid))
+	if loaded:
+		var st: Dictionary = save["state"]
+		Save2D.apply_game_state(st)
+		build.load_state(st.get("build", {}))
+		var pp: Array = st["player"]["pos"]
+		player.position = Vector2(float(pp[0]), float(pp[1]))
+		player.level = grid.level_at(player.tile().x, player.tile().y)
+		load_ms = (Time.get_ticks_usec() - t0) / 1000.0
 	cam.position = player.position
 	view.build_visible_now()
 	var cursor := Node2D.new()
@@ -64,9 +92,21 @@ func _ready() -> void:
 	build_mode = BuildMode2D.new()
 	add_child(build_mode)
 	build_mode.setup(build, view, player, layer)
-	if Inventory.get_count("deposit_drill") == 0 and Inventory.get_count("smelter") == 0:
+	if not loaded:
 		for id: String in LANDING_KIT:
 			Inventory.add(id, LANDING_KIT[id])
+	get_tree().set_auto_accept_quit(false)
+
+func save_game() -> bool:
+	var ok := Save2D.save(self, slot)
+	UiSound.play("confirm" if ok else "error")
+	return ok
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if not OS.get_cmdline_user_args().has("--shot"):
+			save_game()
+		get_tree().quit()
 	if OS.get_cmdline_user_args().has("--shot"):
 		_shot.call_deferred()
 
@@ -139,12 +179,19 @@ func _process(dt: float) -> void:
 		var c := Inventory.get_count(id)
 		if c > 0:
 			bag += "%s %d  " % [id, c]
-	hud.text = "%d fps   tile %s  level %d   cursor %s lv %d %s%s %s   gen %.0f ms   zoom %dx
+	hud.text = "%d fps   tile %s  level %d   cursor %s lv %d %s%s %s   %s   zoom %dx   F5 save  F9 load
 %s" % [
 		Engine.get_frames_per_second(), player.tile(), player.level, mt, grid.level_at(mt.x, mt.y),
-		ore_name, " ramp" if grid.is_ramp(mt.x, mt.y) else "", player.dig_refused, gen_ms, int(ZOOMS[_zoom_i]), bag]
+		ore_name, " ramp" if grid.is_ramp(mt.x, mt.y) else "", player.dig_refused,
+		("loaded %.0f ms" % load_ms) if loaded else ("generated %.0f ms" % gen_ms), int(ZOOMS[_zoom_i]), bag]
 
 func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo:
+		if e.keycode == KEY_F5:
+			save_game()
+		elif e.keycode == KEY_F9 and Save2D.exists(slot):
+			_reload_from_save = true
+			get_tree().reload_current_scene()
 	if e is InputEventMouseButton and e.pressed:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom_i = mini(_zoom_i + 1, ZOOMS.size() - 1)

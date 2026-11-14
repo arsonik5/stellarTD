@@ -10,8 +10,8 @@ GODOT="${GODOT:-godot}"
 # OpenGL: on a machine without a GPU, Vulkan runs on llvmpipe and the real-planet suite crawls (measured: no
 # spawn in 10 min) while the OpenGL compatibility renderer gets through it in ~4 min. Override with RENDER=.
 RENDER="${RENDER:---rendering-driver opengl3}"
-HEADLESS_SUITES="lint systems drill world2d player2d factory2d"
-TESTS=("lint" "world2d" "player2d" "factory2d" "systems" "drill" "build_fp" "vehicle" "pipe" "game" "playthrough")
+HEADLESS_SUITES="lint systems drill world2d player2d factory2d save2d"
+TESTS=("lint" "world2d" "player2d" "factory2d" "save2d" "systems" "drill" "build_fp" "vehicle" "pipe" "game" "playthrough")
 [ $# -gt 0 ] && TESTS=("$@")
 RUN=()
 if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then
