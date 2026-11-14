@@ -9,7 +9,9 @@ extends RefCounted
 ## everywhere), canyons (inverted ridges carved down), mesas (terraced plateaus). Still to port from the planet
 ## generator (later steps): erosion bake, craters (CraterField), trait ground rules, scatter, POIs, roofs/caves.
 
-const RAMP_GRADIENT := 0.6     ## max continuous height change per tile (levels) for a level step to be a ramp
+const RAMP_GRADIENT := 0.35    ## max continuous height change per tile (levels) for a level step to be a ramp
+const TERRACE := 3.0           ## levels per terrace: flats this far apart, joined by risers
+const RISER := 0.3             ## share of each terrace band that is riser (the rest is flat)
 
 static var last_timing := {}   ## step -> ms, for the budget test and the loading bar
 
@@ -60,7 +62,17 @@ static func generate(g: WorldGrid, seed_in: int, ore_types: Array = []) -> void:
 	var off := WorldGrid.LEVEL_OFFSET
 	var lo := WorldGrid.MIN_LEVEL
 	var hi := WorldGrid.MAX_LEVEL
+	# terraces: broad flats TERRACE levels apart; the rise happens in a narrow band, which is a cliff where the
+	# land is steep and a run of single steps (ramps) where it is gentle. Plains near 0 keep their small relief.
 	for i in n:
+		var h := hf[i]
+		if absf(h) > 1.5:
+			var tb := h / TERRACE
+			var fl := floorf(tb)
+			var fr := tb - fl
+			var rise := clampf((fr - (1.0 - RISER)) / RISER, 0.0, 1.0)
+			h = (fl + rise * rise * (3.0 - 2.0 * rise)) * TERRACE
+			hf[i] = h
 		g.elevation[i] = clampi(floori(hf[i]), lo, hi) + off
 	for y in hgt:
 		var row := y * w

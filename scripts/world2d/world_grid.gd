@@ -9,7 +9,7 @@ extends RefCounted
 
 const TILE_PX := 32            ## pixels per tile at 1x zoom (1 tile = 1 m)
 const LEVEL_PX := 16           ## legacy 3/4 shift used by the P0.2 spike renderer only
-const LEVEL_HEIGHT := 6.0      ## px of real height per level, for the perspective lean (WorldMapView)
+const LEVEL_HEIGHT := 12.0     ## px of real height per level, for the perspective lean (WorldMapView)
 const CHUNK := 64              ## tiles per chunk side
 const MIN_LEVEL := -4
 const MAX_LEVEL := 20
