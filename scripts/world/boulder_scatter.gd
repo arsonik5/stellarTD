@@ -155,6 +155,54 @@ static func build(radius: float, mask: Image, up_mode: int, rules: ScatterSet = 
 	instancer.up_mode = up_mode
 	return instancer
 
+## Pebble litter (ScatterSet pebble_*): the boulder meshes shrunk to hand size, everywhere below 40 degrees, a
+## light clump modulation, no collision and no shadow casting (SSAO grounds them; thousands of shadow casters
+## would not). Separate instancer so boulders and pebbles stream and tune independently.
+static func build_pebbles(radius: float, up_mode: int, rules: ScatterSet, seed_value: int = 0) -> VoxelInstancer:
+	if rules == null or rules.pebble_density <= 0.0:
+		return null
+	var library := VoxelInstanceLibrary.new()
+	var added := 0
+	for i in ROCKS.size():
+		var mesh := _load_mesh(ROCKS[i])
+		if mesh == null:
+			continue
+		var item := VoxelInstanceLibraryMultiMeshItem.new()
+		item.name = "pebble_" + ROCKS[i]
+		item.lod_index = BOULDER_LOD
+		item.mesh = mesh
+		item.cast_shadow = RenderingServer.SHADOW_CASTING_SETTING_OFF
+		item.material_override = _tinted_material(mesh, rules.tint)
+		var g := VoxelInstanceGenerator.new()
+		g.emit_mode = VoxelInstanceGenerator.EMIT_FROM_FACES
+		g.density = rules.pebble_density / float(ROCKS.size())
+		var bs := _base_scale(mesh)
+		g.min_scale = bs * rules.pebble_size_min
+		g.max_scale = bs * rules.pebble_size_max
+		g.scale_distribution = VoxelInstanceGenerator.DISTRIBUTION_QUADRATIC
+		g.random_rotation = true
+		g.vertical_alignment = 1.0
+		g.offset_along_normal = -0.03
+		g.max_slope_degrees = 40.0
+		g.max_slope_falloff_degrees = 8.0
+		var noise := FastNoiseLite.new()
+		noise.seed = seed_value * 17 + 300 + i
+		noise.frequency = 0.05
+		g.noise = noise
+		g.noise_dimension = VoxelInstanceGenerator.DIMENSION_3D
+		g.noise_threshold = -0.2
+		g.noise_falloff = 0.4
+		item.generator = g
+		library.add_item(100 + i, item)
+		added += 1
+	if added == 0:
+		return null
+	var instancer := VoxelInstancer.new()
+	instancer.name = "Pebbles"
+	instancer.library = library
+	instancer.up_mode = up_mode
+	return instancer
+
 static func _load_mesh(id: String) -> Mesh:
 	var path := "%s/%s/%s_1k.gltf" % [ROCK_DIR, id, id]
 	if not ResourceLoader.exists(path):

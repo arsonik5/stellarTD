@@ -140,19 +140,26 @@ func _configure_fixed_alpha_system() -> void:
 ## photography is entirely long raking shadows.
 func _configure_sun_shadows() -> void:
 	sun.shadow_enabled = true
+	# Look rule (art-direction.md, Michael 2026-11-05): PS2-styled ASSETS, MODERN rendering. The sun is an area
+	# light: a 0.53 deg disc (the Sun seen from Earth) gives shadows that are crisp at contact and soften with
+	# distance from the caster - long soft shadows at a low sun (PCSS, Forward+).
+	sun.light_angular_distance = 0.53
 	# Normal bias does the work at grazing incidence; depth bias alone would
 	# have to be large enough to visibly detach shadows from their casters.
 	sun.shadow_normal_bias = 6.0
 	sun.shadow_bias = 0.04
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = 1500.0
-	sun.directional_shadow_split_1 = 0.05
-	sun.directional_shadow_split_2 = 0.15
-	sun.directional_shadow_split_3 = 0.45
+	# 0-2 km in four cascades: a tight first split for crevices and the rocks at your feet (40 m), then 160 m,
+	# 600 m, 2 km - about a standing player's horizon on the 20 km home world.
+	sun.directional_shadow_max_distance = 2000.0
+	sun.directional_shadow_split_1 = 0.02
+	sun.directional_shadow_split_2 = 0.08
+	sun.directional_shadow_split_3 = 0.3
 	sun.directional_shadow_blend_splits = true
+	sun.directional_shadow_fade_start = 0.85
 	# Slightly soft rather than razor-edged: a real terminator on dusty ground
 	# is not a hard line, and it hides the remaining split seams.
-	sun.shadow_blur = 1.5
+	sun.shadow_blur = 1.0
 
 ## The background never changes: deep space and stars, identical on every
 ## body and in the void. Everything that used to make one planet's sky differ
@@ -179,9 +186,32 @@ func _apply_starfield() -> void:
 	# blew out to flat white while staying blue in its dimmer parts - colour
 	# information thrown away exactly where the effect is most visible. ACES
 	# rolls the highlights off instead, keeping the hue through the bright band.
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	# Filmic AgX instead of ACES: ACES shifts saturated highlights' hue, AgX rolls off to white - grounded and
+	# photographic (the SE2 target) rather than punchy.
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = 1.0
 	env.tonemap_white = 6.0
+	# Subtle grade: a touch more contrast, a touch less saturation. Real geology is not colourful.
+	env.adjustment_enabled = true
+	env.adjustment_contrast = 1.06
+	env.adjustment_saturation = 0.9
+	env.adjustment_brightness = 1.0
+	# Contact shadow and bounce light: crevices, the foot of every rock, a sunlit cliff lighting its own shadow.
+	# Screen-space, so the cost does not grow with a 20 km world. SDFGI was not adopted: its world-space cascades
+	# are at their worst on a planet-sized scene and could not be measured on the CPU-only machine this was built
+	# on - revisit with a GPU profile.
+	env.ssao_enabled = true
+	env.ssao_radius = 1.6
+	env.ssao_intensity = 1.8
+	env.ssao_power = 1.6
+	env.ssao_detail = 0.6
+	env.ssao_horizon = 0.06
+	env.ssao_light_affect = 0.15
+	env.ssao_ao_channel_affect = 0.5
+	env.ssil_enabled = true
+	env.ssil_radius = 6.0
+	env.ssil_intensity = 0.7
+	env.ssil_sharpness = 0.98
 
 	# The sky is now near-black space, so sky-sourced ambient is effectively
 	# zero and anything on a body's night side renders as pure silhouette -
@@ -216,7 +246,7 @@ func _apply_starfield() -> void:
 	# WHOLE frame into the glow buffer regardless of the HDR threshold, so with
 	# the star filling a third of the screen it washed empty space out to a flat
 	# milky brown. Threshold + levels are what shape a corona; bloom just fogs.
-	env.glow_bloom = 0.0
+	env.glow_bloom = 0.03
 	env.glow_strength = 1.0
 	# 2.5, not 1.0. Sunlit terrain lands a little over 1.0 in HDR, so a
 	# threshold of 1.0 fed the entire ground into an ADDITIVE glow and washed

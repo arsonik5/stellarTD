@@ -20,7 +20,7 @@ sink_m = 1.1
 [sub_resource type="Resource" id="Resource_7kxvf"]
 script = ExtResource("4_ftnop")
 density = 0.006
-tint = Color(0.85, 0.9, 1, 1)
+tint = Color(0.8, 0.82, 0.86, 1)
 clump_strength = 0.85
 
 [sub_resource type="Resource" id="Resource_gj4hi"]
@@ -43,9 +43,8 @@ display_name = "Frozen"
 kind = "frozen"
 terrain = SubResource("Resource_gj4hi")
 biomes = Array[ExtResource("1_uqqkb")]([ExtResource("2_4r2lf")])
-palette = PackedColorArray(0.82, 0.88, 0.95, 1, 0.55, 0.62, 0.72, 1, 0.6, 0.85, 1, 1)
-ground_tint = Color(0.9, 0.96, 1.08, 1)
-ambient_ground_share = 0.55
+palette = PackedColorArray(0.74, 0.76, 0.78, 1, 0.5, 0.52, 0.55, 1, 0.62, 0.7, 0.76, 1)
+ground_tint = Color(0.95, 0.97, 1, 1)
 scatter = SubResource("Resource_7kxvf")
 pois = Array[ExtResource("3_lsscb")]([SubResource("Resource_88mvp"), SubResource("Resource_0q281")])
 poi_min_spacing_m = 900.0

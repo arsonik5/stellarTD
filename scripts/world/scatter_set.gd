@@ -28,6 +28,13 @@ extends Resource
 @export var min_slope_deg := 0.0
 @export var max_slope_deg := 38.0
 
+@export_group("Pebbles")
+## Fine litter that makes ground read as ground (SE2): the same rock meshes at hand size, dense, everywhere that is
+## not a cliff, no collision. 0 density = off.
+@export var pebble_density := 0.06
+@export var pebble_size_min := 0.08
+@export var pebble_size_max := 0.25
+
 ## The legacy rules (talus-only mask, mild variant modulation) - what shipped before W5, for A/B.
 static func legacy() -> ScatterSet:
 	var s := ScatterSet.new()

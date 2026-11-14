@@ -43,6 +43,22 @@ Time to ready planets from the erosion cache: unchanged (cache hit; the bake is 
    keeps the old behaviour for the hash test only.
 6. **POI looting state is not saved here** - `PoiField.consumed` exists for gameplay to own.
 
+## SE2 look pass (new direction 03:30 UTC: "EXACTLY like SE2 / No Man's Sky", PS2 assets + modern rendering)
+
+Rig: `scenes/dev/planet_look.tscn -- --body=home|moon --tag=rN` - eye level noon / low sun (8 deg) / night, 50 m,
+500 m, 5 km, orbit, a fly-down LOD count, a freshly dug hole, and the generator-found cliff, plain, canyon, mesa
+edge and crater on each body. Renderer for every number below: Vulkan Forward+ on **lavapipe (CPU, llvmpipe)**,
+4 cores shared with another agent's test runs - frame times are relative, not GPU numbers.
+
+Changes going into round 1 (on top of W1-W5):
+- Rendering: per-pixel lighting, PCSS sun (0.53 deg), 4 cascades over 0-2 km, 8k shadow map, SSAO + SSIL, AgX,
+  grade (contrast 1.06, saturation 0.9), glow with a faint bloom.
+- Terrain shader: body-local camera-snapped triplanar coordinates (open item 3), per-pixel rock on steep faces
+  (open item 4), radial-height strata on rock, two-scale triplanar macro variation (tiling).
+- Palettes: SE2-neutral (home grey-brown, moon frost-grey).
+
+ROUNDS_PLACEHOLDER
+
 ## Images to look at first (user://, i.e. ~/.local/share/godot/app_userdata/StellarTD/ on the machine that ran them)
 
 Captured on the CPU container with a 2048-wide erosion map (coarser landforms than the real 12.3 m map) and

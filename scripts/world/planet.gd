@@ -715,6 +715,12 @@ func _build_surface_material() -> ShaderMaterial:
 	mat.set_shader_parameter("pal_extra", palette["extra"])
 	mat.set_shader_parameter("tex_albedo", palette["albedo_array"])
 	mat.set_shader_parameter("tex_normal", palette["normal_array"])
+	# Local radial up for per-pixel slope rock and strata (never world Y). Bodies do not move after _ready here;
+	# a moving body must update this.
+	mat.set_shader_parameter("planet_center", global_position)
+	var ground_biomes: Array = PlanetArchetype.biomes_of(body)
+	if not ground_biomes.is_empty() and ground_biomes[0] != null:
+		mat.set_shader_parameter("dust_layer", (ground_biomes[0] as Biome).stone_material_index)
 	if TerrainLog.enabled:
 		var assigned: Array[String] = []
 		var names: Array = palette["names"]
@@ -788,6 +794,9 @@ func _spawn_boulders() -> void:
 	var rules: ScatterSet = arch.scatter if arch != null and arch.scatter != null else null
 	if rules != null and not rules.enabled:
 		return
+	var pebbles := BoulderScatter.build_pebbles(float(body.radius), VoxelInstancer.UP_MODE_SPHERE, rules, body.seed)
+	if pebbles != null:
+		terrain.add_child(pebbles)
 	var instancer := BoulderScatter.build(
 		float(body.radius), _erosion_masks.get("talus"),
 		VoxelInstancer.UP_MODE_SPHERE, rules, _erosion_masks.get("slope"), body.seed)
@@ -991,6 +1000,14 @@ func suggested_spawn_direction() -> Vector3:
 
 func radius_world() -> float:
 	return body.radius * VOXEL_SCALE
+
+## Keeps the terrain shader's `planet_center` (local radial up for slope rock and strata) on the body, wherever
+## world.gd or an orbit puts it. Cheap: one comparison per frame.
+var _shader_center := Vector3.INF
+func _process(_delta: float) -> void:
+	if terrain != null and terrain.material is ShaderMaterial and global_position != _shader_center:
+		_shader_center = global_position
+		(terrain.material as ShaderMaterial).set_shader_parameter("planet_center", global_position)
 
 # --- Points of interest (W5) ----------------------------------------------------------------------------------
 

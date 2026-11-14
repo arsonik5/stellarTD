@@ -57,7 +57,7 @@ func _barren(probe: PoiSpec, crash: PoiSpec, spire: PoiSpec) -> PlanetArchetype:
 	t.spire_density = 0.15
 	a.terrain = t
 	a.palette = PackedColorArray([Color(0.62, 0.6, 0.57), Color(0.4, 0.4, 0.41), Color(0.45, 0.95, 0.85)])
-	a.ground_tint = Color(1.0, 0.985, 0.96)          # a hair warmer than raw regolith: sunlit dust, not ash
+	a.ground_tint = Color(0.99, 0.975, 0.95)        # SE2 grey-brown regolith: a hair warm, never coloured
 	a.ambient_ground_share = 0.3
 	var s := ScatterSet.new()                          # W5 defaults: talus + broken edges, clumped
 	a.scatter = s
@@ -87,12 +87,14 @@ func _frozen(probe: PoiSpec, crash: PoiSpec) -> PlanetArchetype:
 	t.canyon_sharpness = 5.0
 	t.canyon_coverage = 0.7
 	a.terrain = t
-	a.palette = PackedColorArray([Color(0.82, 0.88, 0.95), Color(0.55, 0.62, 0.72), Color(0.6, 0.85, 1.0)])
-	a.ground_tint = Color(0.9, 0.96, 1.08)
-	a.ambient_ground_share = 0.55
+	# SE2 realism (Michael 2026-11-05): frost-grey, not storybook blue. The ice reads through texture and sheen,
+	# the colour only leans cold.
+	a.palette = PackedColorArray([Color(0.74, 0.76, 0.78), Color(0.5, 0.52, 0.55), Color(0.62, 0.7, 0.76)])
+	a.ground_tint = Color(0.95, 0.97, 1.0)
+	a.ambient_ground_share = 0.35
 	var s := ScatterSet.new()
 	s.density = 0.006
-	s.tint = Color(0.85, 0.9, 1.0)
+	s.tint = Color(0.8, 0.82, 0.86)
 	s.clump_strength = 0.85
 	a.scatter = s
 	a.pois = [probe, crash]

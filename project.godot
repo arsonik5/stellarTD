@@ -50,9 +50,17 @@ anti_aliasing/quality/msaa_3d=2
 ; FXAA on top: MSAA does not touch shading aliasing, and procedural surface
 ; detail produces plenty of that.
 anti_aliasing/quality/screen_space_aa=1
-; PS2 look (docs/game/art-direction.md): per-vertex (Gouraud) lighting, like the sixth-gen consoles. Set to false
-; to go back to per-pixel lighting.
-shading/overrides/force_vertex_shading=true
+; Look rule (docs/game/art-direction.md, Michael 2026-11-05): PS2-styled ASSETS, MODERN rendering - per-pixel
+; lighting so normal maps, specular and soft shadows read. (Was force_vertex_shading=true, PS2-era Gouraud.)
+shading/overrides/force_vertex_shading=false
+; Soft PCSS sun shadows need resolution: an 8k directional map, highest soft-shadow quality.
+lights_and_shadows/directional_shadow/size=8192
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=4
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
+; Terrain is mostly seen at grazing angles: 16x anisotropic keeps triplanar texture sharp toward the horizon.
+textures/default_filters/anisotropic_filtering_level=4
+environment/ssao/quality=3
+environment/ssil/quality=2
 
 [gui]
 

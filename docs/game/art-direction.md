@@ -135,16 +135,23 @@ the cost; "cheap until you approach" is the wrong trade here.
 wanted: tall spires, layered mesas, eroded badlands, and genuine flat basins
 between them. Uniform bumpiness at every scale is the failure mode.
 
-## Look: PS2 era (decided 2026-11-04)
+## Look: PS2 assets, modern rendering (decided 2026-11-05, replaces the 2026-11-04 rule)
 
-The game's look is the **PS2 aesthetic**: early-2000s sixth-gen 3D, in the spirit of Mafia (2002) and GTA San
-Andreas. The reference is Michael's art-deco "old money" noir clips. The models we built stay as they are; the look
-comes from:
-- **Render:** full resolution. A half-resolution pass was tried on 2026-11-04 and dropped the same day (Michael:
-  "the low res pass looks awful ... render full resolution but get the textures and models to be styled"). Fog was
-  tried too and dropped: the atmosphere pass already gives the haze. The look lives in the assets, not in a
-  screen filter.
-- **Lighting:** per-vertex (Gouraud), set with `rendering/shading/overrides/force_vertex_shading` in
-  project.godot. Changing it needs a restart.
-- **Textures:** baked at 512 px with the light painted in: lit from above, shaded underneath, darker in the gaps
-  (`PAINTED_LIGHT` in art_src/kit.py). Grey paint and the paint tool work the same as before.
+Michael, 2026-11-05: "PS2 look everywhere BUT with modern technology, shading and lighting - PS2 look but fancy
+with all the sparkles." The PS2 era lives in the **assets**; the **rendering** is modern.
+
+- **Assets (unchanged):** simple hard-surface models from the kit, textures baked at 512 px with the light
+  painted in (lit from above, shaded underneath, darker in the gaps - `PAINTED_LIGHT` in art_src/kit.py), grey
+  paint and the paint tool. Spirit: Mafia (2002), GTA San Andreas, Michael's art-deco "old money" noir clips.
+- **Rendering (modern):** per-pixel lighting (`force_vertex_shading` is now **false**); a real area sun (0.53 deg
+  disc, PCSS soft shadows, four cascades over 0-2 km, 8k map); SSAO + SSIL for contact shadow and bounce light;
+  glow on emissives and the sun; AgX filmic tonemap with a subtle grade (contrast 1.06, saturation 0.9);
+  normal-mapped triplanar terrain. All in project.godot `[rendering]` and world.gd `_apply_starfield` /
+  `_configure_sun_shadows`. SDFGI not adopted (unmeasured on GPU; a planet is its worst case) and Godot's
+  volumetric fog not adopted (its height falloff is world-Y, wrong on a sphere; the raymarched atmosphere already
+  gives aerial perspective).
+- **Planets: SE2 everywhere.** Grounded, realistic, desaturated geology on every world - no stylised NMS
+  palettes. No Man's Sky is the reference for STRUCTURE only (variety between planets, something on the horizon,
+  scale). Match look and behaviour; never copy their assets or code.
+- Still true from 2026-11-04: full-resolution render (the half-resolution pass was dropped), no screen filter -
+  the PS2 look is in the assets.
