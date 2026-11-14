@@ -271,6 +271,21 @@ def _distance_inside(solid: np.ndarray, cap: int) -> np.ndarray:
     return d
 
 
+def normal_from_height(h: np.ndarray, alpha: np.ndarray, strength: float) -> np.ndarray:
+    """Tangent-space normal map from an exact height map (code-drawn sprites write one: tools/codeart)."""
+    hp = np.pad(h, 1, mode="edge")
+    gx = (hp[1:-1, 2:] - hp[1:-1, :-2]) * 0.5
+    gy = (hp[2:, 1:-1] - hp[:-2, 1:-1]) * 0.5
+    nx, ny, nz = -gx * strength, gy * strength, np.ones_like(h)
+    ln = np.sqrt(nx * nx + ny * ny + nz * nz)
+    out = np.zeros((*h.shape, 4), np.uint8)
+    out[..., 0] = ((nx / ln * 0.5 + 0.5) * 255).astype(np.uint8)
+    out[..., 1] = ((ny / ln * 0.5 + 0.5) * 255).astype(np.uint8)
+    out[..., 2] = ((nz / ln * 0.5 + 0.5) * 255).astype(np.uint8)
+    out[..., 3] = np.where(alpha, 255, 0)
+    return out
+
+
 def make_normal(rgba: np.ndarray, bevel: int, detail: float, strength: float, wrap: bool = False) -> np.ndarray:
     """Tangent-space normal map. Height = rounded bevel from the silhouette (so panels and modules read as raised
     forms under a moving light) + fine relief from albedo luminance (seams, bolts, grime). Godot 2D normal maps use
@@ -323,9 +338,14 @@ def cmd_lit(args) -> None:
     od = Path(args.out_dir)
     od.mkdir(parents=True, exist_ok=True)
     wrap = bool(args.wrap)
-    Image.fromarray(make_normal(src, args.bevel, args.detail, args.strength, wrap), "RGBA").save(od / f"{stem}_n.png")
-    em = make_emissive(src)
+    if args.height:
+        hm = np.array(Image.open(args.height).convert("RGBA")).astype(np.float32)
+        h = hm[..., 0] / 255.0 * args.height_px
+        Image.fromarray(normal_from_height(h, hm[..., 3] > 0, 1.0), "RGBA").save(od / f"{stem}_n.png")
+    else:
+        Image.fromarray(make_normal(src, args.bevel, args.detail, args.strength, wrap), "RGBA").save(od / f"{stem}_n.png")
     msg = f"lit: {od / (stem + '_n.png')}"
+    em = make_emissive(src) if not args.height else np.zeros((1, 1, 4), np.uint8)   # codeart draws its own glow
     if em[..., 3].any():
         Image.fromarray(em, "RGBA").save(od / f"{stem}_e.png")
         msg += f" + {stem}_e.png ({int((em[..., 3] > 0).sum())} glowing px)"
@@ -422,7 +442,7 @@ def main(argv=None) -> None:
     p = sub.add_parser("texture"); p.add_argument("input"); p.add_argument("--size", type=int, default=64); p.add_argument("--out", required=True); p.add_argument("--palette"); p.set_defaults(fn=cmd_texture)
     p = sub.add_parser("dualgrid"); p.add_argument("a"); p.add_argument("b"); p.add_argument("--tile", type=int, default=32); p.add_argument("--out", required=True); p.add_argument("--seed", type=int, default=1); p.set_defaults(fn=cmd_dualgrid)
     p = sub.add_parser("cliff"); p.add_argument("--palette"); p.add_argument("--tile", type=int, default=32); p.add_argument("--level-px", type=int, default=8); p.add_argument("--base", default="#7a6a58"); p.add_argument("--out", required=True); p.set_defaults(fn=cmd_cliff)
-    p = sub.add_parser("lit"); p.add_argument("input"); p.add_argument("--out-dir", required=True); p.add_argument("--bevel", type=int, default=6); p.add_argument("--detail", type=float, default=1.0); p.add_argument("--strength", type=float, default=2.0); p.add_argument("--wrap", action="store_true", help="tileable texture: wrap edges, no silhouette bevel"); p.set_defaults(fn=cmd_lit)
+    p = sub.add_parser("lit"); p.add_argument("input"); p.add_argument("--out-dir", required=True); p.add_argument("--bevel", type=int, default=6); p.add_argument("--detail", type=float, default=1.0); p.add_argument("--strength", type=float, default=2.0); p.add_argument("--wrap", action="store_true", help="tileable texture: wrap edges, no silhouette bevel"); p.add_argument("--height", help="exact height map (codeart _h.png): normals from it, not guessed"); p.add_argument("--height-px", type=float, default=12.0, help="pixels of relief that height 1.0 stands for"); p.set_defaults(fn=cmd_lit)
     p = sub.add_parser("sheet"); p.add_argument("images", nargs="+"); p.add_argument("--out", required=True); p.add_argument("--scale", type=int, default=4); p.add_argument("--cols", type=int, default=6); p.set_defaults(fn=cmd_sheet)
     p = sub.add_parser("selftest"); p.set_defaults(fn=cmd_selftest)
     a = ap.parse_args(argv)
