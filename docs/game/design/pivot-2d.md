@@ -6,7 +6,7 @@ files are rewritten (step P0.6). Where this file and an older design file disagr
 Status: **plan, waiting for Michael's answers to the open decisions (section 9).** Nothing is built yet.
 
 References: `docs/game/reference/pivot-2026-11-14-references.md` (Garbage Country for mood, pixelfx for effects).
-Gameplay read: Mindustry. Ship building read: Cosmoteer (top-down block ships).
+Gameplay read: Mindustry and Factorio (Michael 2026-11-14: "more like Factorio, with height"). Look: Astroneer. Ship building read: Cosmoteer (top-down block ships).
 
 ---
 
@@ -105,8 +105,8 @@ ship physics (Jolt rigid bodies, block grids in 3D), atmosphere renderer, Blende
 
 ### 4.2 Height
 
-- **Elevation levels -3 .. +5** (9 levels). Level 0 is the "plain". Mountains, mesas, crater rims go up; pits,
-  canyons, river beds and anything you dig go down. Bedrock stops digging at -3 (deeper with drill tiers later).
+- **Elevation levels -4 .. +20** (25 levels, see 4.3). Level 0 is the "plain". Mountains, mesas, crater rims go up; pits,
+  canyons, river beds and anything you dig go down. Bedrock stops digging at -4 (deeper with drill tiers later).
 - **Drawing (the 2.5D trick):** each level draws its tiles shifted up by 8 px per level, and the drop between two
   levels draws a **cliff face** strip (strata shows there, like the Garbage Country frames). Things on higher ground
   sort above things behind them (Y-sort by tile row, then level).
@@ -115,21 +115,58 @@ ship physics (Jolt rigid bodies, block grids in 3D), atmosphere renderer, Blende
   ground get +range. Ground enemies path around cliffs; air units ignore them. Water fills the lowest levels.
 - **Digging changes height**: a dug tile drops one level, so a quarry is a stair of pits, exactly "holes stay dug".
 
-### 4.3 Generator (rewrite of the planet pipeline for flat maps)
+### 4.3 Generator: the same planet methodology, drawn as a flat map
 
-Same idea chain as `architecture/planet-surfaces.md`: **traits -> palette -> rules -> scatter -> POIs**.
+Michael, 2026-11-14: planets keep "the same methodology and mountains and everything we built so far ... the same
+variety of planets and terrain heights, ridges, overhangs, mountains, etc. Just in the new direction."
 
-1. **Heightfield**: noise + landform layers from `TerrainRecipe` (continents, ridges, terraces/mesas, canyons,
-   craters, dunes) on a 2D grid; then the **erosion bake** (the existing GPU compute shaders re-pointed at a flat
-   1024^2 map, about 2% of the old 10216 x 5108 sphere map; CPU fallback when there is no RenderingDevice, measured
-   in P0.2) -> quantised into the 9 levels, with ramps where the
-   slope is gentle and cliffs where it is steep.
-2. **Ground**: trait ground rules pick a ground type per tile (regolith, gravel, sand, ice, sulfur flat, crystal
-   field, basalt), with transition tiles between types (autotile).
-3. **Ore**: deposits as blobs from the existing `OreType` data, surface tiles visible, deeper amounts hidden.
-4. **Scatter**: rocks, boulders, crystals, dead trees as sprites/obstacles, density from slope + trait rules.
-5. **POIs**: placed with minimum spacing (existing `PoiSpec`/spacing logic ports directly).
-6. **Determinism**: same seed -> same map, tested by a hash like today's `planet_hash_baseline`.
+So this is a **port, not a new generator**. Same chain as `architecture/planet-surfaces.md`:
+**archetype -> traits -> palette -> landforms -> erosion -> ground rules -> ore -> scatter -> POIs**, same data and
+mostly the same code, sampled on a flat plane instead of a sphere:
+
+| Today (sphere) | 2D map | Reuse |
+|---|---|---|
+| `PlanetArchetype`, `TerrainRecipe`, `PlanetTrait`, `TraitMixer`, `PaletteBuilder` | unchanged data and mixing | code as is |
+| Landform layers in the voxel graph: continents, ridged mountains, terraces/mesas, canyons, spires, dunes | same formulas evaluated per tile on (x, y) | port formulas from `planet_graph_generator.gd` |
+| `CraterField` (craters, rims, rays, ejecta) | same list, placed on the plane | code mostly as is (drop the sphere projection) |
+| Erosion compute shaders (droplet, thermal, slope, deposition, talus, wear masks) | run on the flat heightmap; no seam, no projection | shaders re-pointed, `sphere_uv` dropped |
+| Strata, ledges, cracks, lava tubes (stage 4b) | strata = bands on cliff faces; ledges = intermediate levels; tubes and caves = overhang tiles (below) | rules ported |
+| Ground rules, ore deposits, `ScatterEngine` asset lines, `PoiField` spacing | per tile / per sprite | logic as is |
+| Biomes, climate, archetype palettes | per tile | as is |
+
+**Height range for mountains:** levels **-4 .. +20** (25 levels, still one byte). Plains sit around 0-2, mesas and
+crater rims at 4-8, ridged mountain ranges up to 20 (a 20-level face is 320 px tall at 1x: mountains are walls you
+build around, tunnel through or climb by ramps). Quantising the eroded heightfield: steep slopes become cliffs,
+gentle slopes become ramps (natural slope tiles, walkable), so the erosion still decides where you can walk.
+
+**Overhangs, arches, caves, lava tubes:** a tile can carry a **roof**: a second level above its floor. The floor is
+walkable underneath; the roof is drawn as its own layer (cliff top + lit underside edge) and fades out when the
+player or the camera focus is under it (Rimworld-style). That gives overhangs on cliff faces, natural arches,
+cave mouths into mountains and the stage-4b lava tubes, without a 3D world.
+
+**Variety check (same as today's census):** every archetype's map is measured on generation: level histogram,
+cliff share, walkable share, ramp count, ore coverage, POI spacing. Each archetype has a target band, enforced by
+a test, so planets stay as varied as the 3D ones were.
+
+**Generation speed (Michael 2026-11-14: "2 minutes to generate a planet is just horrendous").** Hard budget,
+enforced by a test that fails the build:
+
+| Step | Budget (1024^2 home map, dev laptop) |
+|---|---|
+| Heightfield + landforms (FastNoiseLite images in C++, landform math on packed arrays) | < 1.0 s |
+| Erosion (GPU compute, flat map; CPU fallback only for headless tests at reduced size) | < 1.5 s |
+| Quantise, ramps, ground rules, ore, scatter, POIs | < 1.0 s |
+| **New game to walking** | **< 5 s total**, with a progress bar that shows the real step |
+| Load a saved world | < 2 s (tiles are stored, nothing is regenerated) |
+
+How: no per-tile GDScript loops over the whole map where an Image/compute pass can do it; per-tile rules that
+must run in script run per chunk on a worker thread, nearest chunks first, so the player can start walking while
+far chunks finish; the finished map is cached by seed + archetype + generator version (a few MB), so a second
+new game on the same seed is instant. If GDScript is still too slow for a step, that step moves to a GDExtension
+(C++), not to a longer loading screen. The spike already generates a 1024^2 heightfield in 0.3 s.
+
+1. **Determinism**: same seed -> same map, tested by a hash like today's `planet_hash_baseline`.
+2. **Edges**: map borders are ocean, cliff walls or haze-out, chosen by archetype.
 
 Archetypes for 1.0 stay the six from `05-planets.md`: Barren (home), Frozen (moon), Sulfur, Crystal, Mesa, Exotic.
 
@@ -195,30 +232,48 @@ merges, the 3D scenes move to `legacy/`, and each later phase deletes the legacy
 
 ### 6.1 Style rules (locked in P0.1, written into `art-direction.md`)
 
-- **Read:** Mindustry clarity at Garbage Country warmth. Clean silhouettes, readable at 1x zoom, colour carries
-  meaning (ore colours, team colours, power lines).
-- **Projection:** top-down with a 3/4 tilt: roofs seen from above, a short front face visible. Light from top-left,
-  same on every sprite. Drop shadows bottom-right as a separate shadow layer (so day/night can move them later).
-- **Pixel density:** 32 px per tile, no mixed resolutions, no rotated pixels (rotation in 90 degree steps only for
-  buildings; units and projectiles may rotate freely but render to the pixel grid).
-- **Palette:** one master palette (target 48-64 colours) plus per-world tint ramps from the archetype palette.
-  Every sprite is quantised to it.
-- **Outline:** 1 px dark outline on buildings and units, none on ground tiles.
+Michael, 2026-11-14: "more like Factorio, but with height"; "futuristic space art direction, more like Astroneer,
+rather than this industrial raw gritty style"; "still keeping detail, like dirt accumulating from use and
+explosions - MANY small details like that"; "all 2D sprites and art should be lit, normal mapped and all, to give
+a 3D illusion of shadows".
 
-### 6.2 Pipeline (tool: `tools/sprite_pipeline.py`, built in P0.3)
+- **Read:** Factorio's projection and density of detail, **Astroneer's look**: rounded chunky shapes, clean
+  painted panels, white/light-grey bodies with bright accent colours (orange, teal, yellow) and soft forms. Worlds
+  carry the Garbage Country mood (warm haze, layered cliffs, foam on water). NOT raw/rusty/gritty industrial.
+- **Not retro pixel art.** Detailed rendered-looking sprites at **64 px per tile** (Factorio's HR density), shown
+  at 1x zoom = 32 px per tile and sharp up to 2x. No palette quantise, no 1 px outline (those were pixel-art rules).
+- **Projection:** top-down with a 3/4 tilt: roofs seen from above, a short south face visible.
+- **Everything is lit (D11).** Every sprite and tile is an albedo + **normal map** (+ emissive mask where it glows)
+  as a `CanvasTexture`. One `DirectionalLight2D` sun (angle and colour follow day/night), `PointLight2D` for
+  lamps, furnaces, muzzle flashes, explosions. Shadows: each building/unit casts a soft shadow sprite projected
+  along the sun direction from its height; cliffs cast onto lower ground the same way.
+- **Wear and small details (D12): the world shows what happened in it.** All runtime, all persistent in the save:
+  - grime on machines that grows with run time (shader blends a dirt mask by a per-building wear value);
+  - scorch marks, craters and debris from explosions on ground and buildings; bullet pocks on walls;
+  - ore spill and dust around drills, oil stains under machines, worn paths where the player and units walk,
+    tyre and landing-skid marks, footprints that fade;
+  - damage states (3 per building), sparks and smoke from damaged machines;
+  - dust settling on idle machines, cleaned when they run (or by a repair bot later).
+  Ground marks go into a per-chunk **decal layer** (a texture painted into, cheap and persistent); building wear is
+  per-building shader parameters.
+
+### 6.2 Pipeline (tool: `tools/sprite_pipeline.py`)
 
 1. **Prompt** Qwen-Image 2.1 (`qwen-image` skill, `--rgba`) with a fixed style preamble + the object, at 1024 px.
-2. **Downscale** to the target size (e.g. 2x2 building = 64 x 64 + height for the front face), area filter.
-3. **Quantise** to the master palette (no dithering by default), clean alpha to 1-bit.
-4. **Outline + shadow** generated by the tool, not by Qwen (consistency).
-5. **Moving parts** as separate sprites the engine animates (drill head spin, fan, piston, belt scroll shader),
+2. **Downscale** to 64 px per tile footprint (+ the south face height), area filter, premultiplied alpha.
+3. **Normal map** made by the tool: a bevel height from the alpha shape (distance to the edge) + fine detail from
+   the albedo's luminance, Sobel -> tangent-space normal. Optional per-sprite hand-painted height for key parts.
+   Emissive mask from bright saturated pixels (windows, lights, furnace mouths).
+4. **Shadow shape** from the alpha, projected in engine by the sun direction.
+5. **Moving parts** as separate sprites the engine animates (drill head spin, fans, pistons, belt scroll shader),
    because image models cannot draw consistent animation frames.
-6. **Tiles:** Qwen draws a seamless top-down texture per ground type; the tool cuts it into an autotile set
-   (47-tile blob) using edge masks, plus cliff-face strips with strata per level.
-7. **Effects:** pixelfx sheets, recoloured to the palette (keep the MIT licence file in `art_src/licences/`).
-8. **Review:** every batch lands in a contact sheet for Michael; rejects are re-prompted.
-9. **Licence note:** Qwen-Image is research/non-commercial. Fine for Stellar TD as long as it stays
-   non-commercial; if it is ever sold, these assets must be redrawn or re-licensed (decision D9).
+6. **Tiles:** Qwen draws a seamless top-down texture per ground type (+ its normal map via step 3); the tool builds
+   dual-grid transition sets (16 tiles per pair), plus lit cliff-face strips with strata per level.
+7. **Wear masks:** a dirt/scorch overlay per building made by the tool from the shape (edges and bottom get dirty
+   first), blended at runtime.
+8. **Effects:** pixelfx sheets (MIT, licence file in `art_src/licences/`), lit as unshaded additive where they glow.
+9. **Review:** every batch lands in a contact sheet for Michael; rejects are re-prompted.
+10. **Licence note:** Qwen-Image is research/non-commercial. Fine as long as Stellar TD stays non-commercial (D9).
 
 ### 6.3 Asset list for P1 (first batch)
 
@@ -233,13 +288,14 @@ Each phase ends playable, with its own tests green and a short video/screenshot 
 
 ### P0 - Ground work (no gameplay yet)
 
-- **P0.1 Style lock**: Qwen draws the same small scene (ground, cliff, ore, drill, belt, smelter, player) in 3-4
-  style variants; Michael picks one; palette and rules go into `art-direction.md`.
+- **P0.1 Style lock**: Qwen draws the same small scene (ground, cliff, ore, drill, belt, smelter, player) in
+  Astroneer-style variants; Michael picks one; then one machine goes through the full lit pipeline (albedo +
+  normal + emissive + wear) in engine with a moving sun, so the lit look is judged in motion, not on a still.
 - **P0.2 Tech spike**: 1024^2 map of noise tiles with 9 levels, cliff faces, Y-sort, 20 000 belts with 10 000
   items, camera zoom. Measure fps and memory; choose TileMapLayer vs MultiMesh.
 - **P0.3 Sprite pipeline tool** with the P1 asset list run through it.
-- **P0.4 Branch + legacy move plan**, `last-3d` tag, project settings for pixel art (nearest filter, integer
-  scaling, 2D physics, 2D lights).
+- **P0.4 Branch + legacy move plan**, `last-3d` tag, project settings for the 2D renderer (2D lights and
+  shadows, linear filtering with mipmaps for the 64 px art, 2D physics).
 - **P0.5 Port the pure services** (Inventory, Progression, FactoryClock, GameEvents, Power core,
   BuildingCore split) with their existing tests green.
 - **P0.6 Rewrite design docs** `01`-`07` for 2D (this file then shrinks to a pointer).
@@ -305,13 +361,15 @@ Defaults are what happens if you say "go".
 
 | # | Question | Default |
 |---|---|---|
-| D1 | Tile size | 32 px per 1 m tile |
+| D1 | Tile size | 64 px art per 1 m tile (Factorio HR), 1x zoom shows it at 32 px |
 | D2 | View | Top-down with 3/4 tilt (front faces), not pure top-down and not isometric |
-| D3 | Height range | 9 levels (-3..+5), ramps between, digging lowers by 1 |
+| D3 | Height range | 25 levels (-4..+20) for real mountains, ramps and natural slopes between, roofs for overhangs/caves, digging lowers by 1 |
 | D4 | World size | 1024^2 home, 512^2 moons, up to 2048^2 later |
 | D5 | Items on belts | Conveyors for items, pipes for fluids (Mindustry) |
 | D6 | Scrap Mechanic layer (joints, logic gates) | Deferred past 1.0; robots are module-built units with behaviour cards |
 | D7 | Worlds you are not on | Production fast-forwards on return; raids only where you are |
 | D8 | Player character | Small astronaut sprite, twin-stick aim, tools in two hands |
 | D9 | Art licence | Qwen assets accepted as non-commercial; revisit if the game is ever sold |
+| D11 | Lighting | Every sprite lit: albedo + normal map + emissive, sun + point lights, projected shadows (Michael 2026-11-14) |
+| D12 | Look | Futuristic space, Astroneer-like, with many small wear details (dirt from use, scorch, spills); not gritty industrial (Michael 2026-11-14) |
 | D10 | Branch strategy | `pivot/2d` branch, 3D master playable until P1 lands, `last-3d` tag |
