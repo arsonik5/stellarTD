@@ -1,5 +1,11 @@
 # Stellar-TD Art Direction Brief
 
+> **2D pivot (2026-11-14): this brief describes the 3D game.** The new direction is in `design/pivot-2d.md`
+> section 6: top-down 2D, Factorio projection and detail, **Astroneer look** (rounded white modules, orange/teal
+> accents), every sprite lit with normal maps, many small wear details (dirt from use, scorch, spills).
+> Style references: `reference/pivot-2026-11-14-references.md`, style round `art_src/style_lock/`. This file is
+> rewritten once Michael picks the style (P0.1).
+
 Paste this whole brief at the top of any Claude conversation before asking it to design, describe, or generate a model/texture for this game. It's the single style source so unrelated assets built weeks apart still look like they belong to the same game. Update it (don't fork it) when a decision changes — see "Amending this brief" at the bottom.
 
 ## The game, in one line

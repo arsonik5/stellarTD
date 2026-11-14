@@ -1,5 +1,9 @@
 # 06 - Game architecture (whole-game technical shape)
 
+> **2D pivot (2026-11-14):** the game is now a top-down 2D game with height (Factorio-like, Astroneer look).
+> `pivot-2d.md` in this folder decides everything 3D-specific here (voxels, spheres, first person, 3D ships,
+> the nested 3D grids, sphere placement). The rest of this file still holds.
+
 How the code should be organised so the mechanics in 02-04 can be built without rewrites. Each section: today,
 target, migration. Engineering patterns that already work stay in `architecture/engineering.md`.
 

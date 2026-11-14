@@ -1,5 +1,9 @@
 # 03 - Minor mechanics (layer 2)
 
+> **2D pivot (2026-11-14):** the game is now a top-down 2D game with height (Factorio-like, Astroneer look).
+> `pivot-2d.md` in this folder decides everything 3D-specific here (voxels, spheres, first person, 3D ships,
+> the nested 3D grids, sphere placement). The rest of this file still holds.
+
 Systems that make the core mechanics pleasant, deep or legible. The game works without any single one of them,
 but not without most of them. Grouped by the core mechanic they serve. Status: built / partial / missing.
 

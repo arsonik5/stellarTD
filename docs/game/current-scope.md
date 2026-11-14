@@ -1,5 +1,9 @@
 # Current scope
 
+**Since 2026-11-14: the 2D pivot.** Work happens on branch `pivot/2d` and follows `design/pivot-2d.md` phases
+(P0 ground work -> P1 Landfall in 2D -> ...). `master` keeps the 3D game playable until P1 lands; the last 3D
+build is tag `last-3d`. Everything below describes the 3D game and is history once P1 merges.
+
 Since 2026-11-04 the game is planned by the design pass in `design/` (vision, core/minor/small mechanics,
 planets, architecture, roadmap). Work follows `design/07-roadmap.md`: milestone G1 (foundations) first, World
 track W1-W2 alongside.

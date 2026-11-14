@@ -1,5 +1,9 @@
 # 04 - Small things (layer 3)
 
+> **2D pivot (2026-11-14):** the game is now a top-down 2D game with height (Factorio-like, Astroneer look).
+> `pivot-2d.md` in this folder decides everything 3D-specific here (voxels, spheres, first person, 3D ships,
+> the nested 3D grids, sphere placement). The rest of this file still holds.
+
 Polish, feedback and quality-of-life. Individually tiny, together they decide whether the game feels finished.
 Rule from pillar 5: **a mechanic is not done until its small things are done.** Each core/minor mechanic ticket
 should pull the matching rows from here rather than leaving them for a "polish pass" that never comes.

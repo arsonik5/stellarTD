@@ -1,5 +1,9 @@
 # 05 - Planets: the architecture pass
 
+> **2D pivot (2026-11-14):** the game is now a top-down 2D game with height (Factorio-like, Astroneer look).
+> `pivot-2d.md` in this folder decides everything 3D-specific here (voxels, spheres, first person, 3D ships,
+> the nested 3D grids, sphere placement). The rest of this file still holds.
+
 Direction (Michael, 2026-11-04): **keep big SE2-scale planets, with an appetite for No Man's Sky** - many worlds,
 each one worth landing on, built on top of what NMS does well. Planets are the deepest system in the code and
 still "aren't good". This file says why, what to build, and in what order. Technique detail stays in

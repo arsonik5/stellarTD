@@ -1,5 +1,9 @@
 # 02 - Core mechanics (layer 1)
 
+> **2D pivot (2026-11-14):** the game is now a top-down 2D game with height (Factorio-like, Astroneer look).
+> `pivot-2d.md` in this folder decides everything 3D-specific here (voxels, spheres, first person, 3D ships,
+> the nested 3D grids, sphere placement). The rest of this file still holds.
+
 The mechanics the game IS. Remove any one and it becomes a different game. Each entry: what it is, why it is
 core, the loop it creates, current state in code, and what is missing. Status words: **built** (works and is
 tested), **partial** (exists, gaps listed), **missing**.

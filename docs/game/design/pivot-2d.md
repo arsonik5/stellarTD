@@ -3,7 +3,8 @@
 Decided by Michael 2026-11-14. This file replaces the 3D-specific parts of `01`-`07` in this folder until those
 files are rewritten (step P0.6). Where this file and an older design file disagree, this file wins.
 
-Status: **plan, waiting for Michael's answers to the open decisions (section 9).** Nothing is built yet.
+Status (2026-11-14): defaults accepted, P0 under way on `pivot/2d`. Done: tech spike (P0.2), sprite + lit tool
+(P0.3), branch + `last-3d` tag (P0.4), services (P0.5), lit sprite test. Waiting: Michael's style pick (P0.1).
 
 References: `docs/game/reference/pivot-2026-11-14-references.md` (Garbage Country for mood, pixelfx for effects).
 Gameplay read: Mindustry and Factorio (Michael 2026-11-14: "more like Factorio, with height"). Look: Astroneer. Ship building read: Cosmoteer (top-down block ships).
@@ -296,8 +297,10 @@ Each phase ends playable, with its own tests green and a short video/screenshot 
 - **P0.3 Sprite pipeline tool** with the P1 asset list run through it.
 - **P0.4 Branch + legacy move plan**, `last-3d` tag, project settings for the 2D renderer (2D lights and
   shadows, linear filtering with mipmaps for the 64 px art, 2D physics).
-- **P0.5 Port the pure services** (Inventory, Progression, FactoryClock, GameEvents, Power core,
-  BuildingCore split) with their existing tests green.
+- **P0.5 Port the pure services** (Inventory, Progression, FactoryClock, GameEvents, Power core) with their
+  existing tests green. *Done 2026-11-14: they have no 3D code and pass in this project as they are.* The
+  `BuildingCore` split moves to the start of P1: 20 machine types override `Building` hooks (idle_reason,
+  output_ids, can_accept_input, save_state...), so the split is done together with `Building2D`, tested against it.
 - **P0.6 Rewrite design docs** `01`-`07` for 2D (this file then shrinks to a pointer).
 
 Done when: Michael has picked a style, the spike hits the budget, services pass their tests in the 2D project.

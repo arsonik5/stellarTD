@@ -1,5 +1,9 @@
 # 01 - Vision: what Stellar TD is
 
+> **2D pivot (2026-11-14):** the game is now a top-down 2D game with height (Factorio-like, Astroneer look).
+> `pivot-2d.md` in this folder decides everything 3D-specific here (voxels, spheres, first person, 3D ships,
+> the nested 3D grids, sphere placement). The rest of this file still holds.
+
 Decided with Michael 2026-11-04. This file is the root every other design decision answers to. If a mechanic
 cannot be traced back to a line here, it does not belong in the game yet.
 
@@ -27,7 +31,8 @@ what your success attracts.**
 
 ## Pillars (in priority order - when two conflict, the higher one wins)
 
-1. **The world is the resource.** Big SE2-scale planets you can dig into. Prospecting with your own eyes and
+1. **The world is the resource.** Big varied worlds with real height (mountains, mesas, canyons, caves) that you
+   dig down into. Prospecting with your own eyes and
    tools, then carving real holes, is the base of everything. Planets must be worth looking at and worth
    travelling across (No Man's Sky appetite).
 2. **Build it once, then automate it.** Everything you do by hand early (drill, carry, craft, defend) becomes a

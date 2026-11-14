@@ -1,5 +1,9 @@
 # 07 - Roadmap from the design pass
 
+> **2D pivot (2026-11-14):** the game is now a top-down 2D game with height (Factorio-like, Astroneer look).
+> `pivot-2d.md` in this folder decides everything 3D-specific here (voxels, spheres, first person, 3D ships,
+> the nested 3D grids, sphere placement). The rest of this file still holds.
+
 Ordered by dependency and by what proves the game fastest. Two tracks run side by side: **Gameplay** (the
 loop) and **World** (planets). Every milestone ends playable and tested; each pulls its own small things from
 `04-small-things.md` instead of deferring them.

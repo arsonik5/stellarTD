@@ -4,6 +4,7 @@ Whole-game design, top down. Read in order the first time; afterwards load only 
 
 | File | What it decides |
 |---|---|
+| **`pivot-2d.md`** | **2D pivot 2026-11-14: wins over 01-07 wherever they assume 3D; mechanic mapping, world, tech, art, phases P0-P5, decisions** |
 | `01-vision.md` | premise, fantasy, pillars, arcs, what the game is not |
 | `02-core-mechanics.md` | the loop and the 10 core mechanics, status vs code, the three nested grids, robots |
 | `03-minor-mechanics.md` | supporting systems (M1-M36) grouped by the core mechanic they serve |
