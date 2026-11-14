@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="Item" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "conveyor_belt"
+display_name = "Conveyor Belt"
+material_index = -1
+debug_color = Color(0.35, 0.36, 0.42, 1)
+is_building = true
+force_grid_snap = true

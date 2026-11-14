@@ -26,6 +26,7 @@ const ITEM_DEFS_LIST := [
 	preload("res://data/items/gunpowder.tres"),
 	preload("res://data/items/iron_piercing_ammo.tres"),
 	preload("res://data/items/vacuum_pipe.tres"),
+	preload("res://data/items/conveyor_belt.tres"),
 	preload("res://data/items/merger.tres"),
 	preload("res://data/items/splitter.tres"),
 	preload("res://data/items/ore_coal.tres"),
