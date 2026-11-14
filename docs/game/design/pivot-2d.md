@@ -255,7 +255,14 @@ art ... what Mindustry did, I like its palette ... neither [Qwen art nor game re
   grime with run time, scorch and craters, ore spill, oil stains, worn paths, tracks, footprints, damage states,
   dust on idle machines (per-chunk decal layer + per-building shader values, saved).
 
-### 6.2 Production: a mix (D13)
+### 6.2 Production (D13)
+
+**Rejected 2026-11-14: code-drawn sprites** (Michael: "code drawn feels so AI and so vibe coded trash. Not it").
+`tools/codeart` and `art_src/codeart` stay only as the lean/lighting test; no game art is made that way. The
+production route is open again: Qwen pixel art (snapped to its grid, pixel-art LoRA if it runs on 2.1), bought
+pixel asset packs, or a pixel artist. pixelfx stays for effects.
+
+The table below is the superseded mix, kept for the record:
 
 | What | Made by | Why |
 |---|---|---|
@@ -368,5 +375,5 @@ Defaults are what happens if you say "go".
 | D9 | Art licence | Qwen assets accepted as non-commercial; revisit if the game is ever sold |
 | D11 | Lighting | Every sprite lit: albedo + normal map + emissive, sun + point lights, projected shadows (Michael 2026-11-14) |
 | D12 | Look | Pixel art in Mindustry's spirit, futuristic Astroneer-ish shapes, many small wear details (Michael 2026-11-14) |
-| D13 | Art production | Mix: code-drawn (machines, units, props) + shrunk Qwen / pixel LoRA (terrain, organic) + pixelfx effects |
+| D13 | Art production | OPEN. Code-drawn rejected 2026-11-14. Candidates: Qwen pixel art (+ LoRA), asset packs, pixel artist; pixelfx for effects |
 | D10 | Branch strategy | `pivot/2d` branch, 3D master playable until P1 lands, `last-3d` tag |
