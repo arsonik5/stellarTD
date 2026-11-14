@@ -19,3 +19,5 @@ data/textures/surfaces/bc7/
 data/models/rocks/*/
 !data/models/rocks/moon_rock_0*/
 data/models/rocks/*/game/
+art_src/style_lock/*.png
+!art_src/style_lock/style_pick_astroneer.png
