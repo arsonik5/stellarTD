@@ -423,26 +423,10 @@ static func _mask_graph(radius: float, mask: Image, variant: int) -> VoxelGraphF
 	var y := f.create_node(VoxelGraphFunction.NODE_INPUT_Y, Vector2(0, 60))
 	var z := f.create_node(VoxelGraphFunction.NODE_INPUT_Z, Vector2(0, 120))
 
-	var hm := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE_HEIGHTMAP, Vector2(200, 0))
-	f.set_node_param(hm, 0, mask)
-	f.set_node_param(hm, 1, radius)
-	f.set_node_param(hm, 2, 1.0)
-	f.add_connection(x, 0, hm, 0)
-	f.add_connection(y, 0, hm, 1)
-	f.add_connection(z, 0, hm, 2)
-
-	var sp := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE, Vector2(200, 160))
-	var r := f.create_node(VoxelGraphFunction.NODE_CONSTANT, Vector2(60, 220))
-	f.set_node_param(r, 0, radius)
-	f.add_connection(x, 0, sp, 0)
-	f.add_connection(y, 0, sp, 1)
-	f.add_connection(z, 0, sp, 2)
-	f.add_connection(r, 0, sp, 3)
-
-	# sphere - heightmap == mask(direction).
-	var sub := f.create_node(VoxelGraphFunction.NODE_SUBTRACT, Vector2(380, 60))
-	f.add_connection(sp, 0, sub, 0)
-	f.add_connection(hm, 0, sub, 1)
+	# mask(direction), read on the nominal sphere (PlanetGraphGenerator.sample_mask_on_sphere: the node's early-out
+	# returned 0 for anything more than ~2 m off its radius)
+	var sm := PlanetGraphGenerator.sample_mask_on_sphere(f, x, y, z, mask, Vector2(200, 0))
+	var sub: int = sm[0]
 
 	# Broken up per variant so the six rock types do not co-locate. A plain
 	# offset would shift all of them identically; multiplying in a coarse noise

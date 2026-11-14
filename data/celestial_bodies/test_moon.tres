@@ -17,6 +17,10 @@
 [resource]
 script = ExtResource("1")
 archetype = ExtResource("arch")
+trait_override = {
+"airless": 0.7,
+"crystalline": 0.3
+}
 display_name = "Test Moon"
 seed = 42
 radius = 2200.0

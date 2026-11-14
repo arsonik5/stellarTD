@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_rocket_pod.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://data/models/parts/part_rocket_pod/SM_PartRocketPod.glb" id="model"]
+
+[node name="part_rocket_pod" type="Node3D"]
+script = ExtResource("1")
+block_id = "rocket_pod"
+mass_kg = 1150.0
+max_health = 120.0
+size_cells = Vector3i(3, 2, 5)
+weapon_name = "ROCKETS"
+trigger = "secondary"
+ammo_max = 160
+fire_interval = 0.05
+
+[node name="Model" parent="." instance=ExtResource("model")]

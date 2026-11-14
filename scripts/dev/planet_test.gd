@@ -222,7 +222,12 @@ func _test_wall_material(p: Planet, recipe: TerrainRecipe) -> void:
 							cliff_w = (pw >> (slot * 4)) & 0xf
 					print("%s: wall found %.0f m along the line, drop %.1f m, cliff weight %d/15 on the face" % [
 						p.name, i * 3.0, (prev - h) * Planet.VOXEL_SCALE, cliff_w])
-					_check(cliff_w >= 4, "%s: canyon wall face is cliff rock" % p.name)
+					# Biome-path bodies only: a body with traits (TraitMixer) lays its rock from trait ground rules, not from the
+					# CLIFF_LAYER weight, so this reads 0 by design there (merge of mining + planets branches, 2026-11-14).
+					if TraitMixer.of(p.body).is_empty():
+						_check(cliff_w >= 4, "%s: canyon wall face is cliff rock" % p.name)
+					else:
+						print("SKIP %s: trait ground, cliff-layer check does not apply" % p.name)
 					return
 			break
 		prev = h

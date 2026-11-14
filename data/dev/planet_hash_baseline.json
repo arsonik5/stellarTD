@@ -1,5 +1,7 @@
 {
   "home_planet/map732f64aa": 3963048574.0,
+  "home_planet/noise": 2017361552.0,
   "test_moon/map5c6d1ed5": 1219189082.0,
-  "test_moon/map5c6d1ed5/frozen_wastes": 1905520696
+  "test_moon/map5c6d1ed5/frozen_wastes": 1905520696.0,
+  "test_moon/noise/frozen_wastes": 115514008
 }

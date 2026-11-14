@@ -300,6 +300,9 @@ func _rebuild_stats() -> void:
 		center_of_mass = weighted_pos / total_mass
 	_max_torque = maxf(total_torque, 1.0)
 	_compute_wheel_shares()
+	var wc := get_node_or_null("WeaponControl")
+	if wc != null:
+		wc.refresh()                                  # weapons added, removed or destroyed
 
 ## Static load on each wheel (kg): the smallest set of loads that adds up to the ship's mass and balances about the
 ## centre of mass (lever rule in x and z). Each wheel's spring is sized from its own load, so a nose-light or
@@ -533,6 +536,7 @@ func save_state() -> Dictionary:
 			"rotation": SaveManager.vec3_to_array(block.rotation),
 			"health": block.health,
 			"o2": block.oxygen_s if block is ShipO2Tank else -1.0,
+			"extra": block.save_extra() if block.has_method("save_extra") else {},
 		})
 	return {
 		"transform": SaveManager.transform_to_array(global_transform),
@@ -588,6 +592,8 @@ func load_state(data: Dictionary) -> void:
 		block.health = float(entry.get("health", block.max_health))
 		if block is ShipO2Tank and float(entry.get("o2", -1.0)) >= 0.0:
 			block.oxygen_s = float(entry["o2"])
+		if block.has_method("load_extra") and entry.get("extra") is Dictionary:
+			block.load_extra(entry["extra"])
 
 	# Velocity last: setting it before the blocks exist would be applied to a
 	# body whose mass and inertia are still those of an empty ship.

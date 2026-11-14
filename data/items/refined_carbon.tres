@@ -7,4 +7,4 @@ script = ExtResource("1")
 id = "refined_carbon"
 display_name = "Carbon Ingot"
 material_index = -1
-debug_color = Color(0.2, 0.2, 0.22, 1)
+debug_color = Color(0.28, 0.28, 0.31, 1)

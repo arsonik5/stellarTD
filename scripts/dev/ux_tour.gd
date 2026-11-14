@@ -65,6 +65,14 @@ func _run() -> void:
 		return
 	await _wait(2.0)
 	await _shot("hud")
+	DevConsole.call("_set_open", true)
+	DevConsole.run("help")
+	DevConsole.run("give iron 20")
+	await _wait(0.4)
+	await _shot("console")
+	DevConsole.call("_set_open", false)
+	Inventory.try_remove("ore_a", 20)
+	await _wait(0.2)
 	# walk forward 1.5 s for the bob/sway frames
 	Input.action_press("ui_up")
 	var ev := InputEventKey.new()

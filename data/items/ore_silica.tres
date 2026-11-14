@@ -7,4 +7,4 @@ script = ExtResource("1")
 id = "ore_silica"
 display_name = "Silica"
 material_index = 6
-debug_color = Color(0.88, 0.84, 0.72, 1)
+debug_color = Color(0.80, 0.76, 0.64, 1)

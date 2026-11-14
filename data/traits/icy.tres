@@ -1,0 +1,46 @@
+[gd_resource type="Resource" script_class="PlanetTrait" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/planet_trait.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/library/ice_clear.tres" id="m2"]
+[ext_resource type="Resource" path="res://data/surfaces/library/snow_clean.tres" id="m3"]
+[ext_resource type="Resource" path="res://data/surfaces/library/frozen_ground.tres" id="m4"]
+[ext_resource type="Resource" path="res://data/surfaces/library/rock_cracked.tres" id="m5"]
+[ext_resource type="Resource" path="res://data/surfaces/library/snow_dunes.tres" id="m6"]
+
+[resource]
+script = ExtResource("1")
+id = &"icy"
+display_name = "Icy"
+base_weight = 0.9
+temperature_range = Vector2(0.0, 0.28)
+temperature_soft = 0.12
+air_range = Vector2(0.0, 100.0)
+air_soft = 1.0
+requires_facts = Array[StringName]([])
+excludes = Array[StringName]([&"desert", &"life"])
+affinity = {
+"crystalline": 1.4,
+"volcanic": 0.7
+}
+spatial = "global"
+material_mode = "replace"
+materials = {
+"bedrock": ExtResource("m2"),
+"cliff": ExtResource("m2"),
+"fresh_cut": ExtResource("m2"),
+"regional": ExtResource("m3"),
+"strata_a": ExtResource("m4"),
+"strata_b": ExtResource("m5"),
+"surface": ExtResource("m4"),
+"surface_alt": ExtResource("m6")
+}
+hue = 230
+chroma_max = 0.03
+accent = false
+emissive = false
+crater_density = 0.5
+ray_strength = 0.8
+ledge_strength = 0.5
+lava_tubes = 0.0
+asset_lines = Array[StringName]([&"penitentes", &"frost_overlay", &"ice_cliffs", &"cryo_geysers", &"polygonal_ground", &"pebbles"])
+landmarks = Array[StringName]([&"cryo_geyser", &"ice_arch"])

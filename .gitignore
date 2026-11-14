@@ -6,3 +6,16 @@
 .claude/worktrees/
 # local patch scripts of the planets pass
 .scratch/
+# raw CC0 downloads for the terrain lab (re-fetch with art_src/terrain_lab/cc0/fetch.py)
+art_src/terrain_lab/cc0/*/
+art_src/terrain_lab/baked/
+art_src/terrain_lab/shots/
+
+# photoscan-derived terrain sets and BC7 layers: ~750 MB, rebuilt by tools/setup_surfaces.sh
+data/textures/surfaces/scan/
+data/textures/surfaces/bc7/
+
+# fetched CC0 rock models (Poly Haven, ~220 MB): tools/fetch_rock_models.py via tools/setup_surfaces.sh
+data/models/rocks/*/
+!data/models/rocks/moon_rock_0*/
+data/models/rocks/*/game/

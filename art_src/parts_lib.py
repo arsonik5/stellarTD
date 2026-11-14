@@ -255,7 +255,52 @@ def landing_gear():
     _finish("SM_PartLandingGear", pivots={"Leg": (0, 0, HZ), "Foot": (0, 0, HZ)}, parents={"Foot": "Leg"})
 
 
+# ---------------------------------------------------------------- weapons
+RP_COLS, RP_ROWS, RP_PITCH, RP_ZC = 16, 10, 0.08, -0.04     # must match scripts/world/ship_rocket_pod.gd
+
+
+def rocket_pod():
+    """Rocket pod, 1.5 x 2.5 x 1.0 m (3 x 5 x 2 cells): 160 unguided 70 mm rockets in a 16 x 10 bank of launch tubes.
+    Hangs from its top mount plate (bolts to the block above it, like a wing pylon). Strongback: the spine that
+    carries the casing and the firing circuit. Casing: holds the tube bank, open at the front, blow-out cover at the
+    back (rocket exhaust leaves through it). Fires one tube at a time (ship_rocket_pod.gd)."""
+    box("Mount", (1.0, 1.7, 0.03), (0, 0, 0.5 - 0.015 - 0.015), SEC, bevel=0.004)
+    part("Mount", "mount plate: bolts the pod to the ship above it", "ground", "ground")
+    MB = 0.5 - 0.03 - 0.015                                   # mount underside
+    A, B, N = 0.72, 0.44, 8.0
+    top = RP_ZC + B
+    FT = 0.02
+    box("Strongback", (0.22, 1.8, MB - FT - top), (0, 0, (MB - FT + top) / 2), PRI, bevel=0.006)
+    box("StrongbackFlange", (0.4, 1.8, FT), (0, 0, MB - FT / 2), PRI, bevel=0.004)
+    part("Strongback", "strongback: the spine that carries the casing and the firing circuit", "StrongbackFlange", "welded")
+    part("StrongbackFlange", "bolting flange: bolts the strongback up into the mount plate", "Mount", "bolted",
+         joins=("Strongback",))
+    for s in (-1, 1):
+        bolt_line(f"FlangeBolt{s}", (s * 0.16, -0.8, MB - FT), (s * 0.16, 0.8, MB - FT), 6, (0, 0, -1))
+        weld(f"SpineWeld{s}", [(s * 0.11, -0.9, MB - FT), (s * 0.11, 0.9, MB - FT)])
+    def ring(y, k=1.0):
+        return [(u * k, y, RP_ZC + v * k) for (u, v) in squircle(A, B, N, seg=64)]
+    loft("Casing", [ring(-1.2, 0.85), ring(-1.0), ring(1.0)], PRI, bevel=0.01)
+    part("Casing", "casing: holds the tube bank, takes the blast of each launch", "Strongback", "welded")
+    for s in (-1, 1):
+        weld(f"CasingWeld{s}", [(s * 0.11, -0.88, top), (s * 0.11, 0.88, top)])
+    kit.plate("RearCover", (0, -1.2, RP_ZC), (0, -1, 0), 0.95, 0.55, t=0.02, clip=0.06, mat=SEC, up=(0, 0, 1), slots=6)
+    part("RearCover", "blow-out cover: the rocket exhaust leaves through its slots", "Casing", "bolted")
+    for r in range(RP_ROWS):
+        for c in range(RP_COLS):
+            x = (c - (RP_COLS - 1) / 2) * RP_PITCH
+            z = RP_ZC + (r - (RP_ROWS - 1) / 2) * RP_PITCH
+            cyl(f"Tube{r:02d}{c:02d}", 0.036, 0.06, (x, 1.0, z), BARE, seg=12, axis='Y', bevel=0.0)
+            cyl(f"Bore{r:02d}{c:02d}", 0.029, 0.004, (x, 1.03 + 0.002, z), RUB, seg=12, axis='Y', bevel=0.0)
+    part("Tube", "launch tube: one rocket each, through the front bulkhead", "Casing", "through")
+    part("Bore", "tube mouth (the rocket's nose sits behind it)", "Tube", "inset")
+    box("FiringPlug", (0.1, 0.08, 0.05), (0, 0.9 + 0.04, top + 0.025), BARE, bevel=0.004)
+    part("FiringPlug", "firing plug: the ship's trigger circuit reaches the tubes through it", "Strongback", "inset")
+    _finish("SM_PartRocketPod")
+
+
 BUILD = {
+    "rocket_pod": rocket_pod,
     "beam_1": lambda: beam(1), "beam_2": lambda: beam(2), "beam_4": lambda: beam(4),
     "frame_cube": frame_cube, "frame_corner": frame_corner, "plate": plate, "wedge": wedge, "hull_small": hull_small,
     "driver_seat": driver_seat, "vehicle_core": vehicle_core, "battery": battery, "o2_tank": o2_tank,

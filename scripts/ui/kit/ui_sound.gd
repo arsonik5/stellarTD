@@ -13,7 +13,7 @@ const VOICES := 8
 const GAIN := {
 	"hover": -21.0, "click": -12.0, "confirm": -10.0, "back": -12.0, "open": -15.0, "close": -16.0,
 	"error": -10.0, "toggle_on": -13.0, "toggle_off": -13.0, "tick": -24.0, "place": -8.0, "deny": -11.0,
-	"pickup": -15.0, "objective": -9.0, "warn": -12.0,
+	"pickup": -15.0, "objective": -9.0, "warn": -12.0, "mine_hit": -9.0, "spinup": -13.0, "spindown": -15.0, "blip": -19.0,
 }
 
 var _streams := {}
@@ -65,6 +65,9 @@ func _synth(n: String) -> AudioStreamWAV:
 		"deny": s = _seq([_tone([233.1, 466.2], 0.06, 0.002, 0.05, 1.0), _tone([207.7, 415.3], 0.08, 0.002, 0.07, 1.0)])
 		"pickup": s = _glide(1400.0, 2100.0, 0.07, 0.002)
 		"objective": s = _seq([_tone([659.3, 1318.5], 0.09, 0.004, 0.08), _tone([880.0, 1760.0], 0.09, 0.004, 0.08), _tone([1318.5, 2637.0], 0.28, 0.004, 0.27)])
+		"spinup": s = _mix([_glide(70.0, 380.0, 0.35, 0.02, 0.6), _noise(0.35, 0.15, 0.1)])
+		"spindown": s = _glide(300.0, 60.0, 0.22, 0.005, 0.6)
+		"mine_hit": s = _mix([_glide(210.0, 85.0, 0.06, 0.001, 1.0), _noise(0.04, 0.55)])
 		"warn": s = _seq([_tone([987.8], 0.08, 0.002, 0.07), _silence(0.06), _tone([987.8], 0.08, 0.002, 0.07)])
 	return _to_wav(s)
 

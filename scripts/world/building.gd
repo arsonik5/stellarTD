@@ -19,6 +19,28 @@ signal changed
 ## needs_power = false still runs unplugged at its base speed; power boosts it (PowerNetwork.POWERED_BOOST).
 @export var power_draw: float = 0.0
 @export var needs_power: bool = false
+## Pipe ports, from the model (art_src machine_port): (x, z, kind) in the building's own frame on its base plane,
+## where the collar face sits on the footprint edge. kind 1 = items leave, -1 = items enter, 0 = either (a chest).
+## A pipe joins a port straight along its axis (PipeRoute.PORT_STUB).
+@export var pipe_ports: Array[Vector3] = []
+
+## Ports in world space: {"point" (base plane), "out" (outward direction), "kind"}.
+func get_pipe_ports() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for p in pipe_ports:
+		var dir := Vector3(signf(p.x), 0, 0) if absf(p.x) > absf(p.y) else Vector3(0, 0, signf(p.y))
+		out.append({"point": to_global(Vector3(p.x, 0.0, p.y)), "out": (global_transform.basis * dir).normalized(), "kind": int(p.z)})
+	return out
+
+## Where pipes snap to: the real ports; buildings without ports keep the old four side points.
+func get_connection_points() -> Array[Vector3]:
+	var pts: Array[Vector3] = []
+	for port in get_pipe_ports():
+		pts.append(port["point"])
+	if pts.is_empty():
+		var b := global_transform.basis
+		pts = [global_position + b.x * 0.5, global_position - b.x * 0.5, global_position + b.z * 0.5, global_position - b.z * 0.5]
+	return pts
 
 var _inventory: Array[Dictionary] = []
 var _modifiers: Array[String] = []

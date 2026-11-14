@@ -1,0 +1,47 @@
+[gd_resource type="Resource" script_class="PlanetTrait" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/planet_trait.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/library/strata_beige.tres" id="m2"]
+[ext_resource type="Resource" path="res://data/surfaces/library/desert_cliff.tres" id="m3"]
+[ext_resource type="Resource" path="res://data/surfaces/library/cracked_crust.tres" id="m4"]
+[ext_resource type="Resource" path="res://data/surfaces/library/strata_brown.tres" id="m5"]
+[ext_resource type="Resource" path="res://data/surfaces/library/desert_ground.tres" id="m6"]
+[ext_resource type="Resource" path="res://data/surfaces/library/gravel_red.tres" id="m7"]
+
+[resource]
+script = ExtResource("1")
+id = &"desert"
+display_name = "Desert"
+base_weight = 0.9
+temperature_range = Vector2(0.45, 0.9)
+temperature_soft = 0.15
+air_range = Vector2(0.05, 5.0)
+air_soft = 0.1
+requires_facts = Array[StringName]([&"atmosphere"])
+excludes = Array[StringName]([&"airless", &"icy"])
+affinity = {
+"rocky": 1.2,
+"sulfur": 1.1
+}
+spatial = "global"
+material_mode = "replace"
+materials = {
+"bedrock": ExtResource("m2"),
+"cliff": ExtResource("m3"),
+"fresh_cut": ExtResource("m2"),
+"regional": ExtResource("m4"),
+"strata_a": ExtResource("m2"),
+"strata_b": ExtResource("m5"),
+"surface": ExtResource("m6"),
+"surface_alt": ExtResource("m7")
+}
+hue = 55
+chroma_max = 0.06
+accent = false
+emissive = false
+crater_density = 0.12
+ray_strength = 0.1
+ledge_strength = 1.4
+lava_tubes = 0.0
+asset_lines = Array[StringName]([&"ventifacts", &"yardangs", &"hoodoos", &"dust_drifts", &"gravel_patches", &"cracks", &"pebbles"])
+landmarks = Array[StringName]([&"arch", &"hoodoo_field"])

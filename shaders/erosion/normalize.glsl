@@ -34,6 +34,10 @@ layout(set = 0, binding = 2, std430) restrict buffer Bins {
 const int MODE_RANGE = 0;
 const int MODE_HISTOGRAM = 1;
 const int MODE_APPLY = 2;
+// As APPLY, but past [lo, hi] the value rolls off (slope 1 at the edge, flattening to SOFT_KNEE beyond) instead of being
+// clamped: a clamp turns whatever lies beyond the percentiles (crater floors, summits) into flat plates.
+const int MODE_APPLY_SOFT = 3;
+const float SOFT_KNEE = 0.15;
 
 layout(push_constant, std430) uniform Params {
 	int width;
@@ -81,5 +85,12 @@ void main() {
 		return;
 	}
 
-	imageStore(dst, px, vec4(clamp((v - params.lo) / span, 0.0, 1.0), 0.0, 0.0, 0.0));
+	float t = (v - params.lo) / span;
+	if (params.mode == MODE_APPLY_SOFT) {
+		if (t < 0.0) { t = -SOFT_KNEE * (1.0 - exp(t / SOFT_KNEE)); }
+		else if (t > 1.0) { t = 1.0 + SOFT_KNEE * (1.0 - exp(-(t - 1.0) / SOFT_KNEE)); }
+	} else {
+		t = clamp(t, 0.0, 1.0);
+	}
+	imageStore(dst, px, vec4(t, 0.0, 0.0, 0.0));
 }

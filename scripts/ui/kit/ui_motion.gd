@@ -40,7 +40,7 @@ static func stagger(step: float, opts: Dictionary = {}) -> Callable:
 # --- animate --------------------------------------------------------------------------------------------
 static func animate(targets: Variant, props: Dictionary, opts: Dictionary = {}) -> void:
 	var list: Array = targets if targets is Array else [targets]
-	list = list.filter(func(t: Variant) -> bool: return t is Object and is_instance_valid(t))
+	list = list.filter(func(t: Variant) -> bool: return is_instance_valid(t) and t is Object)
 	if list.is_empty():
 		return
 	# translateX/Y is relative to where the container puts the control, so wait one frame for that layout;
@@ -55,9 +55,17 @@ static func animate(targets: Variant, props: Dictionary, opts: Dictionary = {}) 
 			return
 		var o := opts.duplicate()
 		o["_laid_out"] = true
-		# the layout position is remembered the first time a control is moved (its rest position); call
-		# UiMotion.rebase(control) if a container later moves it somewhere else for good
-		tree.process_frame.connect(func() -> void: animate(list, props, o), CONNECT_ONE_SHOT)
+		var again := func() -> void:
+			animate(list.filter(func(t: Variant) -> bool: return is_instance_valid(t)), props, o)
+		# A control in a container must start from where the container puts it. Waiting one frame was not always
+		# enough (rows not laid out yet, e.g. built while hidden, all slid to 0 and stacked on each other), so
+		# start right after the container's next sort instead.
+		var box := (list[0] as CanvasItem).get_parent() as Container
+		if box != null:
+			box.sort_children.connect(again, CONNECT_ONE_SHOT)
+			box.queue_sort()
+		else:
+			tree.process_frame.connect(again, CONNECT_ONE_SHOT)
 		return
 	var n := list.size()
 	var ease_name: String = opts.get("easing", DEFAULT_EASING)
@@ -80,7 +88,6 @@ static func animate(targets: Variant, props: Dictionary, opts: Dictionary = {}) 
 		for tr: Array in tracks:
 			t.set_indexed(tr[0], tr[1])
 		var key := "_uimotion_" + "_".join(props.keys()).replace(":", "_").replace("/", "_")
-		# get_meta(key, null) still errors when the key is missing (null = "no default"), so test first
 		var old: Tween = t.get_meta(key) if t.has_meta(key) else null
 		if old != null and old.is_valid():
 			old.kill()
@@ -96,6 +103,22 @@ static func animate(targets: Variant, props: Dictionary, opts: Dictionary = {}) 
 				t.set_indexed(tr[0], _mix(tr[1], tr[2], e)), 0.0, 1.0, maxf(dur, 0.001))
 		if i == last_i and done.is_valid():
 			tw.tween_callback(done)
+		# An animation that ends at offset 0 leaves the control at its layout position, so forget the remembered rest
+		# position: the next time it animates, the container's CURRENT layout is the truth. Keeping a stale one is
+		# what stacked list rows on top of each other when the first animation ran before the layout had happened.
+		# (Hover moves end at a non-zero offset and keep it, so their return trip still knows where home is.)
+		for ax in ["x", "y"]:
+			if props.has(ax):
+				var pv: Variant = props[ax]
+				var end_v: float = float(pv[pv.size() - 1]) if pv is Array else float(pv)
+				if absf(end_v) < 0.001:
+					var mk: String = "_uimotion_base_" + ax
+					tw.tween_callback(func() -> void:
+						if is_instance_valid(t) and t.has_meta(mk):
+							t.remove_meta(mk)
+						# and let the container place it once more, so a row can never stay off its slot
+						if is_instance_valid(t) and t.get_parent() is Container:
+							(t.get_parent() as Container).queue_sort())
 
 ## Resolve shorthands and [from, to] pairs into [path, from, to] tracks.
 static func _tracks(t: CanvasItem, props: Dictionary) -> Array:

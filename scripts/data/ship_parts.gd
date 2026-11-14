@@ -25,6 +25,7 @@ const ITEMS := [
 	preload("res://data/items/hinge.tres"),
 	preload("res://data/items/piston.tres"),
 	preload("res://data/items/rotor_head.tres"),
+	preload("res://data/items/rocket_pod.tres"),
 ]
 
 const RECIPES := [
@@ -48,4 +49,5 @@ const RECIPES := [
 	preload("res://data/recipes/craft_bearing.tres"),
 	preload("res://data/recipes/craft_hinge.tres"),
 	preload("res://data/recipes/craft_piston.tres"),
+	preload("res://data/recipes/craft_rocket_pod.tres"),
 ]

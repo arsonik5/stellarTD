@@ -12,7 +12,10 @@ var _move_vel := Vector3.ZERO
 const MOUSE_SENSITIVITY := 0.0025
 const PITCH_LIMIT := 1.4
 
-const DIG_RANGE := 6.0
+## How far the drill bores. 6 m opened the hole 3 m in front of a hand drill that never came near it (2026-11-08):
+## a drill works close. 3.5 m reaches the ground from standing (about 2.3 m at 50 degrees down) with room to bore
+## ~1 m before you step in. (A drill that lunged a metre out of the hand to touch the rock looked worse.)
+const DIG_RANGE := 3.5
 ## World metres, but sized in VOXELS: this was 2.5 voxels at the old 0.4 m
 ## scale and is kept at the same voxel count under 1 m voxels. Bore size and
 ## rate live in TerrainDrill.
@@ -39,7 +42,7 @@ const FOUNDATION_MOUNT_RADIUS := 1.3
 
 ## How long left-click must be held before the tool "spins up" and starts
 ## actually cutting, and how often it cuts again while held after that.
-const DIG_SPINUP_TIME := 0.2
+const DIG_SPINUP_TIME := 0.35
 
 const BuildRecipe: Recipe = preload("res://data/recipes/build_block.tres")
 const MiningToolItem: Item = preload("res://data/items/mining_tool.tres")
@@ -118,6 +121,7 @@ var _dig_held := false
 var _dig_hold_time := 0.0
 var _dig_spun_up := false
 var _dig_tick_timer := 0.0
+var _dig_hold_started := false
 
 ## Build mode: the player walks and looks as normal; the build menu (mouse free) opens on entry and on Q, and
 ## closes once a building is picked. While it is open the world gets no clicks.
@@ -135,8 +139,8 @@ var _build_ghost_material: StandardMaterial3D = null
 var _pipe_anchor: Vector3 = Vector3.ZERO
 var _pipe_anchor_set := false
 var _pipe_preview_end: Vector3 = Vector3.ZERO
-## Pipe build mode: false = STRAIGHT (level or vertical runs), true = FREE (any angle). B toggles it.
-var _pipe_free_mode := false
+## Pipe build mode: false = STRAIGHT (axis runs, tight knees), true = CURVED (natural path, wide bends). B toggles.
+var _pipe_curved := false
 
 func _ready() -> void:
 	add_to_group("player")
@@ -145,6 +149,7 @@ func _ready() -> void:
 	_terrain = PlanetPhysics.get_nearest_terrain(global_position)
 	_spawn_resolved = false
 	Inventory.changed.connect(_update_viewmodel)
+	Inventory.changed.connect(_on_tools_changed)
 	feel = FirstPersonFeel.new()
 	feel.name = "Feel"
 	add_child(feel)
@@ -153,9 +158,27 @@ func _ready() -> void:
 	vitals.name = "Vitals"
 	add_child(vitals)
 	vitals.setup(self)
+	_tool_fx = MiningToolFx.new()
+	_tool_fx.name = "MiningToolFx"
+	add_child(_tool_fx)
+	_tool_fx.setup(self, viewmodel.get_node("MiningTool"))
 	_build_lamp()
 	_update_viewmodel()
 	_refresh_hud()
+
+## A tool taken out of the hand stops doing its job: the scanner's pulse and the build mode must not outlive it
+## (the scanner kept "searching" on screen for 90 s after it was put away, and build mode stayed on with no tool).
+## True while the hand that owns the drill's mouse button still holds the Mining Tool.
+func _drill_in_hand() -> bool:
+	var side := "left" if _dig_button == MOUSE_BUTTON_LEFT else "right"
+	return Inventory.get_slot({"kind": "hand", "side": side}).item_id == MiningToolItem.id
+
+func _on_tools_changed() -> void:
+	var scanner_hud := get_tree().get_first_node_in_group("scanner_hud")
+	if scanner_hud != null and scanner_hud.has_method("set_active"):
+		scanner_hud.set_active(Inventory.has_tool_equipped(ScannerToolItem.id))
+	if _build_mode and not Inventory.has_tool_equipped(BuildingToolItem.id):
+		_toggle_build_mode()
 
 func _update_viewmodel() -> void:
 	# the held tool: one model per tool item (data/models/tools), shown in the first-person view
@@ -172,6 +195,8 @@ func _update_viewmodel() -> void:
 		# turned a little in toward the crosshair so the player sees their sides, not their back ends
 		node.position = Vector3(-0.46 if hand == "left" else 0.0, 0.0, 0.0)
 		node.rotation = Vector3(0.0, -0.13 if hand == "left" else 0.13, 0.0)
+		node.set_meta("vm_base_pos", node.position)          # tool-specific motion (MiningToolFx) moves around this
+		node.set_meta("vm_base_rot", node.rotation)
 		shown = shown or node.visible
 	viewmodel.visible = shown   # first-person building keeps the build tool in hand
 	var held := "%s/%s" % [Inventory.get_slot({"kind": "hand", "side": "left"}).item_id, Inventory.get_slot({"kind": "hand", "side": "right"}).item_id]
@@ -198,6 +223,8 @@ func _refresh_hud() -> void:
 	hud.set_mode_text("PLAYER", "")
 
 func _input(event: InputEvent) -> void:
+	if DevConsole.is_open:
+		return   # typing in the console must not trigger C/F/J/Tab etc.
 	if _piloted_ship != null:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			var ship_item := _equipped_ship_item()
@@ -251,6 +278,8 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if DevConsole.is_open:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F1:
 			get_tree().reload_current_scene()
@@ -313,12 +342,13 @@ func _unhandled_input(event: InputEvent) -> void:
 					_pipe_anchor_set = false
 					UiSound.play("click")
 			elif event.keycode == KEY_B and _is_pipe_item(_selected_build_item()):
-				_pipe_free_mode = not _pipe_free_mode
+				_pipe_curved = not _pipe_curved
 			elif event.keycode == KEY_G:
 				_build_grid_snap = not _build_grid_snap
 			elif event.keycode == KEY_R:
 				_build_rotation = wrapf(_build_rotation + BUILD_ROTATE_STEP, 0.0, TAU)
 			elif event.keycode == KEY_Q:
+				_set_dismantle(false)
 				_open_build_menu()
 			_refresh_build_hint()
 		# mouse motion falls through to the normal look below
@@ -328,16 +358,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.pressed:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			return
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			_dig_held = event.pressed
-			if not event.pressed:
-				_reset_dig_hold()
-		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			var ship_item := _equipped_ship_item()
-			if ship_item != null:
-				_place_ship_item(ship_item)
-			else:
-				_build()
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+			_on_hand_button(event.button_index, event.pressed)
 		elif event.button_index == MOUSE_BUTTON_MIDDLE and event.pressed:
 			_pick_what_i_look_at()
 
@@ -366,11 +388,54 @@ func _toggle_pause_menu() -> void:
 	if not menu.is_open():
 		menu.open()           # closing is the menu's own job: it runs while the tree is paused and takes Esc
 
+## THE tool rule (docs/game/tools.md): the left mouse button uses the tool in the LEFT hand, the right button the
+## tool in the RIGHT hand. What a press does depends only on what that hand holds:
+##   Mining Tool   hold to bore (spins up, then bites)
+##   Scanner       one ping per press
+##   Building Tool opens build mode (the build menu); in build mode LMB places, RMB leaves
+##   ship part     places it (ship cores and blocks)
+##   empty / other nothing - except RMB with a Mining Tool in the other hand, which lays a terrain block (the old
+##                 place-block action, kept for the "Lay a Block" quest)
+## Both hands are always live, so there is no hidden "which tool wins": put a tool in a hand (Tab, drag it in)
+## and that mouse button is that tool.
+func _on_hand_button(button: int, pressed: bool) -> void:
+	if not pressed:
+		if button == _dig_button:
+			_reset_dig_hold()                      # the motor loop winds down by itself (MiningToolFx)
+		return
+	var side := "left" if button == MOUSE_BUTTON_LEFT else "right"
+	var tool_id: String = Inventory.get_slot({"kind": "hand", "side": side}).item_id
+	if tool_id == MiningToolItem.id:
+		_dig_held = true
+		_dig_button = button
+		_dig_hold_started = true
+	elif tool_id == ScannerToolItem.id:
+		_scan_for_ore()
+	elif tool_id == SidearmItem.id:
+		_fire_sidearm()
+	elif tool_id == BuildingToolItem.id:
+		if not _ui_input_on_cooldown():
+			_start_ui_input_cooldown()
+			_toggle_build_mode()
+	else:
+		var item := Inventory.get_item_def(tool_id) if tool_id != "" else null
+		if item != null and (item.is_ship_core or item.is_ship_block):
+			_place_ship_item(item)
+		elif button == MOUSE_BUTTON_RIGHT and Inventory.has_tool_equipped(MiningToolItem.id):
+			_build()
+		elif feel != null:
+			feel.kick("deny")                         # empty hand: a small no, so it never feels dead
+
+var _dig_button := 0                                 # the mouse button driving the drill (0 = none)
+
 func _reset_dig_hold() -> void:
 	_dig_held = false
+	_dig_button = 0
+	_dig_empty_bites = 0
 	_dig_hold_time = 0.0
 	_dig_spun_up = false
 	_dig_tick_timer = 0.0
+	_dig_hold_started = false
 
 func _ui_input_on_cooldown() -> bool:
 	return Time.get_ticks_msec() / 1000.0 < _ui_input_cooldown_until
@@ -497,6 +562,7 @@ func _refresh_build_hint() -> void:
 	if hud == null:
 		return
 	if not _build_mode:
+		_last_hint_pairs = ""
 		hud.set_context_hints([])
 		return
 	if _dismantle:
@@ -508,7 +574,15 @@ func _refresh_build_hint() -> void:
 		["Q", "Menu"], ["RMB", "Done"]]
 	if item != null and item.id == "vacuum_pipe":
 		pairs = [["LMB", "Start / end pipe" if not _pipe_anchor_set else "End pipe here"],
-			["B", "Free angle" if _pipe_free_mode else "Straight"], ["Q", "Menu"], ["RMB", "Cancel" if _pipe_anchor_set else "Done"]]
+			["B", "Curved" if _pipe_curved else "Straight"], ["X", "Dismantle"], ["Q", "Menu"],
+			["RMB", "Cancel" if _pipe_anchor_set else "Done"]]
+		if _pipe_anchor_set and not _pipe_route_preview.is_empty() and not _pipe_route_preview.get("ok", true):
+			pairs.push_front(["!", String(_pipe_route_preview.get("why", ""))])
+	if _build_message != "" and Time.get_ticks_msec() < _build_message_until:
+		pairs.push_front(["!", _build_message])
+	if str(pairs) == _last_hint_pairs:
+		return                                        # unchanged: the HUD rebuilds its row on every call
+	_last_hint_pairs = str(pairs)
 	hud.set_context_hints(pairs)
 
 func _spawn_build_ghost() -> void:
@@ -551,6 +625,46 @@ func _clear_build_ghost() -> void:
 	if _build_ghost != null:
 		_build_ghost.queue_free()
 		_build_ghost = null
+	_hide_pipe_preview()
+	_set_pipe_arrows(false)
+
+# --- pipe run preview -----------------------------------------------------------------------------------------
+var _pipe_preview: MeshInstance3D
+var _pipe_preview_mat: StandardMaterial3D
+var _pipe_route_preview: Dictionary = {}
+var _pipe_arrows_on := false
+
+func _show_pipe_preview(route: Dictionary, ok: bool) -> void:
+	if _pipe_preview == null:
+		_pipe_preview = MeshInstance3D.new()
+		_pipe_preview.name = "PipeRunPreview"
+		_pipe_preview.top_level = true
+		_pipe_preview.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_pipe_preview_mat = StandardMaterial3D.new()
+		_pipe_preview_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_pipe_preview_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_pipe_preview_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		get_tree().current_scene.add_child(_pipe_preview)
+	_pipe_preview.global_transform = Transform3D.IDENTITY
+	_pipe_preview.mesh = PipeRoute.preview_mesh(route, func(p: Vector3) -> Vector3: return PlanetPhysics.get_up(p))
+	_pipe_preview.set_surface_override_material(0, _pipe_preview_mat)
+	var c := GHOST_OK if ok else GHOST_BAD
+	_pipe_preview_mat.albedo_color = Color(c.r, c.g, c.b, 0.6)
+	_pipe_preview.visible = true
+
+func _hide_pipe_preview() -> void:
+	_pipe_route_preview = {}
+	if _pipe_preview != null and is_instance_valid(_pipe_preview):
+		_pipe_preview.visible = false
+
+## Flow arrows on every laid pipe while a pipe is in the build tool.
+func _set_pipe_arrows(on: bool) -> void:
+	if on == _pipe_arrows_on:
+		return
+	_pipe_arrows_on = on
+	for n in get_tree().get_nodes_in_group("pipe"):
+		if n is PipeSegment and is_instance_valid(n):
+			(n as PipeSegment).show_flow_arrows(on)
 
 ## Holds the player motionless above the nearest body until a real physics
 ## collider actually exists under the spawn point, then drops them onto it.
@@ -794,7 +908,7 @@ func _physics_process(delta: float) -> void:
 	var fall_speed := -_vertical_speed
 	if not is_on_floor():
 		_vertical_speed -= PlanetPhysics.get_gravity_accel(global_position).length() * delta
-	elif Input.is_physical_key_pressed(KEY_SPACE):
+	elif Input.is_physical_key_pressed(KEY_SPACE) and not DevConsole.is_open:
 		_vertical_speed = JUMP_VELOCITY
 		if feel != null:
 			feel.jump()
@@ -802,13 +916,14 @@ func _physics_process(delta: float) -> void:
 		_vertical_speed = 0.0
 
 	var input_dir := Vector2.ZERO
-	if Input.is_physical_key_pressed(KEY_W):
+	var typing := DevConsole.is_open
+	if Input.is_physical_key_pressed(KEY_W) and not typing:
 		input_dir.y -= 1.0
-	if Input.is_physical_key_pressed(KEY_S):
+	if Input.is_physical_key_pressed(KEY_S) and not typing:
 		input_dir.y += 1.0
-	if Input.is_physical_key_pressed(KEY_A):
+	if Input.is_physical_key_pressed(KEY_A) and not typing:
 		input_dir.x -= 1.0
-	if Input.is_physical_key_pressed(KEY_D):
+	if Input.is_physical_key_pressed(KEY_D) and not typing:
 		input_dir.x += 1.0
 	input_dir = input_dir.normalized()
 
@@ -819,7 +934,9 @@ func _physics_process(delta: float) -> void:
 		_hud_key("WASD")
 	if sprinting:
 		_hud_key("Shift")
-	var top := (SPRINT_SPEED if sprinting else SPEED) * (0.4 if suit_o2 <= 0.0 else 1.0)
+	var top := (SPRINT_SPEED if sprinting else SPEED) * (lerpf(0.4, 0.15, suffocation) if suit_o2 <= 0.0 else 1.0)
+	if dying:
+		top = 0.0
 	# Momentum instead of instant velocity: quick to start and stop on the ground, sluggish in the air.
 	_move_vel -= up * _move_vel.dot(up)                     # stay tangent as "up" turns over the sphere
 	var target := move_dir * top
@@ -841,11 +958,16 @@ func _physics_process(delta: float) -> void:
 			_hud_key("E")
 	_interact_was_down = interact_down
 
+	_dig_miss_cooldown = maxf(_dig_miss_cooldown - delta, 0.0)
+	if _dig_held and (_dig_button == 0 or not Input.is_mouse_button_pressed(_dig_button) or not _drill_in_hand()):
+		_reset_dig_hold()                    # a release the game never saw (menu opened, focus lost), or the drill left the hand
 	if _dig_held and not _inventory_open and not _is_journal_open():
 		_dig_hold_time += delta
 		if not _dig_spun_up and _dig_hold_time >= DIG_SPINUP_TIME:
 			_dig_spun_up = true
 			_dig_tick_timer = TerrainDrill.TICK_INTERVAL # fire immediately once spun up
+			if feel != null and Inventory.has_tool_equipped(MiningToolItem.id):
+				feel.kick("engage")                       # up to speed: the drill snaps forward into the rock
 		if _dig_spun_up:
 			_dig_tick_timer += delta
 			if _dig_tick_timer >= TerrainDrill.TICK_INTERVAL:
@@ -880,7 +1002,7 @@ func _raycast() -> VoxelRaycastResult:
 	# converts world-space from/dir to the terrain's LOCAL voxel-grid space
 	# internally and returns hit.position already in that local space - so
 	# DIG_RANGE (a world-meter distance) is correct to pass here unconverted.
-	return tool.raycast(from, dir, DIG_RANGE, 0xFFFFFFFF)
+	return TerrainDrill.raycast_close(tool, from, dir, DIG_RANGE)
 
 ## do_sphere()'s radius, unlike raycast()'s from/dir/distance, is NOT
 ## world-space - it's in the terrain's LOCAL voxel-grid units (confirmed via
@@ -908,17 +1030,16 @@ func _dig() -> void:
 	# already the camera toggle), and it ignored the tool pattern this project
 	# already has. Equipping something and using it is the interaction the rest
 	# of the game is built on.
-	if Inventory.has_tool_equipped(ScannerToolItem.id):
-		_scan_for_ore()
-		return
-	if Inventory.has_tool_equipped(SidearmItem.id):
-		_fire_sidearm()
-		return
 	if not Inventory.has_tool_equipped(MiningToolItem.id):
 		return
 
 	var hit := _raycast()
 	if hit == null:
+		# nothing in reach: the drill spins on air, say so (rate-limited - this runs 20 times a second while held)
+		# nothing in reach: the beam reaches out to full range and fizzles (MiningToolFx); a quiet no now and then
+		if _dig_miss_cooldown <= 0.0:
+			_dig_miss_cooldown = 1.0
+			UiSound.play("deny", 1.0, 0.5)
 		return
 
 	# Hardness comes from what's under the crosshair; payout from everything
@@ -926,9 +1047,17 @@ func _dig() -> void:
 	var tool := _terrain.get_voxel_tool()
 	var material_index := TerrainDrill.dominant_material_at(tool, hit.position)
 	var radius := _local_radius(TerrainDrill.BORE_RADIUS_M)
-	var aim_local := _terrain.global_transform.basis.inverse() * -camera.global_transform.basis.z
-	var removed := TerrainDrill.bite(tool, TerrainDrill.bite_center(hit.position, aim_local, radius),
-		radius, TerrainDrill.strength_for(material_index))
+	var inv := _terrain.global_transform.affine_inverse()
+	var aim_local := (inv.basis * -camera.global_transform.basis.z).normalized()
+	# bite exactly where the crosshair meets the rock, not at the hit voxel: smooth, centred, follows the aim
+	var surface := TerrainDrill.surface_point(tool, inv * camera.global_position, aim_local, hit.position)
+	var center := TerrainDrill.bite_center(surface, aim_local, radius)
+	# a bite that removes nothing for a few ticks in a row (the face sits just outside the cut) pushes in deeper
+	# until something comes away, so the drill can never sit there spinning on a surface it can't reach
+	if _dig_empty_bites >= 3:
+		center += aim_local * radius * minf(0.25 * float(_dig_empty_bites - 2), 1.0)
+	var removed := TerrainDrill.bite(tool, center, radius, TerrainDrill.strength_for(material_index))
+	_dig_empty_bites = 0 if not removed.is_empty() else _dig_empty_bites + 1
 	var scale := _terrain.scale.x
 	var paid := TerrainDrill.payout(_yield_carry, removed, scale * scale * scale)
 	# feedback: dust tinted by what is being cut, sparks on ore, the grind of the bit (pitched by hardness)
@@ -949,6 +1078,17 @@ func _dig() -> void:
 		GameEvents.item_mined.emit(item_id, took, self)
 		if took < int(paid[item_id]):
 			_inventory_full_feedback()
+	var planet_node := _terrain.get_parent()
+	if planet_node != null and planet_node.get("near_scatter") != null:
+		planet_node.near_scatter.invalidate(_terrain.to_global(center), _terrain.scale.x * radius)
+	if _tool_fx != null:
+		var at := _terrain.to_global(surface)
+		_tool_fx.bite(at, camera.global_position - at, material_index, not removed.is_empty(), VoxelMaterials.hardness_for(material_index))
+
+var _dig_miss_cooldown := 0.0
+var _dig_empty_bites := 0
+## Beam, chips, dust, sparks, heat glow, the drill's own motion and its sound: scripts/player/mining_tool_fx.gd.
+var _tool_fx: MiningToolFx
 
 func _build() -> void:
 	if not Inventory.has_tool_equipped(MiningToolItem.id):
@@ -1108,8 +1248,46 @@ func _resolve_build_placement(raw_pos: Vector3, item: Item) -> Dictionary:
 		var final_basis := Basis(mount_basis.y, _build_rotation) * mount_basis
 		return {"transform": Transform3D(final_basis, mount_pos), "valid": true}
 
-	var xf := _free_tangent_transform(raw_pos)
-	return {"transform": xf, "valid": _terrain_supports(raw_pos), "reason": "Needs solid ground under it"}
+	return _ground_aligned_placement(raw_pos, item)
+
+## One ray straight "down" (local up reversed) through `p`, or null. Used to read the ground under a footprint.
+func _ground_hit(p: Vector3, up0: Vector3) -> Variant:
+	var q := PhysicsRayQueryParameters3D.create(p + up0 * 3.0, p - up0 * 10.0)
+	q.exclude = [get_rid()]
+	var h := get_world_3d().direct_space_state.intersect_ray(q)
+	return h.position if not h.is_empty() else null
+
+## A building with no foundation lies flat ON the ground, not on the sphere's ideal surface: the ground is sampled
+## under the footprint (centre + four edge points), the building is tilted to that plane (R still turns it around the
+## ground normal), and it is lifted so its base touches the highest sample - it can hover a little over a dip but
+## never sinks into a bump. Grid snapping (G) only moves the point the footprint is measured at.
+func _ground_aligned_placement(raw_pos: Vector3, item: Item) -> Dictionary:
+	var up0 := PlanetPhysics.get_up(raw_pos)
+	var ref := _tangent_basis_at(up0, -camera.global_transform.basis.z)
+	var half := 0.75 if item == null else maxf(item.ghost_size.x, item.ghost_size.z) * 0.5
+	var offs := [Vector2(0, 0), Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]
+	var pts: Array = []
+	for o: Vector2 in offs:
+		var h: Variant = _ground_hit(raw_pos + ref.x * o.x * half + ref.z * o.y * half, up0)
+		if h == null:
+			var fallback := _free_tangent_transform(raw_pos)
+			return {"transform": fallback, "valid": _terrain_supports(raw_pos), "reason": "Needs solid ground under it"}
+		pts.append(h)
+	var n: Vector3 = ((pts[1] as Vector3) - (pts[2] as Vector3)).cross((pts[4] as Vector3) - (pts[3] as Vector3))
+	if n.length() < 0.0001:
+		n = up0
+	n = n.normalized()
+	if n.dot(up0) < 0.0:
+		n = -n
+	# never lean past ~50 degrees: a cliff face is not somewhere to stand a machine
+	if n.angle_to(up0) > deg_to_rad(50.0):
+		n = up0.slerp(n, deg_to_rad(50.0) / n.angle_to(up0))
+	var base: Vector3 = pts[0]
+	var lift := 0.0
+	for p: Vector3 in pts:
+		lift = maxf(lift, (p - base).dot(n))
+	var basis := Basis(n, _build_rotation) * _tangent_basis_at(n, -camera.global_transform.basis.z)
+	return {"transform": Transform3D(basis, base + n * lift), "valid": true, "reason": ""}
 
 func _is_pipe_item(item: Item) -> bool:
 	return item != null and item.id in ["vacuum_pipe", "merger", "splitter"]
@@ -1176,86 +1354,178 @@ func _pipe_basis(direction: Vector3, up: Vector3) -> Basis:
 	var ref := up if absf(d.dot(up)) < 0.999 else -camera.global_transform.basis.z
 	return Basis.looking_at(d, ref)
 
-## Pipe build modes (B toggles): STRAIGHT keeps a pipe exactly level or exactly vertical, FREE lets it run at any
-## angle (up a slope, diagonally). Where a new pipe leaves the end of an existing one at another angle, a knee is
-## built bent to exactly that angle.
-func _pipe_constrain(anchor: Vector3, end: Vector3) -> Vector3:
-	if _pipe_free_mode:
-		return end
-	var up := PlanetPhysics.get_up(anchor)
-	var d := end - anchor
-	var vertical := d.dot(up)
-	var level := d - up * vertical
-	if absf(vertical) > level.length():
-		return anchor + up * vertical
-	return anchor + level
+## Pipe runs (PipeRoute): B toggles STRAIGHT (along the ground axes and straight up, tight 90 degree knees) and
+## CURVED (the natural path, wide bends). A run carries on from an open pipe end in that pipe's direction and leaves /
+## enters a machine port straight along its axis. An end that is already connected can't take a second pipe.
+const PIPE_END_TOL := 0.1
+
+## What is at a build-plane point, as one end of a run: {ok, why, centre (centreline point), dir, kind}.
+## kind "free" (ground), "pipe" (an open pipe or junction end) or "port" (a machine port).
+func _pipe_end_info(point: Vector3, as_start: bool) -> Dictionary:
+	var up := PlanetPhysics.get_up(point)
+	var info := {"ok": true, "why": "", "centre": point + up * PipeSegment.PIPE_HEIGHT, "dir": Vector3.ZERO, "kind": "free"}
+	for n in get_tree().get_nodes_in_group("pipe"):
+		var p := n as PipeSegment
+		if p == null or not is_instance_valid(p):
+			continue
+		var lift := p.global_transform.basis.y.normalized() * PipeSegment.PIPE_HEIGHT
+		for q: Vector3 in p.output_ports():
+			if q.distance_to(point) < PIPE_END_TOL:
+				if not as_start:
+					return {"ok": false, "why": "That end is an outlet: start from it", "centre": info.centre}
+				if _pipe_input_near(q, p):
+					return {"ok": false, "why": "Already connected", "centre": info.centre}
+				var d := p.flow_dir() if p._is_modular() else p._outward(q)
+				return {"ok": true, "why": "", "centre": q + lift, "dir": d.normalized(), "kind": "pipe"}
+		for q: Vector3 in p.input_ports():
+			if q.distance_to(point) < PIPE_END_TOL:
+				if as_start:
+					return {"ok": false, "why": "That end is an inlet: end a pipe on it", "centre": info.centre}
+				if _pipe_output_near(q, p) or (p._is_modular() and p._building_at(p.input_point() - p.input_dir() * 0.4) != null):
+					return {"ok": false, "why": "Already connected", "centre": info.centre}
+				var d := p.input_dir() if p._is_modular() else -p._outward(q)
+				return {"ok": true, "why": "", "centre": q + lift, "dir": d.normalized(), "kind": "pipe"}
+	for n in get_tree().get_nodes_in_group("building"):
+		var b := n as Building
+		if b == null or not is_instance_valid(b):
+			continue
+		for port: Dictionary in b.get_pipe_ports():
+			var q: Vector3 = port["point"]
+			if q.distance_to(point) >= PIPE_END_TOL:
+				continue
+			var kind: int = port["kind"]
+			var c := q + b.global_transform.basis.y.normalized() * PipeSegment.PIPE_HEIGHT
+			if as_start:
+				if kind < 0:
+					return {"ok": false, "why": "That port takes items in", "centre": c}
+				if _pipe_input_near(q, null):
+					return {"ok": false, "why": "Already connected", "centre": c}
+				return {"ok": true, "why": "", "centre": c, "dir": port["out"], "kind": "port"}
+			if kind > 0:
+				return {"ok": false, "why": "That port sends items out", "centre": c}
+			if _pipe_output_near(q, null):
+				return {"ok": false, "why": "Already connected", "centre": c}
+			return {"ok": true, "why": "", "centre": c, "dir": -(port["out"] as Vector3), "kind": "port"}
+	return info
+
+func _pipe_input_near(point: Vector3, except: Node) -> bool:
+	for n in get_tree().get_nodes_in_group("pipe"):
+		if n != except and is_instance_valid(n):
+			for q: Vector3 in (n as PipeSegment).input_ports():
+				if q.distance_to(point) < PIPE_END_TOL:
+					return true
+	return false
+
+func _pipe_output_near(point: Vector3, except: Node) -> bool:
+	for n in get_tree().get_nodes_in_group("pipe"):
+		if n != except and is_instance_valid(n):
+			for q: Vector3 in (n as PipeSegment).output_ports():
+				if q.distance_to(point) < PIPE_END_TOL:
+					return true
+	return false
+
+## The run from the anchor to `end` (build-plane points), checked: PipeRoute.plan's result, "why" when it can't.
+func _plan_pipe_run(start: Vector3, end: Vector3) -> Dictionary:
+	var a := _pipe_end_info(start, true)
+	if not a.ok:
+		return {"ok": false, "why": a.why}
+	var e := _pipe_end_info(end, false)
+	if not e.ok:
+		return {"ok": false, "why": e.why}
+	var route := PipeRoute.plan(a.centre, a.dir, a.kind, e.centre, e.dir, e.kind, PlanetPhysics.get_up(start),
+			_pipe_curved, -camera.global_transform.basis.z)
+	route["end_kind"] = e.kind
+	return route
 
 func _place_pipe_or_set_anchor() -> void:
 	var aim: Variant = _build_aim()
 	if aim == null:
 		return
-	var raw_pos: Vector3 = aim
-	var point := _snap_pipe_point(raw_pos)
-	if not _pipe_anchor_set:
-		_pipe_anchor = point
-		_pipe_preview_end = point
-		_pipe_anchor_set = true
-		return
 	var item := _selected_build_item()
 	if item == null:
 		_pipe_anchor_set = false
 		return
-	var end := _snap_pipe_point(raw_pos)
-	if item.id == "vacuum_pipe":
-		end = _pipe_constrain(_pipe_anchor, end)
-	if end.distance_to(_pipe_anchor) < 0.1:
+	_pipe_click(item, _snap_pipe_point(aim))
+
+## One LMB with a pipe item at the (snapped, build-plane) point: start a run, or end it there.
+func _pipe_click(item: Item, point: Vector3) -> void:
+	if item.id != "vacuum_pipe":
+		# mergers and splitters: one click, on the point
+		if not _place_pipe(item, point, point):
+			_deny_build()
 		return
-	if _place_pipe(item, _pipe_anchor, end) and item.id == "vacuum_pipe":
-		# keep building: the next pipe starts where this one ended (a knee is added if it turns)
-		_pipe_anchor = end
+	if not _pipe_anchor_set:
+		var a := _pipe_end_info(point, true)
+		if not a.ok:
+			_deny_build(a.why)
+			return
+		_pipe_anchor = point
+		_pipe_preview_end = point
+		_pipe_anchor_set = true
+		return
+	if point.distance_to(_pipe_anchor) < 0.1:
+		return
+	var route := _plan_pipe_run(_pipe_anchor, point)
+	if not route.ok:
+		_deny_build(route.why)
+		return
+	if _lay_pipe_run(item, route):
+		# ending on a machine or another pipe closes the run; on open ground the next run carries on from here
+		if route.get("end_kind", "free") != "free":
+			_pipe_anchor_set = false
+		else:
+			_pipe_anchor = point
 		return
 	_pipe_anchor_set = false
 
-## The plain pipe whose output end is at `point` (build-plane point), if any.
-func _pipe_ending_at(point: Vector3) -> PipeSegment:
-	for n in get_tree().get_nodes_in_group("pipe"):
-		var p := n as PipeSegment
-		if p == null or not is_instance_valid(p) or not p._is_modular():
-			continue
-		var pts := p.get_connection_points()
-		if pts[1].distance_to(point) < 0.05:
-			return p
-	return null
+func _deny_build(why: String = "") -> void:
+	if feel != null:
+		feel.kick("deny")
+	UiSound.play("deny", 1.0, 0.25)
+	if why != "":
+		_build_message = why
+		_build_message_until = Time.get_ticks_msec() + 2500
+		_refresh_build_hint()
 
+var _build_message := ""
+var _last_hint_pairs := ""
+var _build_message_until := 0
+
+func _lay_pipe_run(item: Item, route: Dictionary) -> bool:
+	var build_ui := get_tree().get_first_node_in_group("build_ui")
+	if build_ui == null:
+		return false
+	var recipe: Recipe = build_ui.get_selected_recipe()
+	var count := PipeRoute.piece_count(route)
+	if recipe == null or not build_ui.can_pay(recipe, count):
+		_deny_build("Not enough for %d pipe pieces" % count)
+		return false
+	var pipes := PipeRoute.build(route, get_tree().current_scene, item.building_scene,
+			func(p: Vector3) -> Vector3: return PlanetPhysics.get_up(p))
+	for seg in pipes:
+		build_ui.pay(recipe)
+		PipeNetwork.register(seg.grid_pos, seg)
+		SaveManager.mark_placed(seg, item.id)
+		seg.show_flow_arrows(true)
+		QuestManager.notify_building_placed(item.id)
+	PipeSegment.relink_all(get_tree())
+	if feel != null:
+		feel.kick("place")
+	UiSound.play("place")
+	return true
+
+## Mergers and splitters (one click).
 func _place_pipe(item: Item, start: Vector3, end: Vector3) -> bool:
 	var build_ui := get_tree().get_first_node_in_group("build_ui")
 	if build_ui == null:
 		return false
 	var recipe: Recipe = build_ui.get_selected_recipe()
-	if recipe == null:
+	if recipe == null or not build_ui.can_pay(recipe):
 		return false
-	for i in recipe.input_ids.size():
-		if Inventory.get_count(recipe.input_ids[i]) < recipe.input_amounts[i]:
-			return false
-	var is_junction := item.id != "vacuum_pipe"
-	# Plain pipes are laid on their centreline (0.45 m above the build plane). A pipe started on the end of an
-	# existing one continues from that pipe's centreline; if it turns, a knee takes one leg from each.
-	var upstream: PipeSegment = null if is_junction else _pipe_ending_at(start)
-	var c_start := upstream.output_point() if upstream != null else start + PlanetPhysics.get_up(start) * PipeSegment.PIPE_HEIGHT
-	var c_end := end + PlanetPhysics.get_up(end) * PipeSegment.PIPE_HEIGHT
-	var leg := 0.0 if is_junction else PipeSegment.knee_leg_for(upstream, c_start, c_end)
-	if leg < 0.0:
-		return false                                     # too sharp to bend, or no room for the bend
-	for i in recipe.input_ids.size():
-		Inventory.try_remove(recipe.input_ids[i], recipe.input_amounts[i])
+	build_ui.pay(recipe)
 	var instance: Node3D = item.building_scene.instantiate()
 	get_tree().current_scene.add_child(instance)
-	if instance is PipeSegment and not is_junction:
-		var segment := instance as PipeSegment
-		PipeSegment.lay(segment, c_start, c_end, upstream if leg > 0.0 else null, leg, PlanetPhysics.get_up(c_end))
-		segment.grid_pos = Vector3i(floori(start.x), floori(start.y), floori(start.z))
-	else:
-		instance.global_transform = _pipe_transform(start, end, is_junction)
+	instance.global_transform = _pipe_transform(start, end, true)
 	PipeNetwork.register(Vector3i(floori(instance.global_position.x), floori(instance.global_position.y), floori(instance.global_position.z)), instance)
 	SaveManager.mark_placed(instance, item.id)
 	GameEvents.building_placed.emit(item.id, instance)
@@ -1268,10 +1538,14 @@ func _place_pipe(item: Item, start: Vector3, end: Vector3) -> bool:
 func _update_build_ghost() -> void:
 	if _build_ghost == null:
 		return
+	if _build_message != "" and Time.get_ticks_msec() >= _build_message_until:
+		_build_message = ""
+		_refresh_build_hint()
 
 	var aim: Variant = _build_aim()
 	if _build_menu_open() or aim == null:
 		_build_ghost.visible = false
+		_hide_pipe_preview()
 		return
 
 	var item := _selected_build_item()
@@ -1283,33 +1557,41 @@ func _update_build_ghost() -> void:
 	var force_snap := item != null and item.force_grid_snap
 
 	var raw_pos: Vector3 = aim
+	_set_pipe_arrows(item != null and item.id == "vacuum_pipe")
 	if _is_pipe_item(item):
 		var pipe_end := _snap_pipe_point(raw_pos)
-		if _pipe_anchor_set and item.id == "vacuum_pipe":
-			pipe_end = _pipe_constrain(_pipe_anchor, pipe_end)
 		_pipe_preview_end = pipe_end
 		_build_ghost_material.albedo_color = GHOST_OK
-		if _pipe_anchor_set:
-			_build_ghost.global_transform = _pipe_transform(_pipe_anchor, pipe_end, item.id != "vacuum_pipe")
-			if item.id == "vacuum_pipe":
-				var run := _build_ghost.global_transform
-				run.origin += run.basis.y.normalized() * PipeSegment.PIPE_HEIGHT
-				_build_ghost.global_transform = run
-				(_build_ghost.mesh as BoxMesh).size = Vector3(0.5, 0.5, maxf(_pipe_anchor.distance_to(pipe_end), 0.05))
-		elif item.id == "vacuum_pipe":
-			# before the first click: a pipe-sized marker where the run would start
+		if _pipe_anchor_set and item.id == "vacuum_pipe":
+			# the whole planned run, with arrows the way items will flow; red (and the reason on the HUD) when not
+			var route := _plan_pipe_run(_pipe_anchor, pipe_end)
+			_pipe_route_preview = route
+			if route.get("points", []).size() >= 2:
+				_show_pipe_preview(route, route.ok)
+			else:
+				_hide_pipe_preview()
+			_build_ghost.visible = false
+			_refresh_build_hint()
+			return
+		_hide_pipe_preview()
+		if item.id == "vacuum_pipe":
+			# before the first click: a pipe-sized marker where the run would start, red if nothing may start there
 			var up := PlanetPhysics.get_up(pipe_end)
-			_build_ghost.global_transform = Transform3D(_tangent_basis_at(up, -camera.global_transform.basis.z), pipe_end + up * PipeSegment.PIPE_HEIGHT)
+			var a := _pipe_end_info(pipe_end, true)
+			var fwd: Vector3 = a.dir if a.dir != Vector3.ZERO else -camera.global_transform.basis.z
+			_build_ghost.global_transform = Transform3D(_tangent_basis_at(up, fwd), a.centre)
 			(_build_ghost.mesh as BoxMesh).size = Vector3(0.5, 0.5, 0.5)
+			_build_ghost_material.albedo_color = GHOST_OK if a.ok else GHOST_BAD
 		else:
 			_build_ghost.global_transform = _pipe_transform(pipe_end, pipe_end, true)
 		_build_ghost.visible = true
 		return
-	if not is_foundation and (_build_grid_snap or force_snap):
+	_hide_pipe_preview()
+	if not is_foundation and _build_grid_snap:
 		# Foundations get their own continuous edge-snap/free-tangent
 		# placement below - the old flat voxel-cell snap is a different,
 		# now-superseded concept for them specifically.
-		raw_pos = _snap_build_position(raw_pos, force_snap)
+		raw_pos = _snap_build_position(raw_pos)
 
 	var placement := _resolve_build_placement(raw_pos, item)
 	var is_valid: bool = placement.valid
@@ -1343,8 +1625,8 @@ func _place_building() -> void:
 	if block != "":
 		_deny_place(block)
 		return
-	for i in recipe.input_ids.size():
-		Inventory.try_remove(recipe.input_ids[i], recipe.input_amounts[i])
+	if not build_ui.pay(recipe):                     # a carried copy first, else the materials
+		return
 
 	var instance: Node3D = item.building_scene.instantiate()
 	get_tree().current_scene.add_child(instance)
@@ -1643,7 +1925,7 @@ func _update_interact_target() -> void:
 	if prompt == null:
 		return
 	if _targeted_building != null:
-		prompt.show_prompt("E", "Open " + _display_name_of(_targeted_building))
+		prompt.show_prompt("E", _targeted_building.call("prompt_text") if _targeted_building.has_method("prompt_text") else "Open " + _display_name_of(_targeted_building))
 	elif _targeted_cockpit != null:
 		prompt.show_prompt("E", "Take the controls" if _targeted_cockpit.sealed else "Take the driver seat")
 	else:
@@ -1686,6 +1968,13 @@ func _close_building_ui() -> void:
 ## to walk", and in build mode the camera is somewhere overhead.
 func _scan_for_ore() -> void:
 	_scan_anim_left = 1.5
+	var open_hud := get_tree().get_first_node_in_group("scanner_hud")
+	if open_hud != null and open_hud.call("is_radar_open"):
+		# Radar already up: the scanner button locks the trace on the centre line.
+		if feel != null:
+			feel.kick("scan")
+		open_hud.call("lock_press")
+		return
 	if feel != null and _scan_cooldown <= 0.0:
 		feel.kick("scan")
 	if _scan_cooldown > 0.0:
@@ -1707,9 +1996,11 @@ func _scan_for_ore() -> void:
 	# without it a scan reports the ground itself, since stone and bedrock share
 	# the same material channel.
 	var names := {}
+	var depths := {}
 	for ore in celestial.ore_types:
 		names[ore.material_index] = ore.id
-	hud.call("scan_from", terrain, global_position, names)
+		depths[ore.id] = Vector2(ore.depth_min, ore.depth_max)
+	hud.call("scan_from", terrain, global_position, names, depths)
 
 ## --- Held tool animation --------------------------------------------------
 ## The drill's chuck and bit spin while the trigger is held (and the tool shakes a little); the scanner's dish
@@ -1751,7 +2042,7 @@ func _tool_player(tool_name: String) -> AnimationPlayer:
 	var players := node.find_children("*", "AnimationPlayer", true, false)
 	return players[0] if not players.is_empty() else null
 
-func _run_tool_anim(tool_name: String, running: bool) -> void:
+func _run_tool_anim(tool_name: String, running: bool, speed: float = 1.0) -> void:
 	var p := _tool_player(tool_name)
 	if p == null:
 		return
@@ -1761,6 +2052,7 @@ func _run_tool_anim(tool_name: String, running: bool) -> void:
 			anim = a
 	if anim == "":
 		return
+	p.speed_scale = speed
 	if running:
 		if not p.is_playing():
 			p.get_animation(anim).loop_mode = Animation.LOOP_LINEAR
@@ -1772,16 +2064,17 @@ func _process_tool_anims(delta: float) -> void:
 	if viewmodel == null or not viewmodel.visible:
 		return
 	var drilling := _dig_held and Inventory.has_tool_equipped(MiningToolItem.id)
-	_run_tool_anim("MiningTool", drilling)
+	# 0 -> 1 over the spin-up, then stays 1 while held: drives the bit's speed, the shake and the wind-up pose
+	var spin := clampf(_dig_hold_time / DIG_SPINUP_TIME, 0.0, 1.0) if drilling else 0.0
+	_run_tool_anim("MiningTool", drilling, lerpf(0.2, 1.0, spin * spin))
 	_scan_anim_left = maxf(_scan_anim_left - delta, 0.0)
 	_run_tool_anim("ScannerTool", _scan_anim_left > 0.0)
 	_run_tool_anim("BuildTool", Inventory.has_tool_equipped(BuildingToolItem.id))
-	# drilling kicks: a small, fast shake of the held drill (the feel node places the tool, see first_person_feel.gd)
-	var shake := Vector3.ZERO
-	if drilling:
-		shake = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(0, 1)) * 0.004
-	if feel != null:
-		feel.set_shake(shake)
+	# the drill's motion, beam, particles and sound live in MiningToolFx and move only the drill's own hand (the
+	# whole viewmodel used to shake and lunge, the build tool in the other hand with it)
+	if _tool_fx != null:
+		_tool_fx.update(delta, drilling, spin, drilling and _dig_spun_up, camera.global_position,
+				-camera.global_transform.basis.z, DIG_RANGE)
 
 ## --- Suit oxygen -------------------------------------------------------------
 ## The suit carries SUIT_O2_MAX seconds of air and uses it outside. It refills near a Ship Garage (base life
@@ -1809,9 +2102,48 @@ func _update_suit_o2(delta: float) -> void:
 				suit_o2 = minf(suit_o2 + SUIT_REFILL_RATE * delta, SUIT_O2_MAX)
 				refill = true
 				break
+	if not refill and o2_hose != null:
+		if not is_instance_valid(o2_hose) or global_position.distance_to(o2_hose.global_position) > OxygenPost.HOSE_LENGTH + 1.0:
+			disconnect_hose(true)          # walked too far: the hose pops out
+		else:
+			suit_o2 = minf(suit_o2 + SUIT_REFILL_RATE * delta, SUIT_O2_MAX)
+			refill = true
 	if not refill:
 		suit_o2 = maxf(suit_o2 - delta, 0.0)
 	o2_refilling = refill and suit_o2 < SUIT_O2_MAX
+
+	# visual ramp for SuffocationFX (0 at the first empty breath, 1 at the end of the clock); the damage and the
+	# death itself are PlayerVitals' job
+	if suit_o2 <= 0.0 and not refill:
+		o2_empty_time += delta
+	else:
+		o2_empty_time = maxf(o2_empty_time - delta * 4.0, 0.0)
+	suffocation = clampf(o2_empty_time / SUFFOCATE_SECONDS, 0.0, 1.0)
+	dying = vitals != null and vitals.dead
+
+## The Oxygen Post the suit is plugged into, or null.
+var o2_hose: Node3D = null
+
+func connect_hose(post: Node3D) -> void:
+	if o2_hose != null and is_instance_valid(o2_hose):
+		o2_hose.call("set_connected", false)
+	o2_hose = post
+	post.call("set_connected", true)
+	UiSound.play("confirm")
+
+func disconnect_hose(snapped: bool = false) -> void:
+	if o2_hose != null and is_instance_valid(o2_hose):
+		o2_hose.call("set_connected", false)
+	o2_hose = null
+	UiSound.play("warn" if snapped else "back")
+
+## Seconds from the first empty breath to the end of the suffocation effect.
+const SUFFOCATE_SECONDS := 25.0
+var o2_empty_time := 0.0
+## 0..1 progress towards suffocating (read by SuffocationFX).
+var suffocation := 0.0
+## True while PlayerVitals has the player dead (the fade to black in SuffocationFX).
+var dying := false
 
 ## --- Death and respawn (driven by PlayerVitals) ----------------------------------------------------------------
 func on_died() -> void:
@@ -1826,6 +2158,8 @@ func on_died() -> void:
 
 func on_respawned() -> void:
 	suit_o2 = SUIT_O2_MAX
+	o2_empty_time = 0.0
+	suffocation = 0.0
 	_move_vel = Vector3.ZERO
 	_vertical_speed = 0.0
 	_align_to_up(PlanetPhysics.get_up(global_position))

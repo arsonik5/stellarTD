@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="AssetLine" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/asset_line.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gravel_patches"
+display_name = "Gravel patches"
+models = Array[String](["namaqualand_stones_01", "stone_01", "rock_09"])
+size_min_m = 0.03
+size_max_m = 0.12
+size_skew = "cubic"
+density = 3.0
+signal_mask = "flow"
+signal_low = 0.08
+signal_high = 0.35
+signal_invert = false
+slope_min_deg = 0
+slope_max_deg = 25
+on_ground = Array[String](["worked", "secondary"])
+clump_m = 12
+clump_cover = 0.6
+rest_m = 200
+rest_share = 0.3
+burial = 0.4
+lod = 0
+shadows = false
+collision = false
+colour_match = 0.4
+dust = 0.3
+view_ratio = 0.2
+low_poly = true
+near_field = true
+ground_density = {}

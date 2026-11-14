@@ -7,4 +7,4 @@ script = ExtResource("1")
 id = "refined_silica"
 display_name = "Silica Glass"
 material_index = -1
-debug_color = Color(0.75, 0.9, 0.95, 1)
+debug_color = Color(0.75, 0.92, 0.97, 1)

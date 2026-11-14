@@ -68,7 +68,7 @@ func _run() -> void:
 	var scanned := [false]
 	GameEvents.scanned.connect(func(_k: Array) -> void: scanned[0] = true, CONNECT_ONE_SHOT)
 	player.set("_scan_cooldown", 0.0)
-	player.call("_dig")      # with the scanner equipped, the trigger scans
+	player.call("_on_hand_button", MOUSE_BUTTON_RIGHT, true)      # the scanner is in the right hand: RMB pings
 	await _wait(0.5)
 	_check(scanned[0], "the scanner pings and reports to GameEvents")
 	Inventory.set_slot({"kind": "hand", "side": "right"}, "building_tool", 1)

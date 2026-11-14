@@ -54,6 +54,13 @@ extends Resource
 ## bodies migrate one at a time.
 @export var heightmap: PlanetHeightmap
 
+@export_group("Traits")
+## Ground from the planet's trait mix (scripts/world/gen/trait_mixer.gd) instead of only the biome surfaces:
+## generated from `seed` and the body's facts. The way every generated planet will work (the seeded universe).
+@export var generate_traits := false
+## Explicit mix, trait id -> weight (e.g. {"airless": 0.7, "crystalline": 0.3}); overrides generate_traits.
+@export var trait_override: Dictionary = {}
+
 @export_group("Atmosphere")
 @export var atmosphere: PlanetAtmosphere
 

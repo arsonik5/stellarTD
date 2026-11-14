@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="AssetLine" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/asset_line.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"boulder_fields"
+display_name = "Boulder fields"
+models = Array[String](["namaqualand_boulder_02", "namaqualand_boulder_03", "namaqualand_boulder_04", "namaqualand_boulder_05", "namaqualand_boulder_06"])
+size_min_m = 0.8
+size_max_m = 3.2
+size_skew = "cubic"
+density = 0.006
+signal_mask = "talus"
+signal_low = 0.12
+signal_high = 0.45
+signal_invert = false
+slope_min_deg = 2
+slope_max_deg = 38
+on_ground = Array[String]([])
+clump_m = 70
+clump_cover = 0.4
+rest_m = 300
+rest_share = 0.35
+burial = 0.3
+lod = 1
+shadows = true
+collision = true
+colour_match = 0.8
+dust = 0.3
+view_ratio = 1.0
+low_poly = false
+near_field = false
+ground_density = {}

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="SurfaceStyle" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/surface_style.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "silica ore"
+texture_name = "bedrock"
+albedo_tint = Color(1.45,1.40,1.20, 1)
+roughness_scale = 0.8
+metallic = 0.0
+specular = 0.5
+normal_strength = 1.0
+texture_scale_m = 3.0

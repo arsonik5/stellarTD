@@ -9,7 +9,8 @@ from kit import *
 from mathutils import Vector, Matrix
 
 kit.begin(kit.out_dir())
-kit.DUST_AMT = 0.2
+kit.DUST_AMT = 0.15
+kit.WEAR_SCALE = 0.12                                      # wear at tool size (see kit.WEAR_SCALE)
 grip = [(-0.017, -0.11), (0.017, -0.11), (0.02, 0.0), (0.016, 0.03), (-0.024, 0.03), (-0.026, 0.0)]
 profile("Grip", grip, (0, 0, 0), (1, 0, 0), 0.034, RUB, up=(0, 0, 1), bevel=0.003)
 part("Grip", "grip: the hand holds the scanner here", "ground", "ground")
@@ -43,4 +44,4 @@ cyl("AntennaBase", 0.008, 0.012, (0.03, 0.06, MZ + 0.0292 + 0.006), SEC, seg=12,
 part("AntennaBase", "antenna base, screwed into the body", "Body", "inset")
 pipe("Antenna", [(0.03, 0.06, MZ + 0.04), (0.03, 0.02, MZ + 0.12)], 0.0025, BARE, fillet=0.0)
 part("Antenna", "comms antenna: sends the scan to the HUD", "AntennaBase", "inset")
-kit.finish("SM_ScannerTool", pivots={"Dish": (0, 0.13, MZ)}, bake_res=512, anims=[spin("Dish", 1, seconds=1.2)])
+kit.finish("SM_ScannerTool", pivots={"Dish": (0, 0.13, MZ)}, bake_res=2048, anims=[spin("Dish", 1, seconds=1.2)])

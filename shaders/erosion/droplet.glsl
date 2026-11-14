@@ -83,7 +83,9 @@ layout(push_constant, std430) uniform Params {
 // artificial cliffs down the +-180 meridian, which then collects drainage and
 // becomes a permanent feature of every planet.
 ivec2 wrap(ivec2 p) {
-	p.x = (p.x % params.width + params.width) % params.width;
+	// Explicit, not `%`: GLSL leaves % on a negative operand undefined, and on this GPU it put a one-texel ridge
+	// down the +-180 meridian of every full-size bake (2026-11-09).
+	p.x = p.x < 0 ? p.x + params.width : (p.x >= params.width ? p.x - params.width : p.x);
 	p.y = clamp(p.y, 0, params.height_px - 1);
 	return p;
 }
@@ -252,6 +254,9 @@ void main() {
 		float step_len = length(step_v);
 		if (step_len > 2.0) { step_v *= 2.0 / step_len; }
 		pos += step_v;
+		// Keep the droplet on the map: wrap() only undoes one width, and a droplet running east for 190 steps of up
+		// to 2 texels could otherwise leave it entirely and read and write outside the image.
+		pos.x = mod(pos.x, float(params.width));
 
 		if (pos.y < 1.0 || pos.y > float(params.height_px) - 2.0) { break; }
 

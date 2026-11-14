@@ -280,14 +280,14 @@ const VEIN_WIDTH := 0.035
 ## Metres between ore deposit sites. Deposits are discrete and worth travelling
 ## to; this is the distance that decides whether prospecting is a journey or a
 ## formality.
-const DEPOSIT_SPACING_M := 1400.0
+const DEPOSIT_SPACING_M := 500.0
 ## Deposit radius, in the units Spots3D wants - which are NOT a plain sphere
 ## radius in metres, whatever the port name suggests. Measured against the
 ## generated buffer rather than derived: at 210 against a 1400 cell the field
 ## was empty (0 of 32768 samples, where a sphere model predicts ~460), and at
 ## 600 it filled 7%. Tuned by measurement, and the deposit spacing below is the
 ## number that actually controls how far apart deposits feel.
-const DEPOSIT_RADIUS_M := 600.0
+const DEPOSIT_RADIUS_M := 250.0
 const DEPOSIT_JITTER := 0.85
 ## How far each ore's region window is widened past its 1/n share, so sites
 ## carry two or three ores stacked by depth instead of exactly one.
@@ -362,6 +362,15 @@ static var _last_ridge: Array = []
 ## erosion masks were introduced to remove.
 static var _last_rocky: Array = []
 static var _last_slope: Array = []
+## Strata beds as a 0..1 band (1 = the hard bed, STRATA_A), on ABSOLUTE radius with a slow warp: real beds are laid
+## down level and cut by the landform, so a hillside shows them as contour stripes and a cliff as horizontal ledges.
+## Shared by the shape (ledges) and the materials (stripes), built once per graph.
+static var _strata_soft: Array = []
+## The rock relief (crags, rock, grain) added on top of the eroded map, in voxels.
+static var _last_relief: Array = []
+## The overhang term (_overhang_amount), cached per graph.
+static var _last_overhang: Array = []
+static var _strata_band: Array = []
 
 ## `voxel_scale` is passed in rather than read from Planet.VOXEL_SCALE - see
 ## the circular-preload note above.
@@ -380,38 +389,40 @@ static var _last_slope: Array = []
 ## drift half a texel and rotate every mask off its own terrain is not worth the
 ## few microseconds it might save. Going through the same node guarantees the
 ## mask lands on the landform it describes.
+##
+## SAMPLED ON THE NOMINAL SPHERE, not at the voxel. The node has an early-out: more than 1.2 x its image range
+## (here ~2 m) from its radius it skips the image and returns the plain distance, so fed the real voxel position the
+## difference below was 0 everywhere except a 2 m shell around the nominal radius. Found 2026-11-09: every mask
+## (slope, deposition, talus, wear) read 0 over nearly the whole planet - no cliff rock, no dust rules, no talus.
+## The voxel's direction is put on a sphere of MASK_SAMPLE_R instead (same direction, so the same map texel).
+## `radius` is kept in the signature for the callers; the sample radius no longer depends on it.
+const MASK_SAMPLE_R := 1000.0
+
 static func _sample_mask(f: VoxelGraphFunction, x: int, y: int, z: int,
 		image: Image, radius: float, pos: Vector2) -> Array:
 	if image == null:
 		return []
-	# Measured 2026-11-05 (scripts/dev/mask_probe.gd): sphere - heightmap is NOT direction-only. It is the image
-	# value only near |p| = radius and drifts off it with altitude, so a mask sampled at the real ground (hundreds
-	# of metres above or below the nominal radius on a 20 km world) read wrong - the terraces built on it moved
-	# nothing at all. With `mask_on_shell` the lookup is fed the direction projected onto the radius-shell, which
-	# makes the value exactly img(direction) at any altitude. Off in the legacy recipe, which reproduces the
-	# pre-fix generator for the hash test.
-	if _r != null and _r.mask_on_shell:
-		var sh := _shell_xyz(f, x, y, z, radius)
-		x = sh[0]
-		y = sh[1]
-		z = sh[2]
+	return sample_mask_on_sphere(f, x, y, z, image, pos)
+
+## Shared with the scatter placement graphs (ScatterEngine, BoulderScatter): mask value 0..1 at the direction of
+## (x, y, z), through the same node the terrain height uses (SphereUV projection).
+static func sample_mask_on_sphere(f: VoxelGraphFunction, x: int, y: int, z: int, image: Image,
+		pos: Vector2) -> Array:
+	var nn := f.create_node(VoxelGraphFunction.NODE_NORMALIZE_3D, pos + Vector2(-160, 0))
+	f.add_connection(x, 0, nn, 0)
+	f.add_connection(y, 0, nn, 1)
+	f.add_connection(z, 0, nn, 2)
+	var rr := _const(f, MASK_SAMPLE_R, pos + Vector2(-160, 120))
 	var hm := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE_HEIGHTMAP, pos)
 	f.set_node_param(hm, 0, image)
-	f.set_node_param(hm, 1, radius)
+	f.set_node_param(hm, 1, MASK_SAMPLE_R)
 	f.set_node_param(hm, 2, 1.0)
-	f.add_connection(x, 0, hm, 0)
-	f.add_connection(y, 0, hm, 1)
-	f.add_connection(z, 0, hm, 2)
-
 	var sp := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE, pos + Vector2(0, 60))
-	# Radius is an INPUT PORT on this node, not a parameter - unlike
-	# SDF_SPHERE_HEIGHTMAP above, where it is a parameter.
-	var r := _const(f, radius, pos + Vector2(-80, 120))
-	f.add_connection(r[0], r[1], sp, 3)
-	f.add_connection(x, 0, sp, 0)
-	f.add_connection(y, 0, sp, 1)
-	f.add_connection(z, 0, sp, 2)
-
+	f.add_connection(rr[0], rr[1], sp, 3)
+	for i in 3:
+		var c := _mul(f, [nn, i], rr, pos + Vector2(-80, i * 40))
+		f.add_connection(c[0], c[1], hm, i)
+		f.add_connection(c[0], c[1], sp, i)
 	return _clamp01(f, _sub(f, [sp, 0], [hm, 0], pos + Vector2(90, 30)),
 		pos + Vector2(160, 30))
 
@@ -456,6 +467,10 @@ static func build(body: CelestialBody, voxel_scale: float,
 	_last_spire_mask = []
 	var g := VoxelGeneratorGraph.new()
 	var f: VoxelGraphFunction = g.get_main_function()
+	_strata_soft = []
+	_strata_band = []
+	_last_relief = []
+	_last_overhang = []
 
 	var x := f.create_node(VoxelGraphFunction.NODE_INPUT_X, Vector2(0, 0))
 	var y := f.create_node(VoxelGraphFunction.NODE_INPUT_Y, Vector2(0, 80))
@@ -487,8 +502,12 @@ static func build(body: CelestialBody, voxel_scale: float,
 	if sdf.is_empty():
 		return null
 
+	# the ground before anything is hollowed out: materials measure depth from this, so cave and tube walls are the
+	# rock at that depth (bedrock, strata) rather than topsoil wrapped around every hole
+	var ground_sdf := sdf
 	if caves:
 		sdf = _carve_caves(f, body, x, y, z, sdf, profile)
+	sdf = _carve_lava_tubes(f, body, x, y, z, norm, profile, sdf, masks)
 
 	var out := f.create_node(VoxelGraphFunction.NODE_OUTPUT_SDF, Vector2(1100, 80))
 	f.add_connection(sdf[0], sdf[1], out, 0)
@@ -502,7 +521,7 @@ static func build(body: CelestialBody, voxel_scale: float,
 	if cliff_rock and not ridge.is_empty():
 		cliff = _build_slope_mask(f, body, x, y, z, norm, profile, ridge)
 
-	_build_materials(f, body, norm, sdf, profile, cliff, x, y, z)
+	_build_materials(f, body, norm, ground_sdf, profile, cliff, x, y, z, masks, eroded)
 
 	var result: Dictionary = g.compile()
 	if not result.get("success", false):
@@ -811,8 +830,11 @@ static func _build_eroded_shape(f: VoxelGraphFunction, body: CelestialBody,
 	# --- W2 slope + altitude erosion: one multiplier for the outcrop bands ---------------------------------
 	_detail_mult = _detail_multiplier(f, slope01, h01, Vector2(1300, 3200))
 
-	sdf = _sub(f, sdf, _build_rock_relief(f, body, norm, profile, rocky, slope01,
-		Vector2(400, 1100)), Vector2(1100, 1200))
+	var rock_relief := _build_rock_relief(f, body, norm, profile, rocky, slope01, Vector2(400, 1100))
+	_last_relief = rock_relief
+	sdf = _sub(f, sdf, rock_relief, Vector2(1100, 1200))
+	sdf = _sub(f, sdf, _build_ledges(f, body, x, y, z, norm, profile, slope01, Vector2(400, 2300)),
+		Vector2(1100, 2300))
 
 	# --- meadows: broad swells, and craters as the scattered detail ----------
 	#
@@ -1441,6 +1463,19 @@ static func _dust_field(f: VoxelGraphFunction, body: CelestialBody,
 static func _carve_overhangs(f: VoxelGraphFunction, body: CelestialBody,
 		x: int, y: int, z: int, norm: int, profile: PlanetProfile,
 		sdf: Array, masks: Dictionary, rocky: Array = []) -> Array:
+	var amount := _overhang_amount(f, body, x, y, z, norm, profile, masks, rocky)
+	if amount.is_empty():
+		return sdf
+	return _add(f, sdf, amount, Vector2(1000, 2000))
+
+## The overhang term alone (added to the SDF, so it moves the surface radially by exactly -amount): built before the
+## strata so they can take it back out of the radius, like the rock relief. Cached per graph.
+static func _overhang_amount(f: VoxelGraphFunction, body: CelestialBody,
+		x: int, y: int, z: int, norm: int, profile: PlanetProfile,
+		masks: Dictionary, rocky: Array = []) -> Array:
+	if not _last_overhang.is_empty():
+		return _last_overhang
+	var sdf: Array = []
 	# Feature size of the undercuts, in voxels. Around a player height: big
 	# enough to shelter under, small enough that it reads as rock rather than
 	# landform.
@@ -1476,7 +1511,8 @@ static func _carve_overhangs(f: VoxelGraphFunction, body: CelestialBody,
 	var amount := _mul(f,
 		_mul(f, n, _const(f, OVERHANG_VOXELS, Vector2(620, 2000)), Vector2(700, 2000)),
 		gate, Vector2(800, 2020))
-	return _add(f, sdf, amount, Vector2(1000, 2000))
+	_last_overhang = amount
+	return amount
 
 ## Sphere SDF with the height field subtracted from it.
 static func _build_sphere_sdf(f: VoxelGraphFunction, body: CelestialBody,
@@ -1898,6 +1934,98 @@ static func _carve_caves(f: VoxelGraphFunction, body: CelestialBody,
 	f.add_connection(cave[0], cave[1], out, 1)
 	return [out, 0]
 
+# --- lava tubes (stage 4b) ----------------------------------------------------------------------------------------
+## Drained lava tubes: a lava flow crusts over, the molten core drains, a tunnel is left under a roof of solid basalt.
+## Built as an SDF tunnel along the zero line of a slow noise on the surface direction (so it meanders like a flow
+## path), at a fixed depth below the ground, in segments (tubes end where the flow did). Where the roof is thin it
+## falls in: skylight pits and collapse trenches, in chains along the tube. Only inside the volcanic trait's region.
+## Sizes from lunar and terrestrial tubes scaled to a player: 10-14 m wide, 7-9 m high, roof 6-10 m.
+const TUBE_PATH_M := 700.0          # meander wavelength of the path field
+const TUBE_SEGMENT_M := 1800.0      # length scale of tube segments
+const TUBE_HALF_WIDTH_M := 6.0
+const TUBE_HALF_HEIGHT_M := 4.0
+const TUBE_DEPTH_M := 13.0          # centre below the ground
+const TUBE_SKY_M := 140.0           # spacing scale of roof collapses
+## The path is the edge network of a warped Voronoi field (F2 - F1 is ~2x the distance to the nearest edge, so the
+## tunnel keeps one width; a noise zero line gave 1.5-36 m because its slope wanders). Edges branch and rejoin like
+## real tube systems. Cell size in metres; lateral metres per unit of (value + 1) / 2, from scripts/dev/tube_probe.gd.
+const TUBE_EDGE_M_PER_UNIT := 930.0
+## Tests switch the tubes off to see what else in the ground is hollow (scripts/dev/tube_probe.gd).
+static var tubes_enabled := true
+
+static func _carve_lava_tubes(f: VoxelGraphFunction, body: CelestialBody, x: int, y: int, z: int, norm: int,
+		profile: PlanetProfile, sdf: Array, masks: Dictionary) -> Array:
+	var land := TraitMixer.landform(body)
+	if not tubes_enabled or float(land.lava_tubes) <= 0.0 or profile.rock_amplitude <= 0.0:
+		return sdf
+	var P := Vector2(400, 5200)
+	var freq_per_m: float = profile.rock_freq * PlanetProfile.ROCK_FEATURE_M
+	var vox_per_m: float = profile.rock_amplitude / PlanetProfile.ROCK_AMPLITUDE_M
+	# where: the volcanic trait's region (or everywhere if it is the dominant trait)
+	var region: Array = []
+	var mix := TraitMixer.of(body)
+	for i in mix.size():
+		var t: PlanetTrait = mix[i].trait
+		if t.lava_tubes > 0.0:
+			if i > 0:
+				region = _trait_region(f, body, t, float(mix[i].weight), norm, masks, x, y, z, P + Vector2(0, 600))
+			break
+	var path := _cellular_edge_on(f, norm, body.seed + 701, freq_per_m / TUBE_PATH_M, P)
+	var seg := _noise_on(f, norm, body.seed + 702, freq_per_m / TUBE_SEGMENT_M, P + Vector2(0, 120))
+	var sky := _noise_on(f, norm, body.seed + 703, freq_per_m / TUBE_SKY_M, P + Vector2(0, 240), FRACTAL_FBM, 2)
+	if path.is_empty() or seg.is_empty() or sky.is_empty():
+		return sdf
+	var hw := TUBE_HALF_WIDTH_M * vox_per_m
+	var hh := TUBE_HALF_HEIGHT_M * vox_per_m
+	# lateral distance from the path line, in voxels
+	var lat := _mul(f, _add(f, path, _const(f, 1.0, P), P), _const(f, 0.5 * TUBE_EDGE_M_PER_UNIT * vox_per_m, P),
+		P + Vector2(200, 0))
+	var depth := _mul(f, sdf, _const(f, -1.0, P), P + Vector2(200, 60))
+	# ellipse cross-section: sqrt((lat/hw)^2 + ((depth - dc)/hh)^2) - 1, scaled back to voxels
+	var ex := _mul(f, lat, _const(f, 1.0 / hw, P), P)
+	var ey := _mul(f, _sub(f, depth, _const(f, TUBE_DEPTH_M * vox_per_m, P), P), _const(f, 1.0 / hh, P), P)
+	var e2 := _add(f, _mul(f, ex, ex, P), _mul(f, ey, ey, P), P)
+	var en := f.create_node(VoxelGraphFunction.NODE_SQRT, P + Vector2(400, 0))
+	f.add_connection(e2[0], e2[1], en, 0)
+	var tube := _mul(f, _sub(f, [en, 0], _const(f, 1.0, P), P), _const(f, minf(hw, hh), P), P + Vector2(460, 0))
+	# roof collapses: a shaft from the tube up to the ground where the collapse field peaks, as wide as the tube there
+	var s01 := _smoothstep(f, _to01(f, sky, P), 0.62, 0.69, P + Vector2(200, 240))
+	var r_sky := _sub(f, _mul(f, s01, _const(f, hw * 1.2, P), P), _const(f, 1.5, P), P)
+	var shaft := _bin(f, VoxelGraphFunction.NODE_MAX, _sub(f, lat, r_sky, P),
+		_sub(f, depth, _const(f, TUBE_DEPTH_M * vox_per_m, P), P), P + Vector2(460, 240))
+	var cave := _bin(f, VoxelGraphFunction.NODE_MIN, tube, shaft, P + Vector2(560, 120))
+	# segments (and region): outside them, push the cave field far positive
+	var gate := _smoothstep(f, _to01(f, seg, P), 0.45, 0.55, P + Vector2(200, 120))
+	if not region.is_empty():
+		gate = _mul(f, gate, region, P)
+	var lift := _mul(f, _sub(f, _const(f, 1.0, P), gate, P), _const(f, 60.0, P), P)
+	cave = _add(f, cave, lift, P + Vector2(640, 120))
+	var out := f.create_node(VoxelGraphFunction.NODE_SDF_SMOOTH_SUBTRACT, P + Vector2(740, 0))
+	f.set_node_param(out, 0, 1.5)
+	f.add_connection(sdf[0], sdf[1], out, 0)
+	f.add_connection(cave[0], cave[1], out, 1)
+	return [out, 0]
+
+## Warped cellular F2 - F1 on the surface direction: ~ -1 on a Voronoi edge, rising away from it.
+static func _cellular_edge_on(f: VoxelGraphFunction, norm: int, seed_value: int, frequency: float, pos: Vector2) -> Array:
+	var noise: Resource = ClassDB.instantiate("ZN_FastNoiseLite")
+	if noise == null:
+		return []
+	noise.set("seed", seed_value)
+	noise.set("period", 1.0 / maxf(frequency, 0.000001))
+	noise.set("noise_type", 2)                 # TYPE_CELLULAR
+	noise.set("fractal_type", 0)
+	noise.set("cellular_distance_function", 0) # EUCLIDEAN
+	noise.set("cellular_return_type", 4)       # RETURN_DISTANCE_2_SUB
+	noise.set("cellular_jitter", 1.0)
+	noise.set("warp_noise", _zn_warp(seed_value + 1, frequency * 0.9, 1, 0.14))
+	var n := f.create_node(VoxelGraphFunction.NODE_FAST_NOISE_3D, pos)
+	f.set_node_param(n, 0, noise)
+	f.add_connection(norm, 0, n, 0)
+	f.add_connection(norm, 1, n, 1)
+	f.add_connection(norm, 2, n, 2)
+	return [n, 0]
+
 ## Noise sampled on raw world coordinates rather than the sphere direction.
 static func _noise_xyz(f: VoxelGraphFunction, x: int, y: int, z: int,
 		seed_value: int, frequency: float, pos: Vector2) -> Array:
@@ -2090,8 +2218,15 @@ static func _biome_weight(f: VoxelGraphFunction, temp: Array, rough: Array,
 ## live in a graph at all.
 static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 		norm: int, sdf: Array, profile: PlanetProfile, cliff: Array,
-		x: int, y: int, z: int) -> void:
+		x: int, y: int, z: int, masks: Dictionary = {}, eroded: Image = null) -> void:
 	var depth := _mul(f, sdf, _const(f, -1.0, Vector2(900, 560)), Vector2(950, 500))
+	# A planet with traits (reports/AAA voxel terrain fidelity.md) gets its ground from trait rules; the biome path
+	# below stays for bodies that still use hand-authored biomes.
+	var mix := TraitMixer.of(body)
+	if not mix.is_empty():
+		_build_trait_materials(f, body, mix, norm, depth, profile, cliff, x, y, z, masks, eroded)
+		_build_ores(f, body, norm, depth, profile, x, y, z)
+		return
 
 	# Bedrock takes over below the topsoil band; biome ground fades out with it.
 	var bed := _clamp01(f,
@@ -2188,6 +2323,12 @@ static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 				_cutoff(f, w, Vector2(1540, row)), Vector2(1600, row))
 			row += 300.0
 
+	_build_ores(f, body, norm, depth, profile, x, y, z)
+
+## Ore deposits: one weight layer each (shared by the biome and the trait material paths).
+static func _build_ores(f: VoxelGraphFunction, body: CelestialBody, norm: int, depth: Array,
+		profile: PlanetProfile, x: int, y: int, z: int) -> void:
+	var row := 1720.0
 	# --- ore deposits: one weight layer each -------------------------------
 	#
 	# Modelled on Space Engineers rather than on veins, because the vein model
@@ -2236,7 +2377,6 @@ static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 	if site.is_empty():
 		return
 
-	row = 1720.0
 	var n_ores := ores.size()
 	for i in n_ores:
 		var ore = ores[i]
@@ -2258,6 +2398,215 @@ static func _build_materials(f: VoxelGraphFunction, body: CelestialBody,
 			in_depth, Vector2(1320, row))
 		_weight_out(f, ore.material_index, w, Vector2(1600, row))
 		row += 300.0
+
+## Ground materials from the planet's TRAITS (stage 3 of reports/AAA voxel terrain fidelity.md). Every rule reads a
+## physical signal, so each material sits where the process that makes it would put it:
+##   cliff rock (11)      steep faces: the baked slope mask (or the procedural cliff mask)
+##   fine surface (0)     where fines settle: the deposition record ("dust")
+##   alternate (8)        open, wind- or impact-worked ground between
+##   scree (10)           talus aprons below slopes: the thermal-erosion talus mask
+##   secondary traits     (9, 14) claim regions by their spatial mode, sized by their weight, replacing the ground
+##   strata (13) / bedrock (12)  below the topsoil: warped depth bands alternating, so a dig shows layers
+## Slot roles are filled by PaletteBuilder from the same mix, so generator and palette always agree.
+## Bed thickness (one hard + one soft bed per cycle). Thick enough that a hard bed (34% of a cycle) stays several
+## voxels tall on a steep face at LOD 1-2 (thinner beds aliased into blotches at 100 m); the fine layering inside
+## them is drawn per pixel by the terrain shader (strata_lamination).
+const STRATA_MIN_M := 4.0
+const STRATA_MAX_M := 9.0
+## Ledges: the hard bed stands out by up to this much (radially) where the face is steep, times the planet's ledge
+## strength (traits). Capped so the field stays monotonic along the radius (no slivers): see _build_ledges.
+const LEDGE_AMPLITUDE_M := 1.4
+## Faces from about 29 degrees up carry ledges, full from about 36 (slope01 is 12..40 degrees -> 0..1).
+const LEDGE_SLOPE_START := 0.6
+const LEDGE_SLOPE_FULL := 0.85
+
+## The strata beds for this graph, built once and shared: [step (0..1 sawtooth: a steep riser at the base of each
+## hard bed, then a long soft slope back), hard (0..1, the hard bed: STRATA_A)].
+##
+## Level beds on ABSOLUTE radius, so they are cut by the landform like real ones. Each cycle is one hard bed (the
+## lower STRATA_HARD_SHARE of it) over softer rock. The cycle length wanders between beds (a second, incommensurate
+## term in the phase) and is warped slowly across the planet, so neither the stripes nor the benches repeat evenly.
+## First version (2026-11-09) was a sine at one thickness with 50/50 hard/soft: it read as zebra stripes and an even
+## ripple on every slope.
+const STRATA_HARD_SHARE := 0.34
+const STRATA_RISER_SHARE := 0.25
+
+## The bed function's numbers, shared with the terrain shader (Planet sets them as uniforms) so the shader draws the
+## beds per pixel exactly where the generator puts the ledges and the underground strata:
+##   t = (r - base) / period;  t += WOB_AMP * sin(TAU * WOB_RATIO * t + phase);  fr = fract(t)
+##   hard bed: fr in [0, STRATA_HARD_SHARE)
+## r is the distance from the planet's centre in metres. Level beds, no warp: the shader must reproduce it exactly.
+const STRATA_WOB_RATIO := 0.381966
+const STRATA_WOB_AMP := 0.35 / (TAU * 0.381966)      # +-35% bed-to-bed thickness
+
+static func strata_params(body: CelestialBody, profile: PlanetProfile) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([body.seed, "strata"])
+	var period_m := rng.randf_range(STRATA_MIN_M, STRATA_MAX_M) * 2.0     # one hard + one soft bed
+	var phase := rng.randf() * TAU
+	var vox_per_m: float = profile.rock_amplitude / PlanetProfile.ROCK_AMPLITUDE_M if profile.rock_amplitude > 0.0 else 1.0
+	var period_vox := period_m * vox_per_m
+	return {"period_m": period_m, "period_vox": period_vox, "phase": phase, "vox_per_m": vox_per_m,
+		"base_vox": floorf(body.radius / period_vox) * period_vox}
+
+static func _strata(f: VoxelGraphFunction, body: CelestialBody, x: int, y: int, z: int, norm: int,
+		profile: PlanetProfile) -> Array:
+	if not _strata_band.is_empty():
+		return [_strata_soft, _strata_band]
+	var P := Vector2(400, 2500)
+	var sp_ := strata_params(body, profile)
+	var period_vox: float = sp_.period_vox
+	var sp := f.create_node(VoxelGraphFunction.NODE_SDF_SPHERE, P)
+	var r0 := _const(f, 0.0, P)
+	f.add_connection(r0[0], r0[1], sp, 3)
+	f.add_connection(x, 0, sp, 0)
+	f.add_connection(y, 0, sp, 1)
+	f.add_connection(z, 0, sp, 2)
+	# t in cycles near 0 (precision), plus the bed-to-bed thickness wobble
+	var t := _mul(f, _sub(f, [sp, 0], _const(f, float(sp_.base_vox), P), P), _const(f, 1.0 / period_vox, P), P)
+	var wob := f.create_node(VoxelGraphFunction.NODE_SIN, P + Vector2(200, 60))
+	var wob_in := _add(f, _mul(f, t, _const(f, TAU * STRATA_WOB_RATIO, P), P), _const(f, float(sp_.phase), P), P)
+	f.add_connection(wob_in[0], wob_in[1], wob, 0)
+	t = _add(f, t, _mul(f, [wob, 0], _const(f, STRATA_WOB_AMP, P), P), P)
+	# fract(t) = t - floor(t); STEPIFY rounds to nearest, so floor(t) = stepify(t - 0.5, 1)
+	var fl := _stepify(f, _sub(f, t, _const(f, 0.5, P), P), _const(f, 1.0, P), P + Vector2(300, 0))
+	var fr := _sub(f, t, fl, P + Vector2(360, 0))
+	var rise := _smoothstep(f, fr, 0.0, STRATA_RISER_SHARE, P + Vector2(420, 0))
+	var fall := _smoothstep(f, fr, STRATA_RISER_SHARE, 1.0, P + Vector2(420, 60))
+	_strata_soft = _sub(f, rise, fall, P + Vector2(480, 0))
+	_strata_band = _mul(f, _smoothstep(f, fr, 0.0, 0.06, P + Vector2(420, 120)),
+		_sub(f, _const(f, 1.0, P), _smoothstep(f, fr, STRATA_HARD_SHARE - 0.06, STRATA_HARD_SHARE + 0.04, P), P),
+		P + Vector2(480, 120))
+	return [_strata_soft, _strata_band]
+
+## Hard beds standing out of steep faces as benches (stage 4b, "strata ledges + cliff sets"): the sawtooth from
+## _strata, a steep riser at each hard bed and a long soft slope above it, as a radial offset. On a face of slope a
+## that moves the wall sideways by offset / tan(a), so steeper faces get shallower ledges, as erosion does.
+## The offset's derivative along the radius must stay under 1 or the field folds into floating slivers: the riser
+## climbs AMP over RISER_SHARE of a cycle with smoothstep's 1.5x peak slope, so AMP <= 0.8 * share * period / 1.5.
+static func _build_ledges(f: VoxelGraphFunction, body: CelestialBody, x: int, y: int, z: int, norm: int,
+		profile: PlanetProfile, slope01: Array, pos: Vector2) -> Array:
+	var strength: float = float(TraitMixer.landform(body).ledges)
+	if strength <= 0.0 or slope01.is_empty():
+		return _const(f, 0.0, pos)
+	var beds := _strata(f, body, x, y, z, norm, profile)
+	var vox_per_m: float = profile.rock_amplitude / PlanetProfile.ROCK_AMPLITUDE_M if profile.rock_amplitude > 0.0 else 1.0
+	var period: float = float(strata_params(body, profile).period_m) * (1.0 - 0.35)    # thinnest cycle after wobble
+	var amp := minf(LEDGE_AMPLITUDE_M * strength, 0.8 * STRATA_RISER_SHARE * period / 1.5) * vox_per_m
+	var gate := _smoothstep(f, slope01, LEDGE_SLOPE_START, LEDGE_SLOPE_FULL, pos)
+	return _mul(f, _mul(f, beds[0], _const(f, amp, pos), pos), gate, pos + Vector2(100, 0))
+
+static func _build_trait_materials(f: VoxelGraphFunction, body: CelestialBody, mix: Array, norm: int,
+		depth: Array, profile: PlanetProfile, cliff: Array, x: int, y: int, z: int,
+		masks: Dictionary, eroded: Image) -> void:
+	var P := Vector2(900, 2600)
+	var bed := _clamp01(f,
+		_mul(f, _sub(f, depth, _const(f, TOPSOIL_DEPTH, P), P), _const(f, 1.0 / BEDROCK_FADE, P), P), P)
+	var surface := _sub(f, _const(f, 1.0, P), bed, P)
+
+	# --- steepness -> cliff rock
+	var slope01 := _build_landform_slope(f, body, x, y, z, profile, eroded, masks, P + Vector2(0, 200))
+	var cliffw: Array = []
+	if not slope01.is_empty():
+		cliffw = _smoothstep(f, slope01, 0.5, 0.92, P + Vector2(300, 200))
+	elif not cliff.is_empty():
+		cliffw = cliff
+	var ground := surface
+	var cliff_strata: Array = []
+	if not cliffw.is_empty():
+		# one cliff rock: the beds on exposed faces are drawn per pixel by the terrain shader (strata_* uniforms),
+		# from the same function as the ledges. As voxel weights they aliased into dashes at LOD 1-2.
+		var cliff_surface := _mul(f, cliffw, surface, P)
+		_weight_out(f, VoxelMaterials.CLIFF_ROCK, _cutoff(f, cliff_surface, P), P + Vector2(600, 200))
+		ground = _mul(f, surface, _sub(f, _const(f, 1.0, P), cliffw, P), P)
+
+	# --- secondary traits claim regions (replace mode), each into its own slot
+	var free := _const(f, 1.0, P)
+	var slots := [PaletteBuilder.SECONDARY_1, PaletteBuilder.SECONDARY_2]
+	var si := 0
+	for i in range(1, mix.size()):
+		if si >= slots.size():
+			break
+		var t: PlanetTrait = mix[i].trait
+		if t.material_mode != "replace" or (t.material("regional") == null and t.material("surface") == null):
+			continue
+		var region := _trait_region(f, body, t, float(mix[i].weight), norm, masks, x, y, z, P + Vector2(0, 600 + si * 400))
+		if region.is_empty():
+			continue
+		_weight_out(f, slots[si], _cutoff(f, _mul(f, ground, region, P), P), P + Vector2(600, 600 + si * 400))
+		free = _mul(f, free, _sub(f, _const(f, 1.0, P), region, P), P)
+		si += 1
+	var base := _mul(f, ground, free, P + Vector2(300, 1400))
+
+	# --- the dominant trait's ground: fine where fines settle, scree on talus, worked ground between
+	var dust := _dust_field(f, body, x, y, z, masks, P + Vector2(0, 1500))
+	var talus: Array = []
+	var tal_img: Image = masks.get("talus")
+	if tal_img != null:
+		var tm := _sample_mask(f, x, y, z, tal_img, body.radius, P + Vector2(0, 1700))
+		if not tm.is_empty():
+			talus = _smoothstep(f, tm, 0.12, 0.45, P + Vector2(200, 1700))
+	if dust.is_empty():
+		# no erosion record: noise decides, at hundred-metre patches
+		var n := _noise_on(f, norm, body.seed + 520, profile.continent_freq * 6.0, P + Vector2(0, 1500))
+		dust = _smoothstep(f, _to01(f, n, P), 0.35, 0.65, P) if not n.is_empty() else _const(f, 0.6, P)
+	var not_dust := _sub(f, _const(f, 1.0, P), dust, P)
+	_weight_out(f, VoxelMaterials.STONE, _cutoff(f, _mul(f, base, dust, P), P), P + Vector2(600, 1500))
+	if talus.is_empty():
+		_weight_out(f, PaletteBuilder.SURFACE_ALT, _cutoff(f, _mul(f, base, not_dust, P), P), P + Vector2(600, 1600))
+	else:
+		var open := _mul(f, not_dust, _sub(f, _const(f, 1.0, P), talus, P), P)
+		_weight_out(f, PaletteBuilder.SURFACE_ALT, _cutoff(f, _mul(f, base, open, P), P), P + Vector2(600, 1600))
+		_weight_out(f, PaletteBuilder.SCREE, _cutoff(f, _mul(f, base, _mul(f, not_dust, talus, P), P), P), P + Vector2(600, 1700))
+
+	# --- below the topsoil: level beds (absolute radius, slowly warped) alternating hard / soft, so a dig shows layers
+	# and a cut through a ledge shows the bed the ledge is made of
+	var band: Array = _strata(f, body, x, y, z, norm, profile)[1]
+	var strata_w := _mul(f, bed, band, P)
+	if not cliff_strata.is_empty():
+		strata_w = _add(f, strata_w, cliff_strata, P)
+	_weight_out(f, PaletteBuilder.STRATA_A, _cutoff(f, strata_w, P), P + Vector2(600, 1900))
+	_weight_out(f, VoxelMaterials.BEDROCK,
+		_cutoff(f, _mul(f, bed, _sub(f, _const(f, 1.0, P), band, P), P), P), P + Vector2(600, 2000))
+
+## Where a secondary trait shows, 0..1, by its spatial mode. Coverage follows its weight (a 0.3 trait claims roughly a
+## third of the open ground), with soft edges so the material height blend shapes the border.
+static func _trait_region(f: VoxelGraphFunction, body: CelestialBody, t: PlanetTrait, weight: float, norm: int,
+		masks: Dictionary, x: int, y: int, z: int, pos: Vector2) -> Array:
+	var cov := clampf(weight * 1.1, 0.08, 0.6)
+	var seed_t := body.seed + 800 + String(t.id).hash() % 1000
+	var cut := 1.0 - cov
+	var patches := _noise_on(f, norm, seed_t, 9.0, pos, FRACTAL_FBM, 3)
+	if patches.is_empty():
+		return []
+	var p01 := _to01(f, patches, pos)
+	# crater-floor traits sit in the real crater floors from the bake (CraterField), patchy within each floor
+	if t.spatial == "crater_floor" and masks.get("crater_floor") != null:
+		var floor_m := _sample_mask(f, x, y, z, masks.get("crater_floor"), body.radius, pos + Vector2(0, 120))
+		if not floor_m.is_empty():
+			p01 = _mul(f, floor_m, _add(f, _const(f, 0.6, pos), _mul(f, p01, _const(f, 0.4, pos), pos), pos), pos)
+			return _smoothstep(f, p01, 0.45, 0.6, pos + Vector2(200, 0))
+	match t.spatial:
+		"lowland", "crater_floor", "cold_trap":
+			# where fines and ice collect: the deposition record, broken up by patches
+			var dust := _dust_field(f, body, x, y, z, masks, pos + Vector2(0, 120))
+			if not dust.is_empty():
+				p01 = _mul(f, _add(f, p01, dust, pos), _const(f, 0.5, pos), pos)
+		"highland":
+			var wear := _sample_mask(f, x, y, z, masks.get("wear"), body.radius, pos + Vector2(0, 120))
+			if not wear.is_empty():
+				p01 = _mul(f, _add(f, p01, _smoothstep(f, wear, 0.05, 0.4, pos), pos), _const(f, 0.5, pos), pos)
+		"polar":
+			var ny := f.create_node(VoxelGraphFunction.NODE_ABS, pos + Vector2(0, 200))
+			f.add_connection(norm, 1, ny, 0)
+			p01 = _mul(f, _add(f, p01, [ny, 0], pos), _const(f, 0.5, pos), pos)
+		"fault":
+			# narrow ridged lines: 1 - |noise| sharpened
+			var lines := _noise_on(f, norm, seed_t + 7, 14.0, pos + Vector2(0, 200))
+			if not lines.is_empty():
+				p01 = _sub(f, _const(f, 1.0, pos), _abs(f, lines, pos), pos)
+				cut = 1.0 - cov * 0.5
+	return _smoothstep(f, p01, cut - 0.06, cut + 0.06, pos + Vector2(200, 0))
 
 ## Single-channel float copy of a `PlanetHeightmap`'s image.
 ##

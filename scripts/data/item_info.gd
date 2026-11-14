@@ -22,6 +22,7 @@ const INFO := {
 	# production
 	"basic_crafter": ["production", "Hand-fed workbench. Turns ore into the first parts."],
 	"smelter": ["production", "Melts ore into ingots. Needs a steady feed of ore."],
+	"oxygen_post": ["production", "Plug your suit in with a hose (E) and breathe. Works within 20 m of the post."],
 	"constructor": ["production", "Builds parts from ingots - ammo, casings, ship parts."],
 	"deposit_drill": ["production", "Bores into the ground under it and collects the ore it cuts. Place it over a deposit."],
 	"crusher": ["production", "Crushes stone into gravel for concrete."],
@@ -59,6 +60,7 @@ const INFO := {
 	"landing_gear": ["vehicles", "Sprung leg for landing. Grips hard when parked; G folds it away."],
 	"ship_thruster": ["vehicles", "Main thruster. Pushes along its nozzle."],
 	"rcs": ["vehicles", "Small thruster that pushes any way it is asked to. Fine control."],
+	"rocket_pod": ["defense", "160 unguided rockets. Mount it under the ship; fire with LMB, aim with the pipper."],
 	"ship_gyroscope": ["vehicles", "Turns the ship."],
 	"ship_hull": ["vehicles", "2 m armour block."],
 	"hull_small": ["vehicles", "0.5 m armour block."],

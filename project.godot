@@ -32,6 +32,7 @@ PowerNetwork="*res://scripts/power_network.gd"
 GameSettings="*res://scripts/settings.gd"
 UiSound="*res://scripts/ui/kit/ui_sound.gd"
 WorldFx="*res://scripts/world_fx.gd"
+DevConsole="*res://scripts/dev/dev_console.gd"
 
 [display]
 

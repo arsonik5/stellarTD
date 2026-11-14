@@ -4,6 +4,13 @@ Locked in 2026-11-04 after Michael's call: "everything feels like a Unity MVP fr
 it, make it a cohesive experience ... lock it in early so later we don't get fuzzy". Everything built from now on
 follows this file. If something here is wrong, change it here first (with the date and why), then the code.
 
+**Update 2026-11-07 (Michael: the gold/hairline look was "very AI-ish"; wants minimal, modern, glass, Warframe
+elements).** Where this file says gold, hairline boxes, square corners, diamond rule or breadcrumb, the current
+truth is `ui_tokens.gd` + `build_theme.gd`: frosted glass sheets (light translucent fill, faint rim, soft shadow)
+over the blurred world, asymmetric corners (big top-left/bottom-right, near-square the others), ice-blue accent,
+a short accent bar under titles, no diamonds, no breadcrumbs, no explainer sentences. The rest (one system, motion,
+feedback, sound) stands. Console for testing: `` ` `` or `/` opens it (`scripts/dev/dev_console.gd`, `help`).
+
 The iteration log behind these decisions (what was tried, what failed, the screenshots) is `ux-log.md`.
 
 ## 1. The rules that everything else comes from
@@ -172,9 +179,9 @@ Fixed places, so the eye learns them once:
 
 | Where | What |
 |---|---|
-| centre | crosshair dot (dark rim, reads on snow and night sky), gold ticks open on usable things; the interact prompt sits 28 px under it |
+| centre | crosshair dot (dark rim, reads on snow and night sky), gold ticks open on usable things; the interact prompt sits 28 px under it. Flying with weapons: the CCIP pipper (ring + four ticks) where the selected weapon would land |
 | top left | `◆ OBJECTIVE`: current goal, 2 px progress line, `[J] Journal`. Hidden when there is no goal (Warframe's pinned-mission spot) |
-| top right | ship instruments, only while flying |
+| top right | ship instruments, only while flying; WEAPONS list under them when weapons are fitted (selected group marked, count, salvo) |
 | bottom left | SUIT O2: gold caption, the time large (22 px semibold), a 2 px line. LOW orange under 60 s, flashing red EMPTY with what to do, REFILLING in teal |
 | bottom right | held tools `[L] Mining Tool` / `[R] Build Tool`; pickup feed above it ("+3   IRON ORE", counts up, fades 3.5 s) |
 | bottom centre | context hints (section 7) |
@@ -233,8 +240,15 @@ hovered card in full: icon, name, category, what it is for, each input as `have 
 menu and you aim it.
 
 Aiming: the ghost is the building's REAL meshes in a see-through mint hologram (`ModelMeshes.extract`), red where it
-can't go. Pipes show a 0.5 m marker before the first click, then the run. Hints at the bottom: LMB place, R / wheel
-rotate (90 / 15 deg), G grid, B pipe mode, Q menu, RMB done. You keep walking and looking the whole time.
+can't go. Pipes show a 0.5 m marker before the first click (red where nothing may start), then the whole planned
+run as a see-through tube with white arrows the way items will flow; red with the reason in the hints when it can't
+be laid. While a pipe is in the tool every laid pipe shows its flow arrows too. B switches Straight (axis runs, tight
+knees) / Curved (natural path, wide bends). Hints at the bottom: LMB place, R / wheel rotate (90 / 15 deg), G grid,
+B pipe mode, F dismantle, Q menu, RMB done. You keep walking and looking the whole time.
+
+Dismantle (Satisfactory): F with the build tool out. What you look at turns red and the hint says what you get back;
+LMB takes it apart (full cost + what it holds, all or nothing). F / RMB go back to building. Outside build mode F
+is still the helmet lamp.
 Future: a hotbar (1-9) of recent buildings, and a Satisfactory-style "pick the building you look at" key.
 
 ## 10. Feel (scripts/player/first_person_feel.gd)
@@ -252,7 +266,8 @@ roll per stride; step length 1.9 m (3.2 steps/s walking, 5 sprinting: measured 4
 **Tools**: lag the aim (0.55 mm per pixel, capped 4.5 cm, plus a few degrees of yaw/pitch), figure-eight bob in step
 with the camera, lean 3 deg into strafes, lowered sprint carry pose (-12 deg pitch, +22 deg yaw), tiny breathing at
 rest, raise from below over 0.28 s when what you hold changes, and kicks: place (shove forward), scan (buck up),
-deny (small shake - invalid placement), hit, landing, jump. The drill vibrates while cutting.
+deny (small shake - invalid placement), hit, landing, jump. The drill's own motion (wind-up, shove into the face,
+buzz, knock-back per bite) moves only the drill's hand, never the other tool: MiningToolFx. It is a drill: no beams.
 **Framing**: tools at (0.22, -0.21, -0.46), scale 0.95, the left hand mirrored at -0.46 x, each turned 7.5 deg in
 toward the crosshair so you see their sides, not their back ends. A faint chest fill light keeps them readable at
 night; F is a helmet spot lamp.

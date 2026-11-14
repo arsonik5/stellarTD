@@ -157,6 +157,8 @@ static var EROSION_WIDTH_OVERRIDE: int = 0
 ## bare swept rock, and useful as an A/B switch when judging whether the
 ## terrain itself is carrying a shot.
 @export var boulders_enabled: bool = true
+## Pebbles and gravel around the viewer (NearScatter); null when this planet has no near-field lines.
+var near_scatter: NearScatter
 
 @onready var terrain: VoxelLodTerrain = $Terrain
 
@@ -176,6 +178,9 @@ var _eroded_map: Image
 ## unrelated noise fields that used to. Empty when erosion is off or the bake
 ## failed, and every consumer falls back rather than failing.
 var _erosion_masks: Dictionary = {}
+
+## This body's impact craters (CraterField.build), kept for the logs and for landmark placement later.
+var _craters: Dictionary = {}
 
 ## Emitted once the terrain generator is live and the planet can be queried.
 ##
@@ -713,14 +718,11 @@ func _build_surface_material() -> ShaderMaterial:
 	var palette: Dictionary = SurfacePalette.build(body)
 	mat.set_shader_parameter("pal_tint_rough", palette["tint_rough"])
 	mat.set_shader_parameter("pal_extra", palette["extra"])
+	mat.set_shader_parameter("pal_grade", palette["grade"])
+	mat.set_shader_parameter("pal_far", palette["far"])
 	mat.set_shader_parameter("tex_albedo", palette["albedo_array"])
 	mat.set_shader_parameter("tex_normal", palette["normal_array"])
-	# Local radial up for per-pixel slope rock and strata (never world Y). Bodies do not move after _ready here;
-	# a moving body must update this.
-	mat.set_shader_parameter("planet_center", global_position)
-	var ground_biomes: Array = PlanetArchetype.biomes_of(body)
-	if not ground_biomes.is_empty() and ground_biomes[0] != null:
-		mat.set_shader_parameter("dust_layer", (ground_biomes[0] as Biome).stone_material_index)
+	_apply_feature_map(mat)
 	if TerrainLog.enabled:
 		var assigned: Array[String] = []
 		var names: Array = palette["names"]
@@ -736,6 +738,39 @@ func _build_surface_material() -> ShaderMaterial:
 			name, assigned.size(), SurfacePalette.SLOTS, ", ".join(assigned),
 			"  UNTEXTURED: " + ", ".join(missing) if not missing.is_empty() else ""])
 	return mat
+
+## The planet-wide feature map for the terrain shader (stage 4b): the crater "fresh" mask (young ejecta and rays) as
+## an 8-bit mipmapped texture, sampled by direction from the planet's centre. Planets don't move, so the centre and
+## basis are set once here; the voxel engine gives each block its own copy of the material, so later changes would
+## not reach the blocks anyway.
+func _apply_feature_map(mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("planet_center", global_position)
+	mat.set_shader_parameter("planet_basis_inv", global_transform.basis.orthonormalized().inverse())
+	# fine layering inside the strata beds, on planets whose traits lay beds down (ledge strength)
+	var ledges := float(TraitMixer.landform(body).ledges)
+	mat.set_shader_parameter("strata_lamination", clampf(ledges, 0.0, 1.0))
+	if ledges > 0.0 and profile != null:
+		# the beds on cliff faces, per pixel, from the generator's own bed function
+		var sp := GraphGenerator.strata_params(body, profile)
+		var vpm: float = sp.vox_per_m
+		mat.set_shader_parameter("strata_period", float(sp.period_vox) / vpm * VOXEL_SCALE)
+		mat.set_shader_parameter("strata_base", float(sp.base_vox) / vpm * VOXEL_SCALE)
+		mat.set_shader_parameter("strata_phase", float(sp.phase))
+		mat.set_shader_parameter("strata_wob_ratio", GraphGenerator.STRATA_WOB_RATIO)
+		mat.set_shader_parameter("strata_wob_amp", GraphGenerator.STRATA_WOB_AMP)
+		mat.set_shader_parameter("strata_hard_share", GraphGenerator.STRATA_HARD_SHARE)
+	var fresh: Image = _erosion_masks.get("fresh")
+	var rays: float = float(_craters.get("ray_strength", 0.0))
+	if fresh == null or rays <= 0.0:
+		mat.set_shader_parameter("has_features", false)
+		return
+	var img := fresh.duplicate() as Image
+	img.convert(Image.FORMAT_L8)
+	img.generate_mipmaps()
+	mat.set_shader_parameter("feature_map", ImageTexture.create_from_image(img))
+	mat.set_shader_parameter("has_features", true)
+	mat.set_shader_parameter("feature_texel_m", TAU * radius_world() / float(img.get_width()))
+	mat.set_shader_parameter("ray_strength", clampf(rays * 1.6, 0.0, 1.0))
 
 ## How much of the surface the dust field actually mantles.
 ##
@@ -790,6 +825,19 @@ func _log_dust_coverage() -> void:
 func _spawn_boulders() -> void:
 	if not boulders_enabled:
 		return
+	# planets with traits: every asset line their traits bring (ScatterEngine, stage 4a); others the old boulders
+	if not TraitMixer.of(body).is_empty():
+		var scatter := ScatterEngine.build(self, body, _erosion_masks, terrain.material as ShaderMaterial)
+		if scatter != null:
+			terrain.add_child(scatter)
+		var near := ScatterEngine.near_lines(TraitMixer.of(body))
+		if not near.is_empty():
+			near_scatter = NearScatter.new()
+			near_scatter.name = "NearScatter"
+			add_child(near_scatter)
+			near_scatter.setup(self, terrain, body, near, terrain.material as ShaderMaterial)
+		if scatter != null or near_scatter != null:
+			return
 	var arch := PlanetArchetype.of(body)
 	var rules: ScatterSet = arch.scatter if arch != null and arch.scatter != null else null
 	if rules != null and not rules.enabled:
@@ -866,10 +914,15 @@ func _bake_eroded_heightmap() -> Image:
 	# before the bake (see _ready), so the relief is already known here.
 	settings.relief_m = profile.relief_voxels * VOXEL_SCALE
 	settings.metres_per_texel = TAU * radius_world() / float(width)
+	# Impact craters from the trait mix, baked in before erosion (CraterField, stage 4b).
+	settings.planet_radius_m = radius_world()
+	settings.craters = CraterField.build(body, radius_world(), settings.metres_per_texel)
+	_craters = settings.craters
+	var feature_key: int = settings.craters.get("key", 0)
 
 	# Cache hit: the bake is 6x the pixels it used to be and is deterministic in
 	# the seed, so it is stored rather than repeated at every load.
-	var cached := ErosionCache.load_entry(body.seed, settings.width, settings.height, variant)
+	var cached := ErosionCache.load_entry(body.seed, settings.width, settings.height, feature_key, variant)
 	if not cached.is_empty():
 		_erosion_masks = {}
 		for k in cached:
@@ -878,7 +931,8 @@ func _bake_eroded_heightmap() -> Image:
 		TerrainLog.write_fields("erosion", "%s: eroded heightmap from cache" % name, {
 			"size": "%dx%d" % [settings.width, settings.height],
 			"metres_per_texel": TAU * radius_world() / float(settings.width),
-			"path": ErosionCache.key(body.seed, settings.width, settings.height, variant),
+			"path": ErosionCache.key(body.seed, settings.width, settings.height, feature_key, variant),
+			"craters": int(settings.craters.get("count", 0)),
 		})
 		return cached["height"]
 	baker.progress.connect(_on_bake_progress)
@@ -888,7 +942,7 @@ func _bake_eroded_heightmap() -> Image:
 		return null
 	_erosion_masks = baker.last_masks
 	ErosionCache.save_entry(body.seed, settings.width, settings.height,
-		img, _erosion_masks, variant)
+		img, _erosion_masks, feature_key, variant)
 	if TerrainLog.enabled:
 		# Dump what the game actually baked, plus its height distribution. A map
 		# that looks right in isolation can still be applied with too little
@@ -989,10 +1043,8 @@ func suggested_spawn_direction() -> Vector3:
 			score -= absf(centre - (lo + nearby_relief * 0.35)) * 0.5
 			if score > best_score:
 				best_score = score
-				var lon := (float(x) + 0.5) / float(w) * TAU - PI
-				var lat := PI * 0.5 - (float(y) + 0.5) / float(h) * PI
-				best_dir = Vector3(
-					cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+				# the map is in the voxel node's projection (SphereUV), not plain equirectangular
+				best_dir = SphereUV.dir_of_pixel(float(x), float(y), w, h)
 
 	TerrainLog.write("spawn", "%s: suggested spawn score %.4f dir %s" % [
 		name, best_score, best_dir])

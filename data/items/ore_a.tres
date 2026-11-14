@@ -7,4 +7,4 @@ script = ExtResource("1")
 id = "ore_a"
 display_name = "Iron Ore"
 material_index = 1
-debug_color = Color(0.75, 0.42, 0.16, 1)
+debug_color = Color(0.40, 0.45, 0.52, 1)

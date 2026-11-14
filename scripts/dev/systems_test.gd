@@ -878,8 +878,8 @@ func _test_sidearm() -> void:
 	dummy.global_position = cam.global_position - cam.global_transform.basis.z * 12.0 - dummy.global_transform.basis.y * 0.9
 	Inventory.add("iron_piercing_ammo", 10)
 	var ammo := Inventory.get_count("iron_piercing_ammo")
-	pl.call("_dig")
-	pl.call("_dig")      # same instant: the fire rate holds it back
+	pl.call("_on_hand_button", MOUSE_BUTTON_RIGHT, true)
+	pl.call("_on_hand_button", MOUSE_BUTTON_RIGHT, true)      # same instant: the fire rate holds it back
 	_check(Inventory.get_count("iron_piercing_ammo") == ammo - 1, "one rivet per trigger interval, paid from pierce ammo")
 	var shots := 1
 	for i in 120:
@@ -888,12 +888,12 @@ func _test_sidearm() -> void:
 			break
 		pl.set("_sidearm_cool", 0.0)
 		if i % 10 == 0 and Inventory.get_count("iron_piercing_ammo") > 0:
-			pl.call("_dig")
+			pl.call("_on_hand_button", MOUSE_BUTTON_RIGHT, true)
 			shots += 1
 	_check(not is_instance_valid(dummy), "rivets kill a target in front (%d shots)" % shots)
 	Inventory.try_remove("iron_piercing_ammo", Inventory.get_count("iron_piercing_ammo"))
 	pl.set("_sidearm_cool", 0.0)
-	pl.call("_dig")
+	pl.call("_on_hand_button", MOUSE_BUTTON_RIGHT, true)
 	_check(Inventory.get_count("iron_piercing_ammo") == 0, "an empty gun does not fire (and says why)")
 	Inventory.set_slot({"kind": "hand", "side": "right"}, "building_tool", 1)
 	pl.queue_free()

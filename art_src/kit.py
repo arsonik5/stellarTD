@@ -1244,8 +1244,11 @@ def _cycles_setup():
         pass
 
 
-PAINTED_LIGHT = True              # PS2 look: bake top-light + deep occlusion into the albedo (scripts/retro_look.gd)
+PAINTED_LIGHT = False             # was True for the per-vertex PS2 look; off since per-pixel lighting (2026-11-08): real light + painted light = double lighting, dark undersides
 DUST_AMT = 1.0                    # ship parts set this lower: they fly, they don't sit in regolith
+WEAR_SCALE = 1.0                  # size of wear features (edge bevel, cavity reach, dust height, noise): 1 = building
+                                  # scale. Hand tools are ~10x smaller: at 1.0 every face of a 4 cm tool counted as a
+                                  # worn edge and its dark paint baked out light grey (2026-11-08). Tools use ~0.12.
 BARE_COL = (0.58, 0.58, 0.6)      # steel under the paint
 DUST_COL = (0.33, 0.29, 0.24)
 RUST_COL = (0.22, 0.09, 0.035)
@@ -1329,16 +1332,16 @@ def bake_detail(objs, base_name, res=2048):
 
         def noise(scale, detail, rough=0.55):
             n = N("ShaderNodeTexNoise")
-            n.inputs["Scale"].default_value = scale; n.inputs["Detail"].default_value = detail
+            n.inputs["Scale"].default_value = scale / WEAR_SCALE; n.inputs["Detail"].default_value = detail
             n.inputs["Roughness"].default_value = rough
             L(tc.outputs["Object"], n.inputs["Vector"])
             return n.outputs["Fac"]
 
         tc = N("ShaderNodeTexCoord")
         geo = N("ShaderNodeNewGeometry")
-        ao = N("ShaderNodeAmbientOcclusion"); ao.samples = 24; ao.inputs["Distance"].default_value = 0.18
+        ao = N("ShaderNodeAmbientOcclusion"); ao.samples = 24; ao.inputs["Distance"].default_value = 0.18 * WEAR_SCALE
         cav = mrange(ao.outputs["AO"], 0.2, 1.0, 0.0, 1.0)               # 0 deep in gaps, 1 open
-        bev = N("ShaderNodeBevel"); bev.samples = 12; bev.inputs["Radius"].default_value = 0.06
+        bev = N("ShaderNodeBevel"); bev.samples = 12; bev.inputs["Radius"].default_value = 0.06 * WEAR_SCALE
         dot = N("ShaderNodeVectorMath"); dot.operation = 'DOT_PRODUCT'
         L(bev.outputs["Normal"], dot.inputs[0]); L(geo.outputs["True Normal"], dot.inputs[1])
         edge = mrange(dot.outputs["Value"], 0.5, 0.995, 1.0, 0.0)         # 1 on convex edges
@@ -1349,7 +1352,7 @@ def bake_detail(objs, base_name, res=2048):
         spots = mrange(noise(48.0, 4.0, 0.6), 0.7, 0.74, 0.0, 0.9)          # small chips on flat panels
         chip = mnode('MAXIMUM', chip, mnode('MULTIPLY', spots, mrange(noise(4.0, 3.0), 0.5, 0.65, 0.0, 1.0)))
         sep = N("ShaderNodeSeparateXYZ"); L(geo.outputs["Position"], sep.inputs[0])     # world height
-        low = mrange(sep.outputs["Z"], base_z, base_z + 0.45, 1.0, 0.0)
+        low = mrange(sep.outputs["Z"], base_z, base_z + 0.45 * WEAR_SCALE, 1.0, 0.0)
         dust = mnode('MULTIPLY', low, mrange(n2, 0.35, 0.65, 0.35 * DUST_AMT, 0.8 * DUST_AMT), clamp=True)
         grime = mnode('ADD', mnode('MULTIPLY', mnode('SUBTRACT', 1.0, cav), 0.75),
                       mrange(noise(1.6, 10.0), 0.45, 0.75, 0.0, 0.3), clamp=True)

@@ -45,7 +45,7 @@ func _ready() -> void:
 		var rad := ""
 		var d0 := Vector3(0.3, 0.5, 0.8).normalized()
 		for off in [-600.0, -100.0, -10.0, -1.0, 0.0, 0.5, 1.0, 2.0, 10.0, 100.0, 600.0]:
-			var q2 := d0 * (planet.body.radius + off)
+			var q2: Vector3 = d0 * (planet.body.radius + off)
 			g.generate_block(buf, Vector3i(roundi(q2.x), roundi(q2.y), roundi(q2.z)), 0)
 			rad += "%+.0f:%.3f " % [off, buf.get_voxel_f(0, 0, 0, VoxelBuffer.CHANNEL_SDF)]
 		print("RADIAL %s: %s" % [label, rad])

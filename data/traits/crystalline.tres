@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="PlanetTrait" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/gen/planet_trait.gd" id="1"]
+[ext_resource type="Resource" path="res://data/surfaces/library/crystal_crust.tres" id="m2"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystalline"
+display_name = "Crystalline"
+base_weight = 0.3
+temperature_range = Vector2(0.0, 0.9)
+temperature_soft = 0.2
+air_range = Vector2(0.0, 100.0)
+air_soft = 1.0
+requires_facts = Array[StringName]([])
+excludes = Array[StringName]([])
+affinity = {}
+spatial = "crater_floor"
+material_mode = "replace"
+materials = {
+"regional": ExtResource("m2"),
+"surface": ExtResource("m2")
+}
+hue = 165
+chroma_max = 0.12
+accent = true
+emissive = true
+crater_density = 0.5
+ray_strength = 0.5
+ledge_strength = 0.0
+lava_tubes = 0.0
+asset_lines = Array[StringName]([&"crystal_clusters", &"geodes", &"crystal_shards"])
+landmarks = Array[StringName]([&"crystal_arch"])

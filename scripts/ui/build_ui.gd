@@ -38,6 +38,7 @@ const BUILDABLE_RECIPES := [
 	preload("res://data/recipes/build_turret_gun.tres"),
 	preload("res://data/recipes/build_turret_cannon.tres"),
 	preload("res://data/recipes/build_ship_garage.tres"),
+	preload("res://data/recipes/build_oxygen_post.tres"),
 ]
 const TABS := ["structure", "production", "power", "logistics", "defense", "vehicles"]
 const CARD := Vector2(168, 148)
@@ -88,7 +89,7 @@ func _ready() -> void:
 	# detail
 	# detail scrolls when it is taller than the screen (a locked item's notes + cost overflowed 648 px)
 	var dpanel := UiKit.panel("Well")
-	dpanel.custom_minimum_size.x = 270
+	dpanel.custom_minimum_size.x = 250
 	row.add_child(dpanel)
 	var dscroll := ScrollContainer.new()
 	dscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -185,9 +186,46 @@ func _show_tab(t: String) -> void:
 func _affordable(r: Recipe) -> bool:
 	if not Progression.is_buildable(r.output_id):
 		return false
+	return _carried(r) > 0 or _has_inputs(r)
+
+## Copies of this building already in the inventory (crafted, picked up, given by a command). Placing uses one of
+## these first, for free; only when there are none does it cost the recipe's materials.
+func _carried(r: Recipe) -> int:
+	return Inventory.get_count(r.output_id)
+
+func _has_inputs(r: Recipe) -> bool:
 	for k in r.input_ids.size():
 		if Inventory.get_count(r.input_ids[k]) < r.input_amounts[k]:
 			return false
+	return true
+
+## For the placer: true if this recipe can be placed `n` times now (a pipe run is several pieces).
+func can_pay(r: Recipe, n: int = 1) -> bool:
+	if r == null:
+		return false
+	var left := n - _carried(r)
+	for k in r.input_ids.size():
+		if left > 0 and Inventory.get_count(r.input_ids[k]) < r.input_amounts[k] * left:
+			return false
+	return true
+
+## The build recipe that makes `item_id` (what dismantling it gives back), or null.
+func recipe_for(item_id: String) -> Recipe:
+	for r: Recipe in BUILDABLE_RECIPES:
+		if r.output_id == item_id:
+			return r
+	return null
+
+## For the placer: take one carried copy, or else the materials. False (nothing taken) if neither is there.
+func pay(r: Recipe) -> bool:
+	if r == null:
+		return false
+	if _carried(r) > 0:
+		return Inventory.try_remove(r.output_id, 1)
+	if not _has_inputs(r):
+		return false
+	for k in r.input_ids.size():
+		Inventory.try_remove(r.input_ids[k], r.input_amounts[k])
 	return true
 
 func _card(i: int, r: Recipe) -> Button:
@@ -250,8 +288,12 @@ func _refresh() -> void:
 		var cost := b.find_child("Cost", true, false) as Label
 		if cost != null:
 			var gate := Progression.gate_of(BUILDABLE_RECIPES[i].output_id)
-			cost.text = ("RESEARCH: " + gate.title.to_upper()) if gate != null else _cost_short(BUILDABLE_RECIPES[i])
-			cost.theme_type_variation = "DimLabel" if ok else "WarnLabel"
+			var carried := _carried(BUILDABLE_RECIPES[i])
+			if gate != null:
+				cost.text = "RESEARCH: " + gate.title.to_upper()
+			else:
+				cost.text = "%d in inventory" % carried if carried > 0 else _cost_short(BUILDABLE_RECIPES[i])
+			cost.theme_type_variation = ("AccentLabel" if carried > 0 else "DimLabel") if ok else "WarnLabel"
 	_refresh_detail()
 
 func _refresh_detail() -> void:
@@ -280,7 +322,11 @@ func _refresh_detail() -> void:
 		g.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		g.custom_minimum_size.x = 230
 		_detail.add_child(g)
-	_detail.add_child(UiKit.section("Cost"))
+	var carried := _carried(r)
+	if carried > 0:
+		_detail.add_child(UiKit.section("In inventory"))
+		_detail.add_child(UiKit.label("%d ready to place, no materials used" % carried, "AccentLabel"))
+	_detail.add_child(UiKit.section("Cost" if carried == 0 else "Cost once those are used"))
 	for k in r.input_ids.size():
 		var it := Inventory.get_item_def(r.input_ids[k])
 		var have := Inventory.get_count(r.input_ids[k])

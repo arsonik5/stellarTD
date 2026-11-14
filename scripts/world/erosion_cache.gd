@@ -21,7 +21,7 @@ const DIR := "user://erosion_cache"
 ## a shader edit, a settings default, a new mask. Without it, a stale cache
 ## silently serves the old terrain and every measurement afterwards is of
 ## something that is no longer in the source.
-const FORMAT_VERSION := 10
+const FORMAT_VERSION := 15
 
 ## Layers in a cache entry, in write order. Height first so a truncated file
 ## still fails cleanly rather than loading masks against no terrain.
@@ -31,17 +31,20 @@ const FORMAT_VERSION := 10
 ## cheap, but at ~61 m per texel it read a 54 degree cliff as near-flat.
 ## Differencing the full map instead cost 3.0 -> 8.8 us/voxel in cache
 ## misses, so the gradient moved into the bake.
-const LAYERS := ["height", "flow", "wear", "deposition", "talus", "slope"]
+## `fresh` and `crater_floor` come from the crater pass (CraterField, craters.glsl).
+const LAYERS := ["height", "flow", "wear", "deposition", "talus", "slope", "fresh", "crater_floor"]
 
+## `features` is a hash of what was baked into the base before erosion (the crater list), so changing a planet's
+## traits rebakes it instead of serving the old craters.
 ## `variant` names bake settings that differ from the defaults (a TerrainRecipe's bake multipliers), so two
-## recipes on one seed never share an entry. Empty for default settings, which keeps existing caches valid.
-static func key(seed_value: int, width: int, height: int, variant: String = "") -> String:
+## recipes on one seed never share an entry. Empty for default settings.
+static func key(seed_value: int, width: int, height: int, features: int = 0, variant: String = "") -> String:
 	var v := "" if variant == "" else "_" + variant
-	return "%s/v%d_s%d_%dx%d%s.bin" % [DIR, FORMAT_VERSION, seed_value, width, height, v]
+	return "%s/v%d_s%d_%dx%d_f%x%s.bin" % [DIR, FORMAT_VERSION, seed_value, width, height, features & 0xffffffff, v]
 
 ## Returns {"height": Image, "flow": Image, ...} or an empty Dictionary.
-static func load_entry(seed_value: int, width: int, height: int, variant: String = "") -> Dictionary:
-	var path := key(seed_value, width, height, variant)
+static func load_entry(seed_value: int, width: int, height: int, features: int = 0, variant: String = "") -> Dictionary:
+	var path := key(seed_value, width, height, features, variant)
 	if not FileAccess.file_exists(path):
 		return {}
 	var f := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_ZSTD)
@@ -68,10 +71,19 @@ static func load_entry(seed_value: int, width: int, height: int, variant: String
 	return out
 
 static func save_entry(seed_value: int, width: int, height: int,
-		height_img: Image, masks: Dictionary, variant: String = "") -> bool:
+		height_img: Image, masks: Dictionary, features: int = 0, variant: String = "") -> bool:
 	DirAccess.make_dir_recursive_absolute(DIR)
 	_prune_old_versions()
-	var path := key(seed_value, width, height, variant)
+	var path := key(seed_value, width, height, features, variant)
+	# the same planet and recipe variant baked with an older feature list is dead weight (hundreds of MB): drop it
+	# (other variants of the seed are other recipes and stay)
+	var same := RegEx.create_from_string("^v%d_s%d_%dx%d_f[0-9a-f]+%s\\.bin$" % [
+		FORMAT_VERSION, seed_value, width, height, "" if variant == "" else "_" + variant])
+	var dir := DirAccess.open(DIR)
+	if dir != null:
+		for fname in dir.get_files():
+			if same.search(fname) != null and DIR + "/" + fname != path:
+				dir.remove(fname)
 	var f := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_ZSTD)
 	if f == null:
 		push_warning("ErosionCache: cannot write %s" % path)
