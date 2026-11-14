@@ -4,3 +4,5 @@
 
 # agent worktrees (separate checkouts, never part of the repo)
 .claude/worktrees/
+# local patch scripts of the planets pass
+.scratch/

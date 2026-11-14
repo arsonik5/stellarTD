@@ -57,10 +57,40 @@ uniform float height_blend : hint_range(0.0, 1.0) = 0.65;
 //   5 = flat white            (isolates geometry: holes stay background)
 uniform int debug_view : hint_range(0, 5) = 0;
 
+// --- SE2 pass (2026-11-05) ----------------------------------------------------------------------------------
+// Centre of the body this terrain belongs to (set by Planet). Gives the local radial up for slope and strata -
+// never world Y.
+uniform vec3 planet_center = vec3(0.0);
+// Rock on steep faces, per pixel: between these slope angles (degrees, from the local horizontal) the surface
+// turns to `rock_layer` regardless of what the voxel material says. Coarse masks cannot see a 5 m ledge; the
+// pixel's own normal can. (Open item 4: material follows slope.)
+uniform int rock_layer = 11;
+uniform float rock_slope_start = 36.0;
+uniform float rock_slope_full = 52.0;
+// Dust settles back on rock that faces up (mesa tops, ledges, the floor of a crevasse): below these angles a rock
+// pixel turns back into `dust_layer` (the body's ground material, set by Planet).
+uniform int dust_layer = 0;
+uniform float dust_slope_start = 22.0;
+uniform float dust_slope_full = 10.0;
+// Horizontal strata on rock: band thickness (m) and how strongly the bands modulate albedo.
+uniform float strata_m = 2.7;
+uniform float strata_strength : hint_range(0.0, 0.5) = 0.16;
+// Texture-coordinate origin is snapped to this period (m) near the camera. It must be a multiple of every tile
+// size in the palette (2, 2.5, 3, 3.5, 4, 8 m -> 840) and of both macro scales, so the snap is invisible.
+const float UV_PERIOD = 840.0;
+// Two macro scales, both dividing UV_PERIOD: breaks tiling at 10-200 m.
+const float MACRO_A = 35.0;
+const float MACRO_B = 210.0;
+
 varying flat vec4 v_indices;
 varying vec4 v_weights;
 varying vec3 v_world_pos;
 varying vec3 v_world_normal;
+// Texture-space position: world position relative to a camera-snapped origin, computed from the mesh block's
+// own (integer, exactly representable) origin plus its small local vertex. Raw world position is ~20000 m on the
+// home planet, where float32 resolves 2.4 mm - about one texel of a 3 m / 1024 px tile, which is what made
+// textures crawl and stretch (open item 3).
+varying vec3 v_tex_pos;
 
 vec4 decode_8bit_vec4(float v) {
 	uint i = floatBitsToUint(v);
@@ -76,6 +106,8 @@ void vertex() {
 	v_weights = decode_8bit_vec4(CUSTOM1.y) / 255.0;
 	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	vec3 snap = floor(CAMERA_POSITION_WORLD / UV_PERIOD) * UV_PERIOD;
+	v_tex_pos = (MODEL_MATRIX[3].xyz - snap) + mat3(MODEL_MATRIX) * VERTEX;
 }
 
 // One material sampled triplanar. Returns albedo.rgb / roughness in .a, and
@@ -146,8 +178,8 @@ void fragment() {
 	float occ1;
 	float h0;
 	float h1;
-	vec4 a0 = sample_material(i0, v_world_pos, blend, e0.w, n0, occ0, h0);
-	vec4 a1 = sample_material(i1, v_world_pos, blend, e1.w, n1, occ1, h1);
+	vec4 a0 = sample_material(i0, v_tex_pos, blend, e0.w, n0, occ0, h0);
+	vec4 a1 = sample_material(i1, v_tex_pos, blend, e1.w, n1, occ1, h1);
 
 	// Height-aware blend: the material whose surface stands taller at this point
 	// wins the contested band, so a boundary follows cracks and grain instead of
@@ -170,8 +202,75 @@ void fragment() {
 	// different scale, reused as a variation field. Cheaper than a noise
 	// function and it already has the right statistics, because it is the same
 	// rock.
-	float macro = texture(tex_albedo, vec3(v_world_pos.xz / macro_scale, float(i0))).r;
+	// Triplanar and two-scale (it was one planar xz sample, which smeared on every steep face and on the sides
+	// of the sphere): 35 m breaks the tile grid, 210 m gives the ground broad tonal patches.
+	float ma = texture(tex_albedo, vec3(v_tex_pos.zy / MACRO_A, float(i0))).r * blend.x
+		+ texture(tex_albedo, vec3(v_tex_pos.xz / MACRO_A, float(i0))).r * blend.y
+		+ texture(tex_albedo, vec3(v_tex_pos.xy / MACRO_A, float(i0))).r * blend.z;
+	float mb = texture(tex_albedo, vec3(v_tex_pos.zy / MACRO_B, float(i0))).g * blend.x
+		+ texture(tex_albedo, vec3(v_tex_pos.xz / MACRO_B, float(i0))).g * blend.y
+		+ texture(tex_albedo, vec3(v_tex_pos.xy / MACRO_B, float(i0))).g * blend.z;
+	float macro = clamp(0.5 + (ma - 0.5) * 0.9 + (mb - 0.5) * 1.1, 0.0, 1.0);
 	float macro_mul = mix(1.0 - macro_strength * 0.5, 1.0 + macro_strength * 0.5, macro);
+
+	// --- rock on steep faces, per pixel ---------------------------------------
+	vec3 up = normalize(v_world_pos - planet_center);
+	float cos_up = dot(v_world_normal, up);
+	// smoothstep needs edge0 < edge1 (reversed edges are undefined in GLSL and gave NaN - an invisible terrain - on
+	// Mesa): steep = 1 at the full angle and beyond, 0 below the start angle.
+	float steep = 1.0 - smoothstep(cos(radians(rock_slope_full)), cos(radians(rock_slope_start)), cos_up);
+	// Construction blocks are man-made: never re-materialised.
+	if (i0 == 3) {
+		steep = 0.0;
+	}
+	float rock_w = steep;
+	if (i0 == rock_layer) {
+		rock_w = max(rock_w, w0);
+	}
+	if (steep > 0.001) {
+		vec3 nr;
+		float occr;
+		float hr;
+		vec4 er = pal_extra[rock_layer];
+		vec4 ar = sample_material(rock_layer, v_tex_pos, blend, er.w, nr, occr, hr);
+		// Height-aware takeover: the rock shows through the cracks of the dust first.
+		float take = clamp(steep * 1.3 - (1.0 - hr) * 0.4, 0.0, 1.0);
+		albedo_rough = mix(albedo_rough, ar, take);
+		nrm_ts = normalize(mix(nrm_ts, nr, take));
+		occ = mix(occ, occr, take);
+		tint = mix(tint, pal_tint_rough[rock_layer].rgb, take);
+		rough_scale = mix(rough_scale, pal_tint_rough[rock_layer].a, take);
+		normal_strength = mix(normal_strength, er.x, take);
+		specular = mix(specular, er.z, take);
+	}
+	// --- dust settling on up-facing rock -------------------------------------
+	float settle = smoothstep(cos(radians(dust_slope_start)), cos(radians(dust_slope_full)), cos_up)
+		* clamp(rock_w - steep, 0.0, 1.0);
+	if (settle > 0.001 && dust_layer != rock_layer) {
+		vec3 nd;
+		float occd;
+		float hd;
+		vec4 ed = pal_extra[dust_layer];
+		vec4 ad = sample_material(dust_layer, v_tex_pos, blend, ed.w, nd, occd, hd);
+		// Dust fills the low points of the rock first (inverse height).
+		float fill = clamp(settle * 1.4 - h0 * 0.35, 0.0, 1.0);
+		albedo_rough = mix(albedo_rough, ad, fill);
+		nrm_ts = normalize(mix(nrm_ts, nd, fill));
+		occ = mix(occ, occd, fill);
+		tint = mix(tint, pal_tint_rough[dust_layer].rgb, fill);
+		rough_scale = mix(rough_scale, pal_tint_rough[dust_layer].a, fill);
+		normal_strength = mix(normal_strength, ed.x, fill);
+		specular = mix(specular, ed.z, fill);
+		rock_w *= 1.0 - fill;
+	}
+	// --- strata on rock: horizontal bands of radial height --------------------
+	// Exact to millimetres at 20 km (a length, not a coordinate), wobbled so the bands are bedding, not rulings.
+	float rh = length(v_world_pos - planet_center);
+	float wob = (macro - 0.5) * 0.9;
+	float band = sin((rh / strata_m + wob) * 6.2831853) * 0.5 + 0.5;
+	float band2 = sin((rh / (strata_m * 3.7) + wob * 0.6) * 6.2831853) * 0.5 + 0.5;
+	float strata = mix(1.0 - strata_strength, 1.0 + strata_strength * 0.6, band * 0.65 + band2 * 0.35);
+	macro_mul *= mix(1.0, strata, clamp(rock_w, 0.0, 1.0));
 
 	// Triplanar normals: rotate each plane's tangent normal into world space by
 	// swizzling, then blend. Whiteout blending (adding the geometric normal)

@@ -83,15 +83,24 @@ CelestialBody (data: radius, mass, orbit, seed, spin)
   world.md`) before a second *full* planet can be flown to; until then extra bodies are moons in the local
   frame (already proven).
 
-## Order of work
+## Order of work - status 2026-11-05 (details: architecture/terrain-generator.md "World pass")
 
-1. **TerrainRecipe extraction** - move current band constants into a recipe resource; home planet recipe
-   reproduces today's terrain exactly (measure with `micro_hillshade` before/after; no visual change).
-2. **Slope + altitude erosion** in the recipe; re-measure meadows and cliffs against open items 1-2.
-3. **Landform layers:** terraces/mesas and canyons first (biggest identity gain per cost), spires second.
-4. **PlanetArchetype + palette harmony**; make the moon a real Frozen archetype - first proof of variety.
-5. **Populate:** scatter rules (fix boulders), then POIs (probe + crash site + crystal spire).
-6. **Second planet** after floating origin; Exotic archetype last.
+1. **TerrainRecipe extraction - DONE, proven bit-identical.** The legacy recipe reproduces the pre-extraction
+   generator's surface hash on both bodies (scenes/dev/planet_test.tscn).
+2. **Slope + altitude erosion - DONE (modest).** Multipliers on the outcrop bands plus slope damping of swells and
+   craters; flats calmer, steep ground unchanged. Re-measure on the full-resolution map before raising it.
+   Found and fixed on the way: every erosion mask was read at the wrong altitude (`mask_on_shell`).
+3. **Landform layers - DONE:** terraces / mesas, canyons, spires, each recipe- and patch-gated, each measured to
+   move the ground (recipe_probe).
+4. **PlanetArchetype + palette harmony - DONE (ground + ambient; sky tint not built).** Home = Barren, moon =
+   Frozen (frozen biome only, crevasses, heavy craters, cold tint).
+5. **Populate - DONE:** boulder rules (talus + broken edges, clumped) and POIs (probe, crash site, crystal outcrop)
+   on a guaranteed-spacing sphere-spots field, streamed near the viewer. Gameplay hooks: group "poi".
+6. **Second planet** after floating origin; Exotic archetype last. - not started.
+
+Still open from the diagnosis above: (3) colour beyond ground/ambient - a sky tint derived from the palette;
+(4) flora-equivalent scatter (crystal clusters, ice shards) as more ScatterSets; and judging all of this on the
+FULL 12.3 m map on a GPU machine - everything here was measured on a 2048-wide map (CPU container).
 
 ## Capture checklist for the NMS / SE2 study session (Michael)
 

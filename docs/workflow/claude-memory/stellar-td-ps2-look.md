@@ -19,8 +19,11 @@ keeping what was built.
 - Render at FULL resolution. Two screen-level tricks were tried on 2026-11-04 and rejected the same day: Environment
   fog ("its all grey with the fog you can barely see anything") and a half-res bilinear pass ("the low res pass looks
   awful. render full resolution but get the textures and models to be styled"). `scripts/retro_look.gd` was deleted.
-- The look lives in the assets: `force_vertex_shading` in project.godot, the kit bake at 512 px with painted light
-  (`PAINTED_LIGHT` in art_src/kit.py), strong silhouettes, no reliance on normal maps or real-time GI.
+- The look lives in the ASSETS: the kit bake at 512 px with painted light (`PAINTED_LIGHT` in art_src/kit.py),
+  strong silhouettes.
+- **Superseded 2026-11-05** (Michael: "PS2 look everywhere BUT with modern technology, shading and lighting"):
+  rendering is MODERN - per-pixel lighting (force_vertex_shading=false), PCSS soft shadows, SSAO/SSIL, glow, AgX
+  tonemap, normal-mapped triplanar terrain. Planets: SE2 realism everywhere. See art-direction.md.
 - If the look is changed, update docs/game/art-direction.md.
 
 Related: [[stellar-td-buildings-grey]], [[stellar-td-parts-must-function]], [[stellar-td-fp-building]].

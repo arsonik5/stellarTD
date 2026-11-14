@@ -1,0 +1,57 @@
+[gd_resource type="Resource" script_class="PlanetArchetype" format=3]
+
+[ext_resource type="Script" path="res://scripts/world/biome.gd" id="1_e0ij4"]
+[ext_resource type="Resource" path="res://data/biomes/regolith_plains.tres" id="2_wkukg"]
+[ext_resource type="Script" path="res://scripts/world/poi_spec.gd" id="3_jwe4b"]
+[ext_resource type="Script" path="res://scripts/world/scatter_set.gd" id="4_ayq0r"]
+[ext_resource type="Script" path="res://scripts/world/planet_archetype.gd" id="5_spwum"]
+[ext_resource type="Script" path="res://scripts/world/terrain_recipe.gd" id="6_llwwo"]
+
+[sub_resource type="Resource" id="Resource_88mvp"]
+script = ExtResource("3_jwe4b")
+
+[sub_resource type="Resource" id="Resource_0q281"]
+script = ExtResource("3_jwe4b")
+poi_type = "crash_site"
+display_name = "Crash Site"
+weight = 0.8
+sink_m = 1.1
+
+[sub_resource type="Resource" id="Resource_hmfkp"]
+script = ExtResource("3_jwe4b")
+poi_type = "crystal_spire"
+display_name = "Crystal Outcrop"
+weight = 0.5
+sink_m = 0.5
+
+[sub_resource type="Resource" id="Resource_k6den"]
+script = ExtResource("4_ayq0r")
+
+[sub_resource type="Resource" id="Resource_tbwqs"]
+script = ExtResource("6_llwwo")
+terrace_enabled = true
+terrace_step_m = 24.0
+terrace_riser = 0.2
+terrace_patch_m = 3200.0
+terrace_coverage = 0.3
+terrace_min_altitude = 0.45
+canyon_enabled = true
+canyon_feature_m = 3600.0
+canyon_depth_m = 40.0
+canyon_width = 0.04
+canyon_coverage = 0.35
+spire_enabled = true
+spire_spacing_m = 70.0
+spire_radius_m = 8.0
+spire_height_m = 40.0
+spire_density = 0.15
+
+[resource]
+script = ExtResource("5_spwum")
+terrain = SubResource("Resource_tbwqs")
+biomes = Array[ExtResource("1_e0ij4")]([ExtResource("2_wkukg")])
+palette = PackedColorArray(0.62, 0.6, 0.57, 1, 0.4, 0.4, 0.41, 1, 0.45, 0.95, 0.85, 1)
+ground_tint = Color(0.99, 0.975, 0.95, 1)
+ambient_ground_share = 0.3
+scatter = SubResource("Resource_k6den")
+pois = Array[ExtResource("3_jwe4b")]([SubResource("Resource_88mvp"), SubResource("Resource_0q281"), SubResource("Resource_hmfkp")])
