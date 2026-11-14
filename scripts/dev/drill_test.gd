@@ -35,8 +35,13 @@ func _ready() -> void:
 	var pup := PlanetPhysics.get_up(player.global_position)
 	var fwd := player.global_transform.basis.z
 	fwd = (fwd - pup * fwd.dot(pup)).normalized()
-	var probe := player.global_position + fwd * 6.0
-	var hit: VoxelRaycastResult = tool.raycast(probe + pup * 10.0, -pup, 40.0)
+	# try the four sides: the spawn can face off a cliff, and the terrain is someone else's moving target
+	var hit: VoxelRaycastResult = null
+	for d: Vector3 in [fwd, -fwd, fwd.cross(pup), -fwd.cross(pup)]:
+		var probe := player.global_position + d * 6.0
+		hit = tool.raycast(probe + pup * 10.0, -pup, 25.0)
+		if hit != null:
+			break
 	_check(hit != null, "found the surface by voxel raycast")
 	if hit == null:
 		return _done()
@@ -48,7 +53,8 @@ func _ready() -> void:
 	add_child(drill)
 	drill.global_transform = Transform3D(Basis.looking_at(tangent, up), ground)
 	drill.keep_stone = true
-	var start_head := drill.head_position()
+	# measure a point a metre into the rock under the first head position (the head itself starts near the surface)
+	var start_head := drill.head_position() - up * 1.0
 	var solid0 := _solid(tool, terrain, start_head)
 	var t_bite := 0.0
 	var n := 0

@@ -51,14 +51,21 @@ func load_state(data: Dictionary) -> void:
 	salvaged = bool(w.get("salvaged", false))
 
 ## Drop a wreck on the ground under `pos` (radial raycast), holding `alloy` alien alloy.
-static func spawn_at(scene: Node, pos: Vector3, alloy: int, kind: String) -> Wreck:
+static func spawn_at(scene: Node, pos: Vector3, alloy: int, kind: String, exclude: Array[RID] = []) -> Wreck:
 	var w: Wreck = load("res://scenes/wreck.tscn").instantiate()
 	scene.add_child(w)
 	var up := PlanetPhysics.get_up(pos)
 	var ground := pos
 	var space := (scene as Node3D).get_world_3d().direct_space_state if scene is Node3D else w.get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(pos + up * 2.0, pos - up * 300.0)
-	q.exclude = [w.get_rid()]
+	# exclude the wreck itself and whatever is crashing (its own hull is right at `pos`), and look past any
+	# other raider in the way: the wreck belongs on the ground
+	var ex: Array[RID] = [w.get_rid()]
+	ex.append_array(exclude)
+	for e in scene.get_tree().get_nodes_in_group("enemy"):
+		if e is CollisionObject3D:
+			ex.append((e as CollisionObject3D).get_rid())
+	q.exclude = ex
 	var hit := space.intersect_ray(q)
 	if not hit.is_empty():
 		ground = hit.position

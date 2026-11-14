@@ -27,6 +27,7 @@ const SPEC := {
 	"head_bob": ["Gameplay", "Head bob", "slider", 1.0, [0.0, 1.0, 0.05, ""], "Camera and tool motion while walking. Lower it if it makes you queasy."],
 	"tool_sway": ["Gameplay", "Tool sway", "slider", 1.0, [0.0, 1.0, 0.05, ""], "How much held tools lag behind your aim."],
 	"key_hints": ["Gameplay", "Key hints", "toggle", true, null, "Small key prompts on the HUD."],
+	"raids": ["Gameplay", "Raids", "choice", 2, ["Off", "Calm", "Normal", "Relentless"], "How often the aliens come when your signature is loud. Off: build in peace (scouts still look)."],
 }
 const PAGES := ["Video", "Audio", "Controls", "Gameplay"]
 const BUSES := ["Music", "SFX", "UI"]

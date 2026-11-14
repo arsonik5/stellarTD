@@ -136,7 +136,7 @@ func _step_grid(g: Dictionary, dt: float) -> void:
 	var demand := 0.0
 	for c in g.consumers:
 		if is_instance_valid(c) and c.wants_power():
-			demand += float(c.power_draw)
+			demand += float(c.effective_power_draw())
 	var stored := 0.0
 	var capacity := 0.0
 	for b in g.batteries:

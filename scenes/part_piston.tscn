@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_joint.gd" id="1"]
+
+[node name="part_piston" type="Node3D"]
+script = ExtResource("1")
+block_id = "piston"
+mass_kg = 90.0
+max_health = 120.0
+size_cells = Vector3i(2, 2, 2)
+joint_type = "piston"

@@ -36,6 +36,12 @@ const STATE_WRECKED := "wrecked"
 ## so right-clicking a ship-block item at an enemy ship (also a Ship,
 ## through the same shared physics class) can't graft blocks onto it.
 var is_player_ship: bool = false
+## Mechanisms (ShipJoint): a sub-grid is the moving body on a joint's head. Its root block (cell 0) counts as its
+## core; the parent ship saves it as part of itself.
+var is_subgrid := false
+var joint_parent: Ship = null
+## True while load_state rebuilds blocks (joints must not spawn fresh sub-grids then).
+var loading := false
 var ship_state: String = STATE_OPERATIONAL
 
 ## Coarse drag stats - a real per-block cross-section isn't worth modeling
@@ -136,6 +142,8 @@ func add_block(anchor: Vector3i, block: ShipBlock) -> void:
 	add_child(shape)
 	_block_shapes[anchor] = shape
 	_rebuild_stats()
+	if block.has_method("on_added"):
+		block.on_added(self)
 
 ## Places `block` (already rotated) with its min corner at `anchor`: every cell it needs must be free and (unless
 ## the ship is empty) at least one of them must touch an existing block face to face.
@@ -364,6 +372,9 @@ func _set_state(next_state: String) -> void:
 	ship_state_changed.emit(ship_state)
 
 func _recalculate_state() -> void:
+	if is_subgrid:
+		_set_state(STATE_OPERATIONAL if _has_operational_core() else STATE_WRECKED)
+		return
 	if not _has_operational_core():
 		_set_state(STATE_WRECKED)
 		return
@@ -530,9 +541,30 @@ func save_state() -> Dictionary:
 		"dampeners_enabled": dampeners_enabled,
 		"grid": 2,                     # cells are 0.5 m, "cell" is each block's min corner (1 = old 2 m cells)
 		"blocks": blocks,
+		"subgrids": _save_subgrids(),
 	}
 
+## Every joint's sub-grid, saved inside this ship (recursively: sub-grids save their own sub-grids).
+func _save_subgrids() -> Array:
+	var out: Array = []
+	for anchor: Vector3i in _blocks:
+		var b = _blocks[anchor]
+		if b is ShipJoint and is_instance_valid(b.child):
+			out.append({"anchor": [anchor.x, anchor.y, anchor.z], "ship": b.child.save_state()})
+	return out
+
+## All joints on this ship and on its sub-grids, for the pilot's Z / C.
+func all_joints() -> Array:
+	var out: Array = []
+	for b in _blocks.values():
+		if b is ShipJoint and is_instance_valid(b):
+			out.append(b)
+			if is_instance_valid(b.child):
+				out.append_array(b.child.all_joints())
+	return out
+
 func load_state(data: Dictionary) -> void:
+	loading = true
 	global_transform = SaveManager.array_to_transform(data.get("transform", []))
 	dampeners_enabled = bool(data.get("dampeners_enabled", true))
 
@@ -561,3 +593,11 @@ func load_state(data: Dictionary) -> void:
 	# body whose mass and inertia are still those of an empty ship.
 	linear_velocity = SaveManager.array_to_vec3(data.get("linear_velocity", []))
 	angular_velocity = SaveManager.array_to_vec3(data.get("angular_velocity", []))
+	loading = false
+	# sub-grids: each joint rebuilds its moving part from the saved state (deferred: the joint needs this ship in
+	# the tree with its final transform)
+	for entry: Dictionary in data.get("subgrids", []):
+		var cell := SaveManager.array_to_vec3i(entry.get("anchor", []))
+		var j = _blocks.get(cell)
+		if j is ShipJoint:
+			(j as ShipJoint).create_child.call_deferred(entry.get("ship", {}))

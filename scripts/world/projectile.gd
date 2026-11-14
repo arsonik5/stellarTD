@@ -108,6 +108,13 @@ func _resolve_impact(result: Dictionary) -> void:
 				continue
 			if node.global_position.distance_to(hit_pos) <= splash_radius:
 				Health.deal(node, damage * splash_damage_falloff, dtype, self, hit_pos)
+	var hit_up := PlanetPhysics.get_up(hit_pos)
+	if splash_radius > 0.0:
+		WorldFx.burst("explosion", hit_pos, hit_up)
+		WorldFx.sound("boom", hit_pos)
+	else:
+		WorldFx.burst("sparks", hit_pos, hit_up)
+		WorldFx.sound("hit", hit_pos, 1.0, 0.06)
 	if has_meta("crater_radius"):
 		_crater(hit_pos, float(get_meta("crater_radius")))
 	_spawn_impact_flash(hit_pos)

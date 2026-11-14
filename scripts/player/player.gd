@@ -45,6 +45,11 @@ const BuildRecipe: Recipe = preload("res://data/recipes/build_block.tres")
 const MiningToolItem: Item = preload("res://data/items/mining_tool.tres")
 const BuildingToolItem: Item = preload("res://data/items/building_tool.tres")
 const ScannerToolItem: Item = preload("res://data/items/scanner_tool.tres")
+const SidearmItem: Item = preload("res://data/items/rivet_gun.tres")
+const SidearmAmmo: AmmoType = preload("res://data/ammo_types/iron_piercing_ammo.tres")
+## Sidearm (design M25): one rivet per SIDEARM_INTERVAL while the trigger is held, from pierce ammo in the bag.
+const SIDEARM_INTERVAL := 0.22
+var _sidearm_cool := 0.0
 
 ## Seconds between scans. The scan itself costs 30-80 ms of generator work, so
 ## holding fire has to be rate limited rather than merely discouraged.
@@ -155,7 +160,9 @@ func _ready() -> void:
 func _update_viewmodel() -> void:
 	# the held tool: one model per tool item (data/models/tools), shown in the first-person view
 	var shown := false
-	for pair in [["MiningTool", MiningToolItem], ["ScannerTool", ScannerToolItem], ["BuildTool", BuildingToolItem]]:
+	if viewmodel.get_node_or_null("Sidearm") == null:
+		_build_sidearm_model()
+	for pair in [["MiningTool", MiningToolItem], ["ScannerTool", ScannerToolItem], ["BuildTool", BuildingToolItem], ["Sidearm", SidearmItem]]:
 		var node := viewmodel.get_node_or_null(String(pair[0])) as Node3D
 		if node == null:
 			continue
@@ -904,6 +911,9 @@ func _dig() -> void:
 	if Inventory.has_tool_equipped(ScannerToolItem.id):
 		_scan_for_ore()
 		return
+	if Inventory.has_tool_equipped(SidearmItem.id):
+		_fire_sidearm()
+		return
 	if not Inventory.has_tool_equipped(MiningToolItem.id):
 		return
 
@@ -921,9 +931,24 @@ func _dig() -> void:
 		radius, TerrainDrill.strength_for(material_index))
 	var scale := _terrain.scale.x
 	var paid := TerrainDrill.payout(_yield_carry, removed, scale * scale * scale)
+	# feedback: dust tinted by what is being cut, sparks on ore, the grind of the bit (pitched by hardness)
+	var hit_world := _terrain.to_global(Vector3(hit.position) + Vector3.ONE * 0.5)
+	var hit_up := PlanetPhysics.get_up(hit_world)
+	var ore_item: String = TerrainDrill.ITEM_BY_MATERIAL.get(material_index, "stone")
+	var tint := Color(0.5, 0.48, 0.45)
+	var def := Inventory.get_item_def(ore_item)
+	if def != null and ore_item != "stone":
+		tint = def.debug_color
+	if Engine.get_process_frames() % 3 == 0:
+		WorldFx.burst("dust", hit_world, hit_up, tint)
+		if ore_item != "stone":
+			WorldFx.burst("sparks", hit_world, hit_up)
+	WorldFx.sound("drill", hit_world, 1.3 / sqrt(VoxelMaterials.hardness_for(material_index)), 0.14)
 	for item_id: String in paid:
-		Inventory.add(item_id, paid[item_id])
-		GameEvents.item_mined.emit(item_id, paid[item_id], self)
+		var took := Inventory.add(item_id, paid[item_id])
+		GameEvents.item_mined.emit(item_id, took, self)
+		if took < int(paid[item_id]):
+			_inventory_full_feedback()
 
 func _build() -> void:
 	if not Inventory.has_tool_equipped(MiningToolItem.id):
@@ -1896,3 +1921,52 @@ func _deny_place(reason: String) -> void:
 	var hud := get_tree().get_first_node_in_group("compact_hud")
 	if hud != null and hud.has_method("toast"):
 		hud.toast(reason)
+
+## Drilling with a full bag: the rock still comes away, the ore is lost - say so, loudly but not every bite.
+var _full_warn_cool := 0.0
+func _inventory_full_feedback() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _full_warn_cool:
+		return
+	_full_warn_cool = now + 2.0
+	UiSound.play("error")
+	if feel != null:
+		feel.kick("deny")
+	var hud := get_tree().get_first_node_in_group("compact_hud")
+	if hud != null and hud.has_method("toast"):
+		hud.toast("INVENTORY FULL - ore is being lost")
+
+## --- Sidearm --------------------------------------------------------------------------------------------------
+func _fire_sidearm() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _sidearm_cool:
+		return
+	_sidearm_cool = now + SIDEARM_INTERVAL
+	if not Inventory.try_remove(SidearmAmmo.item_id, 1):
+		UiSound.play("deny", 1.0, 0.4)
+		var hud := get_tree().get_first_node_in_group("compact_hud")
+		if hud != null and hud.has_method("toast"):
+			hud.toast("NO PIERCE AMMO - craft it in the Constructor")
+		return
+	var fwd := -camera.global_transform.basis.z
+	var muzzle := camera.global_position + fwd * 0.7 - camera.global_transform.basis.y * 0.15
+	var p: Node3D = preload("res://scenes/projectile.tscn").instantiate()
+	get_tree().current_scene.add_child(p)
+	p.global_position = muzzle
+	p.set_meta("faction", "player")
+	p.setup(fwd * SidearmAmmo.muzzle_velocity + velocity, SidearmAmmo, get_rid())
+	WorldFx.burst("muzzle", muzzle, fwd)
+	WorldFx.sound("gun", muzzle, 1.4)
+	if feel != null:
+		feel.kick("place")
+
+## Blockout sidearm for the viewmodel (no Blender model yet): grip, receiver, barrel, magazine, sight.
+func _build_sidearm_model() -> void:
+	var g := Node3D.new()
+	g.name = "Sidearm"
+	viewmodel.add_child(g)
+	Blockout.box(g, Vector3(0.05, 0.12, 0.05), Vector3(0.23, -0.27, -0.42), Blockout.DARK)        # grip
+	Blockout.box(g, Vector3(0.07, 0.08, 0.26), Vector3(0.23, -0.19, -0.5), Blockout.STEEL)       # receiver
+	Blockout.cyl(g, 0.018, 0.22, Vector3(0.23, -0.18, -0.72), Blockout.DARK, "z")               # barrel
+	Blockout.box(g, Vector3(0.04, 0.09, 0.05), Vector3(0.23, -0.26, -0.55), Blockout.HAZARD)     # rivet magazine
+	Blockout.cyl(g, 0.012, 0.02, Vector3(0.23, -0.14, -0.45), UiTokens.ACCENT, "y", "", true)    # sight dot

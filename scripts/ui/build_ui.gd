@@ -28,6 +28,10 @@ const BUILDABLE_RECIPES := [
 	preload("res://data/recipes/build_solar_panel.tres"),
 	preload("res://data/recipes/build_battery_bank.tres"),
 	preload("res://data/recipes/build_crystal_reactor.tres"),
+	preload("res://data/recipes/build_containment_field.tres"),
+	preload("res://data/recipes/build_respawn_beacon.tres"),
+	preload("res://data/recipes/build_waypoint_beacon.tres"),
+	preload("res://data/recipes/build_drone_port.tres"),
 	preload("res://data/recipes/build_vacuum_pipe.tres"),
 	preload("res://data/recipes/build_merger.tres"),
 	preload("res://data/recipes/build_splitter.tres"),
@@ -69,21 +73,30 @@ func _ready() -> void:
 		tabs.add_child(b)
 		_tab_buttons[t] = b
 	# cards
+	# the grid takes as many card columns as fit (3 at 1920, 2 at 1152): a fixed 3 made the screen 1191 px wide
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	row.add_child(scroll)
 	_grid = GridContainer.new()
 	_grid.columns = 3
+	scroll.resized.connect(func() -> void:
+		_grid.columns = clampi(int((scroll.size.x + UiTokens.GAP) / (CARD.x + UiTokens.GAP)), 1, 5))
 	_grid.add_theme_constant_override("h_separation", UiTokens.GAP)
 	_grid.add_theme_constant_override("v_separation", UiTokens.GAP)
 	scroll.add_child(_grid)
 	# detail
+	# detail scrolls when it is taller than the screen (a locked item's notes + cost overflowed 648 px)
 	var dpanel := UiKit.panel("Well")
 	dpanel.custom_minimum_size.x = 270
 	row.add_child(dpanel)
+	var dscroll := ScrollContainer.new()
+	dscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	dscroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	dpanel.add_child(dscroll)
 	_detail = UiKit.vbox(UiTokens.GAP)
-	dpanel.add_child(_detail)
+	_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dscroll.add_child(_detail)
 	Inventory.changed.connect(func() -> void:
 		if visible:
 			_refresh())

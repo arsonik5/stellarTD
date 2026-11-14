@@ -14,10 +14,15 @@ const CraftCopperWire: Recipe = preload("res://data/recipes/craft_copper_wire.tr
 const CraftCircuit: Recipe = preload("res://data/recipes/craft_circuit.tres")
 const CraftConcrete: Recipe = preload("res://data/recipes/craft_concrete.tres")
 const CraftCrystalCell: Recipe = preload("res://data/recipes/craft_crystal_cell.tres")
+const CraftSpeedModule: Recipe = preload("res://data/recipes/craft_speed_module.tres")
+const CraftEfficiencyModule: Recipe = preload("res://data/recipes/craft_efficiency_module.tres")
+const CraftYieldModule: Recipe = preload("res://data/recipes/craft_yield_module.tres")
+const CraftRivetGun: Recipe = preload("res://data/recipes/craft_rivet_gun.tres")
 
 func _ready() -> void:
 	recipes = [
 		CraftCopperWire, CraftCircuit, CraftConcrete, CraftCrystalCell,
+		CraftSpeedModule, CraftEfficiencyModule, CraftYieldModule, CraftRivetGun,
 		CraftPiercingCore, CraftCopperCasing, CraftGunpowder, CraftIronPiercingAmmo, CraftHeShell,
 		CraftShipCore, CraftShipHull, CraftShipThruster, CraftShipGyroscope, CraftShipCockpit,
 	]

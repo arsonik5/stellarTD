@@ -27,7 +27,7 @@ tested), **partial** (exists, gaps listed), **missing**.
 - **Missing:** things worth finding *besides* ore - landmarks, wrecks, Continuance probes, crystal formations
   (`05-planets.md`); a **waypoint/marker** the player places themselves when they find something (minor M7).
 
-## C2. Extract - partial
+## C2. Extract - built (hand drill + Deposit Drill, 2026-11-05)
 
 - **Hand drill: built.** SE-style bore, pays for removed volume, per-material hardness.
 - **Automated extraction: MISSING - the biggest gap in the factory half.** A factory game where every ore
@@ -75,7 +75,7 @@ The 0.25 m grid is SE2's unified block size, so a 2 m block is 8 mechanism cells
 mechanism part can sit flush on any face. It lives on the same `ShipGrid` (cell size becomes 0.25 m
 internally; existing 0.5 m data converts on load exactly as 2 m -> 0.5 m did).
 
-## C5. Mechanisms & robots - missing (new core, decided 2026-11-04)
+## C5. Mechanisms & robots - partial (joints built 2026-11-05; 0.25 m grid, logic, robots not yet)
 
 Michael: "add even smaller grid with smaller mechanical stuff like Scrap Mechanic so you can build your own
 robots too". This is where pillar 2 ends up: **the robots that run the colony are ones you designed.**
@@ -97,7 +97,7 @@ robots too". This is where pillar 2 ends up: **the robots that run the colony ar
 - **Order:** joints first (they make vehicles better too: steering racks, cranes, doors, landing legs), then
   logic, then robot cores. Each step is playable alone.
 
-## C6. Signature, threat & defence - partial (scope 1 built)
+## C6. Signature, threat & defence - built (tiers, waves, raiders, wrecks, 2026-11-05; walls/shields not yet)
 
 - **Signature** (`RadiationSignature`): today only crystal held. Becomes a sum of sources with decay:
   crystal held/stored (persistent), reactors and big machines running (persistent while on), drilling crystal
@@ -121,7 +121,7 @@ robots too". This is where pillar 2 ends up: **the robots that run the colony ar
 - **Reward:** killed ships drop **wrecks** - salvage (rare alloys) and **alien tech data** for research. Threat
   is not only a cost; it is the source of the late-game tech tree.
 
-## C7. Directives, research & progression - partial (7-quest tutorial built)
+## C7. Directives, research & progression - built (tutorial + 7 milestones + standing orders + research, 2026-11-05)
 
 - **Directives** (the contract): the Continuance asks for goods delivered through an **Uplink** (a building
   that consumes items and "launches" them - a spectacle and a signature spike). Directives give **Continuance
@@ -144,7 +144,7 @@ robots too". This is where pillar 2 ends up: **the robots that run the colony ar
 - **Missing:** fuel/power on constructs, cargo parts that interact with pipes (dock connector), map/waypoints,
   a reason to go (remote deposits richer than home ones; biome-locked resources), wreck salvage.
 
-## C9. Survival layer - partial
+## C9. Survival layer - built (health, falls, suffocation, death, respawn + beacons, 2026-11-05; hazards/suit modules not yet)
 
 - **Built:** suit oxygen (300 s), refilled at the garage or in sealed cockpits; 40% speed when empty.
 - **Missing:** **health**, damage from falls, threats and hazards; death and respawn at a **Respawn Beacon**
@@ -152,7 +152,7 @@ robots too". This is where pillar 2 ends up: **the robots that run the colony ar
   radiation near crystal) answered by suit modules. Survival exists so the world and the threat have teeth;
   it is never a chore (no hunger, no thirst).
 
-## C10. Power - missing (deferred in Slice 1, required by arc 2)
+## C10. Power - built (2026-11-05)
 
 Deposit drills, turrets, containment, robots and uplinks all need it, so it is core even though it is not built.
 - **Model:** grids by connection - **power poles/relays** with a link radius; buildings connect to the nearest

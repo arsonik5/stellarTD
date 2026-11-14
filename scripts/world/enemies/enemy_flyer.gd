@@ -83,10 +83,14 @@ func fire_at(target: Node3D, from: Vector3, ammo: AmmoType) -> void:
 	p.global_position = from
 	p.set_meta("faction", "alien")
 	p.setup(aim * ammo.muzzle_velocity + linear_velocity, ammo, get_rid())
+	WorldFx.sound("alien_fire", from)
 
 func _on_died(_src: Node) -> void:
 	dead = true
 	died.emit()
+	WorldFx.burst("explosion", global_position, PlanetPhysics.get_up(global_position))
+	WorldFx.sound("boom", global_position)
+	WorldFx.smoke_for(self, 4.0)
 	# smoke + fall; the wreck replaces it when it hits the ground or after a few seconds
 	angular_velocity = Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5) * 2.0
 	get_tree().create_timer(4.0).timeout.connect(_crash)
@@ -94,7 +98,10 @@ func _on_died(_src: Node) -> void:
 func _crash() -> void:
 	if not is_inside_tree():
 		return
-	Wreck.spawn_at(get_tree().current_scene, global_position, wreck_alloy, kind)
+	var w := Wreck.spawn_at(get_tree().current_scene, global_position, wreck_alloy, kind, [get_rid()])
+	WorldFx.burst("explosion", w.global_position, PlanetPhysics.get_up(w.global_position))
+	WorldFx.sound("crash", w.global_position)
+	WorldFx.smoke_for(w, 60.0)
 	queue_free()
 
 ## Nearest player building (or the player) to `from`, for target selection.
@@ -121,7 +128,8 @@ static func nearest_player_target(tree: SceneTree, from: Vector3, include_player
 ## Alien hull material: near-black with a violet glow line - not the player's palette, readable as hostile.
 static func hull_mat(glow := false) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.09, 0.07, 0.11) if not glow else Color(0.85, 0.25, 0.95)
+	# dark violet-grey, light enough to read as a silhouette against black space and lit by the sun
+	m.albedo_color = Color(0.26, 0.22, 0.30) if not glow else Color(0.85, 0.25, 0.95)
 	m.metallic = 0.6
 	m.roughness = 0.4
 	if glow:

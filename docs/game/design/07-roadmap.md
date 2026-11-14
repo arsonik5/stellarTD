@@ -85,7 +85,15 @@ Original plan:
 - Gunship raids with warnings (wave specs), building damage/repair, wrecks + salvage + xeno research.
 - Then dropships + ground drones (base-local nav grid), walls, then spotter + bombardment.
 
-### G5 - Mechanisms & robots (Scrap Mechanic layer)
+### G5 - Mechanisms & robots (Scrap Mechanic layer) - JOINTS DONE 2026-11-05
+Built: `ShipJoint` part (bearing / hinge / piston) spawns a sub-grid Ship on its head joined by a real Jolt
+constraint with a motor (HingeJoint3D for bearing/hinge, Generic6DOFJoint3D slide for the piston); sub-grids
+use their head plate (cell 0) as core, you build onto them like any ship, the parent saves the whole tree
+recursively; the pilot drives every joint with Z / C. Measured: bearing 1.5 rad/s, hinge stops at 90 deg,
+piston strokes 0..1.5 m. Crafted in the Constructor (steel, wire, circuit).
+Not done: the 0.25 m mechanism grid (needs every part's size_cells doubled + a save migration - deferred as the
+riskiest change), per-joint settings panel and key binding, logic wires/gates, robot cores + behaviour cards.
+Original plan:
 - 0.25 m mechanism grid + migration.
 - Constructs as grid trees: bearing, hinge, piston (motorised).
 - Logic: wires, gates, timer, controller, sensors.
@@ -102,6 +110,16 @@ W1 recipe extraction -> W2 slope/altitude erosion -> W3 landforms (terraces, can
 ## Suggested order across both tracks
 
 G1 -> (G2 || W1-W2) -> (G3 || W3) -> (G4 || W4-W5) -> G5 -> (G6 || W6)
+
+## Also built 2026-11-05 (minor mechanics)
+Containment field (needs power, hides 15 signature), respawn beacon (nearest one wins over the landing site),
+waypoint beacon (named, HUD marker with distance anywhere on the body), supply drops (credit sink: Journal Supply
+page, pod falls from orbit along radial down), repair (iron ingots, 50 hp each, machine panel), items/min per
+recipe, Journal Stats page, inventory-full warning while drilling, foundations have structure and drones cut
+through walls that block them, Settings > Gameplay > Raids (off / calm / normal / relentless), Drone Port + cargo
+drone (first robot: physical hauler between two picked storages, research "Cargo Drones"), WorldFx (synthesised
+positional sound that follows air density - near-silent in vacuum - and radial-gravity particles for drilling,
+firing, impacts, explosions, launches, wreck smoke), lint + playthrough test suites.
 
 ## Decisions still open (Michael)
 

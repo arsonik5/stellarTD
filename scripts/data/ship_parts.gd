@@ -21,6 +21,10 @@ const ITEMS := [
 	preload("res://data/items/wheel_small.tres"),
 	preload("res://data/items/wheel_large.tres"),
 	preload("res://data/items/landing_gear.tres"),
+	preload("res://data/items/bearing.tres"),
+	preload("res://data/items/hinge.tres"),
+	preload("res://data/items/piston.tres"),
+	preload("res://data/items/rotor_head.tres"),
 ]
 
 const RECIPES := [
@@ -41,4 +45,7 @@ const RECIPES := [
 	preload("res://data/recipes/craft_wheel_small.tres"),
 	preload("res://data/recipes/craft_wheel_large.tres"),
 	preload("res://data/recipes/craft_landing_gear.tres"),
+	preload("res://data/recipes/craft_bearing.tres"),
+	preload("res://data/recipes/craft_hinge.tres"),
+	preload("res://data/recipes/craft_piston.tres"),
 ]

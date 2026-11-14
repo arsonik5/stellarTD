@@ -30,6 +30,7 @@ var _action_box: VBoxContainer
 var _action_label: Label
 var _action_bar: ProgressBar
 var _toast: Label
+var _wp_layer: Control
 var _sig_box: VBoxContainer
 var _sig_label: Label
 var _sig_bar: ProgressBar
@@ -150,6 +151,13 @@ func _build() -> void:
 	_toast.modulate = Color(UiTokens.WARN, 0.0)
 	root.add_child(_toast)
 
+	# waypoint markers: name + distance at the beacon's screen position, clamped to the edges when off-screen
+	_wp_layer = Control.new()
+	_wp_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_wp_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wp_layer.draw.connect(_draw_waypoints)
+	root.add_child(_wp_layer)
+
 	# signature gauge (top right): how loud the base is, and the tier it puts you in
 	_sig_box = UiKit.vbox(3)
 	_sig_box.anchor_left = 1.0
@@ -167,7 +175,7 @@ func _build() -> void:
 	# raid warning (top centre): bearing relative to where you look, ETA, what is coming
 	_raid_label = UiKit.label("", "HudValue")
 	_raid_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_raid_label.offset_top = 36
+	_raid_label.offset_top = 104       # below the objective / signature row, never over them
 	_raid_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_raid_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_raid_label.modulate = UiTokens.DANGER
@@ -285,8 +293,10 @@ func _build() -> void:
 	_hint_holder.anchor_right = 1.0
 	_hint_holder.anchor_top = 1.0
 	_hint_holder.anchor_bottom = 1.0
-	_hint_holder.offset_top = -104
-	_hint_holder.offset_bottom = -72
+	# the key-hint strip runs along the very bottom, under the O2 block (bottom left) and the hands card
+	# (bottom right) - at 1152 px wide it crowded the O2 block when it sat at their height
+	_hint_holder.offset_top = -28
+	_hint_holder.offset_bottom = -4
 	_hint_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_hint_holder)
 
@@ -363,6 +373,7 @@ func _process(delta: float) -> void:
 		_update_ship()
 	_update_feed(delta)
 	_update_raid(delta)
+	_wp_layer.queue_redraw()
 	_toast_time = maxf(_toast_time - delta, 0.0)
 	_toast.modulate = Color(_toast_color, clampf(_toast_time / 0.4, 0.0, 1.0))
 	var prompt := get_tree().get_first_node_in_group("interact_prompt") as CanvasLayer
@@ -400,6 +411,30 @@ func _update_o2() -> void:
 		_o2_alarm = 4.0 if o2 <= 0.0 else 12.0
 	var ship: Ship = _player.get("_piloted_ship")
 	_ship_o2.text = "SHIP O2  %d s" % int(ship.oxygen_left()) if ship != null else ""
+
+func _draw_waypoints() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var font := _wp_layer.get_theme_default_font()
+	# clamp off-screen markers into the free middle band: clear of the objective / signature row on top and the
+	# O2 / hands / hint blocks at the bottom
+	var full := _wp_layer.get_rect()
+	var rect := Rect2(full.position + Vector2(60, 150), full.size - Vector2(120, 150 + 170))
+	for n in get_tree().get_nodes_in_group("waypoint"):
+		var b := n as Node3D
+		if b == null or not is_instance_valid(b):
+			continue
+		var p := b.global_position + PlanetPhysics.get_up(b.global_position) * 2.6
+		var behind := cam.is_position_behind(p)
+		var sp := cam.unproject_position(p)
+		if behind:
+			sp = rect.get_center() - (sp - rect.get_center()) * 10.0
+		var clamped := Vector2(clampf(sp.x, rect.position.x, rect.end.x), clampf(sp.y, rect.position.y, rect.end.y))
+		var d := cam.global_position.distance_to(b.global_position)
+		var txt := "◆ %s  %s" % [String(b.get("label")).to_upper(), ("%d m" % d) if d < 1000.0 else ("%.1f km" % (d / 1000.0))]
+		_wp_layer.draw_string(font, clamped + Vector2(1, 1), txt, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(0, 0, 0, 0.7))
+		_wp_layer.draw_string(font, clamped, txt, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, UiTokens.ACCENT)
 
 func _refresh_signature() -> void:
 	var v := RadiationSignature.signature()

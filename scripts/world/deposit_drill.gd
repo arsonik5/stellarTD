@@ -21,7 +21,9 @@ const BORE_RADIUS_M := 1.0
 ## down through stone, so a 24 m shaft takes ~1.5 min and a 5-shaft pit ~7 min - long enough to be a building,
 ## short enough to see it work.
 const STRENGTH_MULT := 3.0
-const START_DEPTH_M := 1.0           # head starts this far under the base
+## The head starts half a radius under the base so the first bites break the surface: the open mouth of the pit
+## is the drill's main feedback (starting a full radius down only dimpled the ground).
+const START_DEPTH_M := 0.5
 const STEP_M := 0.5                  # head advance once the face around it is clear
 const MAX_DEPTH_M := 24.0            # iron sits 2-34 m down: mk1 reaches most shallow deposits
 ## Lateral offsets (metres, in the drill's own tangent frame) of the shafts it bores in order.
@@ -53,6 +55,7 @@ func _ready() -> void:
 	if get_node_or_null("Model") == null:
 		_build_blockout()
 	power_draw = 25.0
+	compatible_modifiers = ["speed_module", "efficiency_module", "yield_module"]
 	super._ready()
 	FactoryClock.tick.connect(_on_drill_tick)
 
@@ -106,7 +109,7 @@ func _on_drill_tick(dt: float) -> void:
 	if exhausted:
 		_spin(0.0)
 		return
-	_bite_timer += dt * work_speed
+	_bite_timer += dt * work_speed * modifier_speed()
 	if _bite_timer < BITE_INTERVAL:
 		return
 	_bite_timer -= BITE_INTERVAL
@@ -134,7 +137,8 @@ func bite_once() -> Dictionary:
 	bites_total += 1
 	var material := TerrainDrill.dominant_material_at(tool, Vector3i(head_local.floor()))
 	var removed := TerrainDrill.bite(tool, head_local, r_local, minf(TerrainDrill.strength_for(material) * STRENGTH_MULT, 1.0))
-	var paid := TerrainDrill.payout(_carry, removed, scale * scale * scale)
+	# a yield module pays more for the same rock (it sorts the cuttings better)
+	var paid := TerrainDrill.payout(_carry, removed, scale * scale * scale * modifier_yield())
 	for id: String in paid:
 		if id == "stone" and not keep_stone:
 			continue
@@ -144,6 +148,10 @@ func bite_once() -> Dictionary:
 		_last_item = id
 		GameEvents.item_mined.emit(id, n, self)
 	_spin(1.0)
+	if bites_total % 4 == 0:
+		var up_w := PlanetPhysics.get_up(global_position)
+		WorldFx.burst("dust", global_position + up_w * 0.3, up_w)
+		WorldFx.sound("drill_machine", global_position, 1.0, 0.25)
 	# Stay at this depth until the head centre is cut out, then step down half a radius so the next sphere
 	# overlaps and finishes the walls. Not "until nothing is removed": deep rock's SDF has to travel a long way
 	# before any volume counts as removed, so the first bites at a new spot remove ~0 and that rule raced the head
@@ -201,6 +209,7 @@ func build_ui_extras(box: VBoxContainer, refresh: Callable) -> void:
 		parts.append("%s %d" % [def.display_name if def else id, mined[id]])
 	box.add_child(UiKit.label("Mined: " + (", ".join(parts) if not parts.is_empty() else "nothing yet"), "DimLabel"))
 	box.add_child(UiKit.label("Shaft %d of %d, %.1f m of %.0f m" % [shaft + 1, PATTERN.size(), depth_m, MAX_DEPTH_M], "DimLabel"))
+	PowerUi.grid_section(box, self)
 
 func save_state() -> Dictionary:
 	var d := super.save_state()

@@ -74,4 +74,6 @@ func _build_model() -> void:
 	EnemyFlyer.part(self, EnemyFlyer.box_mesh(Vector3(2.4, 0.15, 1.2)), Vector3(0, -0.9, -3.2), false, Vector3(-0.5, 0, 0))
 	for d: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
 		EnemyFlyer.part(self, EnemyFlyer.box_mesh(Vector3(0.25, 1.2, 0.25)), Vector3(d.x * 1.7, -1.4, d.y * 2.4))
-	EnemyFlyer.part(self, EnemyFlyer.box_mesh(Vector3(2.8, 0.1, 4.4)), Vector3(0, -1.12, 0), true)
+	# four lift-engine slits underneath (not a glowing slab: they are vents, and a slab blew out the frame)
+	for d: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+		EnemyFlyer.part(self, EnemyFlyer.box_mesh(Vector3(0.9, 0.06, 0.18)), Vector3(d.x * 0.8, -1.12, d.y * 1.6), true)

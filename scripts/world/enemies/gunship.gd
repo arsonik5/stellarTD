@@ -91,3 +91,5 @@ func _build_model() -> void:
 	for x in [-0.5, 0.5]:
 		EnemyFlyer.part(self, EnemyFlyer.box_mesh(Vector3(0.22, 0.22, 1.6)), Vector3(x, -0.45, -1.8))
 	EnemyFlyer.part(self, EnemyFlyer.box_mesh(Vector3(1.0, 0.4, 0.2)), Vector3(0, 0, 2.55), true)
+	# glow trim along the wing edges: hostile craft read at range, even against the night side
+	EnemyFlyer.part(self, EnemyFlyer.box_mesh(Vector3(4.2, 0.06, 0.08)), Vector3(0, 0.08, -0.3), true)

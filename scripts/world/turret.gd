@@ -249,6 +249,8 @@ func _fire(ammo: AmmoType) -> void:
 	get_tree().current_scene.add_child(projectile)
 	projectile.global_position = _muzzle.global_position
 	projectile.set_meta("faction", "player")
+	WorldFx.burst("muzzle", _muzzle.global_position, launch_dir)
+	WorldFx.sound("cannon" if ammo.splash_radius > 0.0 else "gun", _muzzle.global_position)
 	projectile.setup(launch_dir * ammo.muzzle_velocity, ammo, get_rid())
 
 ## --- Persistence (see scripts/save/save_manager.gd) ---

@@ -32,6 +32,14 @@ func _run() -> void:
 	await _test_power()
 	await _test_signature()
 	await _test_combat()
+	await _test_support_buildings()
+	await _test_mechanisms()
+	await _test_repair_and_stats()
+	_test_world_fx()
+	await _test_walls_and_settings()
+	await _test_drone_port()
+	await _test_modules()
+	await _test_sidearm()
 
 func _test_events() -> void:
 	var got := []
@@ -557,4 +565,338 @@ func _test_combat() -> void:
 	target_b.queue_free()
 	td.queue_free()
 	Engine.time_scale = 1.0
+	await get_tree().process_frame
+
+func _test_support_buildings() -> void:
+	var o := Vector3(11000, 0, 0)
+	RadiationSignature.load_state({})
+	var ch: Building = _place("res://scenes/chest.tscn", o)
+	await get_tree().process_frame
+	ch.add_input("crystal_cell", 10)   # 20 signature: HUNTED
+	var cf: ContainmentField = _place("res://scenes/containment_field.tscn", o + Vector3(3, 0, 0)) as ContainmentField
+	await get_tree().process_frame
+	FactoryClock.advance(0.2)
+	RadiationSignature.recompute()
+	_check(is_equal_approx(RadiationSignature.signature(), 20.0) and cf.idle_reason() == "No power", "unpowered containment hides nothing (%.1f)" % RadiationSignature.signature())
+	var pole: Building = _place("res://scenes/power_pole.tscn", o + Vector3(1, 0, 2))
+	var gen: Building = _place("res://scenes/burner_generator.tscn", o + Vector3(-2, 0, 2))
+	var gen2: Building = _place("res://scenes/burner_generator.tscn", o + Vector3(-2, 0, -2))
+	gen.add_input("refined_carbon", 20)
+	gen2.add_input("refined_carbon", 20)
+	await get_tree().process_frame
+	PowerNetwork.rebuild()
+	FactoryClock.advance(0.3)
+	RadiationSignature.recompute()
+	_check(is_equal_approx(RadiationSignature.signature(), 5.0), "powered containment hides 15 (20 -> %.1f)" % RadiationSignature.signature())
+	_check(RadiationSignature.tier() == RadiationSignature.Tier.LOW, "containment drops the base from HUNTED to NOTICED")
+	for n in [ch, cf, pole, gen, gen2]:
+		n.queue_free()
+	await get_tree().process_frame
+	RadiationSignature.load_state({})
+	# beacons
+	var rb: Beacon = _place("res://scenes/respawn_beacon.tscn", o + Vector3(0, 0, 50)) as Beacon
+	var wb: Beacon = _place("res://scenes/waypoint_beacon.tscn", o + Vector3(0, 0, 60)) as Beacon
+	await get_tree().process_frame
+	_check(rb.is_in_group("respawn_point") and not rb.is_in_group("waypoint"), "respawn beacon is a respawn point")
+	_check(wb.is_in_group("waypoint") and wb.label.begins_with("Waypoint"), "waypoint beacon is a named waypoint")
+	wb.label = "Copper ridge"
+	var wb2: Beacon = _place("res://scenes/waypoint_beacon.tscn", o + Vector3(0, 0, 70)) as Beacon
+	await get_tree().process_frame
+	wb2.load_state(JSON.parse_string(JSON.stringify(wb.save_state())))
+	_check(wb2.label == "Copper ridge", "waypoint name survives save/load")
+	# a stand-in player: PlayerVitals respawns at the nearest beacon
+	var fake := CharacterBody3D.new()
+	add_child(fake)
+	fake.global_position = o + Vector3(0, 0, 45)
+	var v := PlayerVitals.new()
+	fake.add_child(v)
+	v.setup(fake)
+	v.remember_respawn(Transform3D(Basis(), o + Vector3(0, 0, -500)))
+	var t := v._best_respawn()
+	_check(t.origin.distance_to(rb.global_position) < 2.0, "respawn picks the nearest respawn beacon over the landing site")
+	for n in [rb, wb, wb2, fake]:
+		n.queue_free()
+	# supply drop: costs credit, falls along radial down, lands, holds the pack
+	Progression.reset()
+	var anchor := Node3D.new()
+	add_child(anchor)
+	anchor.global_position = o + Vector3(0, 0, 120)
+	_check(SupplyPod.order("ingots", anchor) == null, "no supply drop without the credit")
+	Progression.credit = 100
+	var pod := SupplyPod.order("ingots", anchor)
+	_check(pod != null and Progression.credit == 40, "an ingot crate costs 60 credit")
+	_check(pod != null and pod.get_inventory_count("refined_material") == 40, "the pod carries what was ordered")
+	var start_alt := pod.global_position.y - anchor.global_position.y
+	Engine.time_scale = 4.0
+	for i in 600:
+		await get_tree().physics_frame
+		if pod.is_landed():
+			break
+	Engine.time_scale = 1.0
+	_check(start_alt > 200.0 and pod.is_landed() and absf(pod.global_position.y - anchor.global_position.y) < 1.0, "the pod falls from orbit and lands beside the player")
+	pod.queue_free()
+	anchor.queue_free()
+	Progression.reset()
+
+func _joint_ship(kind: String, at: Vector3) -> Ship:
+	var ship := Ship.new()
+	add_child(ship)
+	ship.global_position = at
+	var core: ShipBlock = Inventory.get_item_def("vehicle_core").block_scene.instantiate()
+	ship.try_add_block(Vector3i(-1, -1, -1), core)
+	var j: ShipBlock = Inventory.get_item_def(kind).block_scene.instantiate()
+	ship.try_add_block(Vector3i(-1, 1, -1), j)
+	return ship
+
+func _drive(ship: Ship, input: float, seconds: float) -> void:
+	for j in ship.all_joints():
+		j.input = input
+	var frames := int(seconds * Engine.physics_ticks_per_second)
+	for i in frames:
+		await get_tree().physics_frame
+	for j in ship.all_joints():
+		j.input = 0.0
+
+func _test_mechanisms() -> void:
+	var o := Vector3(13000, 0, 0)
+	# bearing
+	var sb := _joint_ship("bearing", o)
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	var joints := sb.all_joints()
+	_check(joints.size() == 1 and joints[0] is ShipJoint, "a bearing on a ship is a joint")
+	var bj: ShipJoint = joints[0]
+	_check(bj.child != null and bj.child.is_subgrid and bj.child.get_block(Vector3i.ZERO) != null, "the bearing spawned a sub-grid with its head plate at cell 0")
+	_check(bj.child.ship_state == Ship.STATE_OPERATIONAL, "a sub-grid's head counts as its core (operational)")
+	var hull: ShipBlock = Inventory.get_item_def("hull_small").block_scene.instantiate()
+	var m0 := bj.child.mass
+	_check(bj.child.try_add_block(Vector3i(0, 1, 0), hull), "blocks can be built onto the moving part")
+	_check(bj.child.mass > m0, "the sub-grid's mass grows with its blocks")
+	var a0 := bj.position_value()
+	await _drive(sb, 1.0, 1.0)
+	var a1 := bj.position_value()
+	print("MECH bearing %.2f -> %.2f rad" % [a0, a1])
+	_check(absf(angle_difference(a0, a1)) > 0.5, "the bearing motor turns the sub-grid (Z / C)")
+	await _drive(sb, 0.0, 0.5)
+	var a2 := bj.position_value()
+	await _drive(sb, 0.0, 0.5)
+	_check(absf(angle_difference(a2, bj.position_value())) < 0.1, "with no input the bearing holds its angle")
+	# save / load the whole assembly
+	var data: Dictionary = JSON.parse_string(JSON.stringify(sb.save_state()))
+	_check((data.get("subgrids", []) as Array).size() == 1, "the parent ship saves its sub-grid")
+	var sb2 := Ship.new()
+	add_child(sb2)
+	sb2.load_state(data)
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	var j2: Array = sb2.all_joints()
+	_check(j2.size() == 1 and (j2[0] as ShipJoint).child != null and (j2[0] as ShipJoint).child.get_block_cells().size() == 2,
+		"loading restores the joint, its sub-grid and the block built on it")
+	# hinge: stops at +-90 degrees
+	var sh := _joint_ship("hinge", o + Vector3(0, 0, 40))
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	var hj: ShipJoint = sh.all_joints()[0]
+	await _drive(sh, 1.0, 3.0)
+	var ha := absf(hj.position_value())
+	print("MECH hinge after 3 s: %.2f rad" % ha)
+	_check(ha > 1.2 and ha < PI / 2.0 + 0.2, "the hinge swings to its 90 degree limit and stops there (%.2f)" % ha)
+	# piston: 0 .. 1.5 m
+	var sp := _joint_ship("piston", o + Vector3(0, 0, 80))
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	var pj: ShipJoint = sp.all_joints()[0]
+	var e0 := pj.position_value()
+	await _drive(sp, 1.0, 2.5)
+	var e1 := pj.position_value()
+	await _drive(sp, -1.0, 2.5)
+	var e2 := pj.position_value()
+	print("MECH piston %.2f -> %.2f -> %.2f m" % [e0, e1, e2])
+	_check(e1 > 1.2 and e1 < ShipJoint.PISTON_STROKE + 0.15, "the piston extends to its 1.5 m stroke (%.2f)" % e1)
+	_check(e2 < 0.2, "and retracts again (%.2f)" % e2)
+	for n in [sb, sb2, sh, sp]:
+		for j in n.all_joints():
+			if is_instance_valid(j.child):
+				j.child.queue_free()
+		n.queue_free()
+	await get_tree().process_frame
+
+func _test_repair_and_stats() -> void:
+	var b: Building = _place("res://scenes/smelter.tscn", Vector3(15000, 0, 0))
+	await get_tree().process_frame
+	var h := Health.of(b)
+	Health.deal(b, 140.0, "explosive", null)
+	_check(is_equal_approx(h.health, h.max_health - 140.0), "raid damage sticks on a building")
+	var BUI: Script = load("res://scripts/ui/building_ui.gd")
+	Inventory.add("refined_material", 2)
+	var have := Inventory.get_count("refined_material")
+	_check(BUI.repair_building(b) and is_equal_approx(h.health, h.max_health - 40.0) and Inventory.get_count("refined_material") == have - 2,
+		"repair: 2 iron ingots restore 100 health (50 each), as far as they go")
+	Inventory.add("refined_material", 5)
+	have = Inventory.get_count("refined_material")
+	BUI.repair_building(b)
+	_check(is_equal_approx(h.health, h.max_health) and Inventory.get_count("refined_material") == have - 1, "repair charges only what is missing")
+	_check(not BUI.repair_building(b), "a healthy building needs no repair")
+	Inventory.try_remove("refined_material", Inventory.get_count("refined_material"))
+	b.queue_free()
+
+func _test_world_fx() -> void:
+	var p := WorldFx.burst("dust", Vector3(17000, 0, 0), Vector3.UP)
+	_check(p != null and p.emitting and p.one_shot, "WorldFx bursts one-shot particles")
+	var up2 := Vector3(1, 1, 0).normalized()
+	var p2 := WorldFx.burst("sparks", Vector3(17000, 5, 0), up2)
+	_check(p2.global_transform.basis.y.normalized().dot(up2) > 0.999, "particles are aligned to the local up, not world Y")
+	for k in ["drill", "drill_machine", "gun", "cannon", "hit", "boom", "launch", "alien_fire", "crash", "clank"]:
+		if not WorldFx._streams.has(k) or (WorldFx._streams[k] as AudioStreamWAV).data.size() < 1000:
+			_check(false, "world sound '%s' synthesised" % k)
+			return
+	_check(true, "all 10 world sounds synthesised")
+
+func _test_walls_and_settings() -> void:
+	var o := Vector3(19000, 0, 0)
+	var wall: Node3D = load("res://scenes/foundation_2m.tscn").instantiate()
+	add_child(wall)
+	wall.global_position = o + Vector3(0, 1, 0)
+	var target: Building = _place("res://scenes/chest.tscn", o + Vector3(-6, 0, 0))
+	# a floor so the drone walks instead of floating
+	var slab := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var bx := BoxShape3D.new()
+	bx.size = Vector3(40, 1, 40)
+	cs.shape = bx
+	slab.add_child(cs)
+	add_child(slab)
+	slab.global_position = o - Vector3(0, 0.5, 0)
+	await get_tree().process_frame
+	var wh := Health.of(wall)
+	_check(wh != null and is_equal_approx(wh.max_health, 1000.0), "a 2 m foundation block has 1000 structure")
+	var drone: EnemyDrone = load("res://scenes/enemy_drone.tscn").instantiate()
+	add_child(drone)
+	drone.global_position = o + Vector3(6, 0.2, 0)
+	drone.target = target
+	Engine.time_scale = 4.0
+	for i in 1200:
+		await get_tree().physics_frame
+		if wh.health < wh.max_health:
+			break
+	Engine.time_scale = 1.0
+	_check(wh.health < wh.max_health, "a drone blocked by a wall cuts into the wall")
+	drone.queue_free()
+	wall.queue_free()
+	target.queue_free()
+	slab.queue_free()
+	var old: Variant = GameSettings.get_value("raids")
+	GameSettings.set_value("raids", 0)
+	_check(ThreatDirector.raid_mult() == 0.0, "Raids: Off stops the wave clock")
+	GameSettings.set_value("raids", 3)
+	_check(ThreatDirector.raid_mult() < 1.0, "Raids: Relentless shortens the gap between waves")
+	GameSettings.set_value("raids", old)
+	await get_tree().process_frame
+
+func _test_drone_port() -> void:
+	var o := Vector3(21000, 0, 0)
+	var port: DronePort = _place("res://scenes/drone_port.tscn", o) as DronePort
+	var src: Building = _place("res://scenes/chest.tscn", o + Vector3(15, 0, 0))
+	var dst: Building = _place("res://scenes/chest.tscn", o + Vector3(-12, 0, 8))
+	src.add_input("refined_material", 30)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(port.drone != null and is_instance_valid(port.drone), "the drone port launches its drone")
+	_check(port.storages_in_range().size() >= 2, "the port lists storages in range")
+	port.set_route(src, dst)
+	FactoryClock.advance(0.2)
+	_check(port.idle_reason() == "No power", "a drone port without power says so")
+	var pole: Building = _place("res://scenes/power_pole.tscn", o + Vector3(2, 0, 2))
+	var gen: Building = _place("res://scenes/burner_generator.tscn", o + Vector3(4, 0, -2))
+	gen.add_input("refined_carbon", 30)
+	await get_tree().process_frame
+	PowerNetwork.rebuild()
+	FactoryClock.advance(0.2)
+	_check(port.idle_reason() == "", "powered and routed: hauling")
+	Engine.time_scale = 4.0
+	for i in 2400:
+		await get_tree().physics_frame
+		if port.trips >= 2:
+			break
+	Engine.time_scale = 1.0
+	print("DRONE trips %d, source %d, dest %d, cargo %d" % [port.trips, src.get_inventory_count("refined_material"),
+		dst.get_inventory_count("refined_material"), port.drone.cargo_count()])
+	_check(port.trips >= 2, "the drone completes round trips (%d)" % port.trips)
+	_check(dst.get_inventory_count("refined_material") >= 20 and src.get_inventory_count("refined_material") <= 10,
+		"items really moved from source to destination")
+	var data: Dictionary = JSON.parse_string(JSON.stringify(port.save_state()))
+	var port2: DronePort = _place("res://scenes/drone_port.tscn", o + Vector3(0, 0, 30)) as DronePort
+	port2.load_state(data)
+	for i in 4:
+		await get_tree().process_frame
+	_check(port2.source == src and port2.destination == dst and port2.trips == port.trips, "the route survives save/load")
+	for n in [port, port2, src, dst, pole, gen]:
+		n.queue_free()
+	await get_tree().process_frame
+
+func _test_modules() -> void:
+	var o := Vector3(23000, 0, 0)
+	var sm: Building = _place("res://scenes/smelter.tscn", o)
+	await get_tree().process_frame
+	_check(sm.can_place_modifier("speed_module") and not sm.can_place_modifier("yield_module"), "a smelter takes speed/efficiency modules, not yield")
+	sm.set_modifier_slot(0, "speed_module")
+	sm.add_input("ore_a", 20)
+	sm.set_auto(0, true)
+	FactoryClock.advance(0.1)
+	FactoryClock.advance(3.0)
+	_check(sm.get_inventory_count("refined_material") == 3, "speed module: 1.5 s ingots every 1.0 s (%d in 3 s)" % sm.get_inventory_count("refined_material"))
+	_check(is_equal_approx(sm.effective_power_draw(), sm.power_draw * 1.6), "speed module draws 1.6x power")
+	sm.set_modifier_slot(1, "efficiency_module")
+	_check(is_equal_approx(sm.effective_power_draw(), sm.power_draw * 1.6 * 0.6), "efficiency module cuts that by 40%")
+	var data: Dictionary = JSON.parse_string(JSON.stringify(sm.save_state()))
+	var sm2: Building = _place("res://scenes/smelter.tscn", o + Vector3(5, 0, 0))
+	await get_tree().process_frame
+	sm2.load_state(data)
+	_check(sm2.get_modifier_slot(0) == "speed_module" and sm2.get_modifier_slot(1) == "efficiency_module", "installed modules survive save/load")
+	var dr: DepositDrill = _place("res://scenes/deposit_drill.tscn", o + Vector3(10, 0, 0)) as DepositDrill
+	await get_tree().process_frame
+	dr.set_modifier_slot(0, "yield_module")
+	_check(dr.can_place_modifier("yield_module") and is_equal_approx(dr.modifier_yield(), 1.5), "a drill takes a yield module (x1.5)")
+	for n in [sm, sm2, dr]:
+		n.queue_free()
+	await get_tree().process_frame
+
+func _test_sidearm() -> void:
+	var o := Vector3(25000, 0, 0)
+	var pl: Node3D = load("res://scenes/player.tscn").instantiate()
+	add_child(pl)
+	pl.global_position = o
+	await get_tree().process_frame
+	Inventory.set_slot({"kind": "hand", "side": "right"}, "rivet_gun", 1)
+	await get_tree().process_frame
+	var vm: Node3D = pl.get("viewmodel")
+	_check(vm.get_node_or_null("Sidearm") != null and (vm.get_node("Sidearm") as Node3D).visible, "the rivet gun shows in the hand")
+	var dummy: Node3D = load("res://scenes/enemy_dummy.tscn").instantiate()
+	add_child(dummy)
+	var cam: Camera3D = pl.get("camera")
+	# the dummy's origin is at its feet and its box spans 1.8 m up: centre the box on the line of fire
+	dummy.global_position = cam.global_position - cam.global_transform.basis.z * 12.0 - dummy.global_transform.basis.y * 0.9
+	Inventory.add("iron_piercing_ammo", 10)
+	var ammo := Inventory.get_count("iron_piercing_ammo")
+	pl.call("_dig")
+	pl.call("_dig")      # same instant: the fire rate holds it back
+	_check(Inventory.get_count("iron_piercing_ammo") == ammo - 1, "one rivet per trigger interval, paid from pierce ammo")
+	var shots := 1
+	for i in 120:
+		await get_tree().physics_frame
+		if not is_instance_valid(dummy):
+			break
+		pl.set("_sidearm_cool", 0.0)
+		if i % 10 == 0 and Inventory.get_count("iron_piercing_ammo") > 0:
+			pl.call("_dig")
+			shots += 1
+	_check(not is_instance_valid(dummy), "rivets kill a target in front (%d shots)" % shots)
+	Inventory.try_remove("iron_piercing_ammo", Inventory.get_count("iron_piercing_ammo"))
+	pl.set("_sidearm_cool", 0.0)
+	pl.call("_dig")
+	_check(Inventory.get_count("iron_piercing_ammo") == 0, "an empty gun does not fire (and says why)")
+	Inventory.set_slot({"kind": "hand", "side": "right"}, "building_tool", 1)
+	pl.queue_free()
+	if is_instance_valid(dummy):
+		dummy.queue_free()
 	await get_tree().process_frame

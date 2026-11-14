@@ -135,6 +135,7 @@ func build_ui_extras(box: VBoxContainer, _refresh: Callable) -> void:
 			box.add_child(UiKit.label("   %s  %d / %d" % [def.display_name if def else d.item_ids[i], have, int(d.amounts[i])],
 				"AccentLabel" if have >= int(d.amounts[i]) else "DimLabel"))
 	box.add_child(UiKit.label("Launched so far: %d  ·  Credit %d" % [launched_total, Progression.credit], "DimLabel"))
+	PowerUi.grid_section(box, self)
 
 func save_state() -> Dictionary:
 	var d := super.save_state()

@@ -17,6 +17,13 @@ const HEIGHT := 0.25
 @export var height := HEIGHT
 @export var mountable := true
 
+## Structural health: foundations are the walls and floors raids hit. Thicker blocks are tougher (G4: drones cut
+## through what blocks them, so a wall is a delay you can stack). Destroyed = removed without refund.
+@export var max_health := 0.0
+
 func _ready() -> void:
 	add_to_group("foundation")
 	FoundationNetwork.register(self)
+	var hp := Health.ensure(self, max_health if max_health > 0.0 else 200.0 + 400.0 * height, "player")
+	hp.free_owner_on_death = false
+	hp.died.connect(func(_src: Node) -> void: WorldObjects.remove(self))

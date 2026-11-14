@@ -30,26 +30,33 @@ func _ready() -> void:
 	row.add_child(left)
 	var tabs := UiKit.hbox(6)
 	left.add_child(tabs)
+	# credit and research points get their own line: in the tab row they pushed the detail panel off a 1152 screen
+	_points_label = UiKit.label("", "DimLabel")
+	left.add_child(_points_label)
+	# pages fill whatever height the screen has (a fixed 460 px overflowed 648 px tall windows)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size.y = 460
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size.y = 200
 	left.add_child(scroll)
 	_directives_page = _page(left)
 	_research_page = _page(left)
-	_pages = {"Tutorial": scroll, "Directives": _directives_page.get_parent(), "Research": _research_page.get_parent()}
+	_supply_page = _page(left)
+	_pages = {"Tutorial": scroll, "Directives": _directives_page.get_parent(), "Research": _research_page.get_parent(),
+		"Supply": _supply_page.get_parent()}
+	_stats_page = _page(left)
+	_pages["Stats"] = _stats_page.get_parent()
 	for page_name: String in _pages:
 		var b := UiKit.button(page_name)
 		b.toggle_mode = true
 		b.pressed.connect(func() -> void: show_page(page_name))
 		tabs.add_child(b)
 		_tab_buttons[page_name] = b
-	_points_label = UiKit.label("", "DimLabel")
-	tabs.add_child(UiKit.spacer())
-	tabs.add_child(_points_label)
+
 	_tree_canvas = Control.new()
 	scroll.add_child(_tree_canvas)
 	var dpanel := UiKit.panel("Well")
-	dpanel.custom_minimum_size.x = 320
+	dpanel.custom_minimum_size.x = 300
 	row.add_child(dpanel)
 	_detail = UiKit.vbox(UiTokens.GAP)
 	dpanel.add_child(_detail)
@@ -62,13 +69,16 @@ var _pages: Dictionary = {}
 var _tab_buttons: Dictionary = {}
 var _directives_page: VBoxContainer
 var _research_page: VBoxContainer
+var _supply_page: VBoxContainer
+var _stats_page: VBoxContainer
 var _points_label: Label
 var _page_name := "Tutorial"
 
 func _page(parent: Control) -> VBoxContainer:
 	var sc := ScrollContainer.new()
 	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sc.custom_minimum_size.y = 460
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.custom_minimum_size.y = 200
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	parent.add_child(sc)
 	var v := UiKit.vbox(UiTokens.GAP)
@@ -100,7 +110,9 @@ func _refresh_progression() -> void:
 		var card := UiKit.panel("Card")
 		var v := UiKit.vbox(4)
 		card.add_child(v)
-		v.add_child(UiKit.label(("STANDING ORDER  ·  " if d.standing else "DIRECTIVE  ·  ") + String(d.title).to_upper(), "HudLabel"))
+		var dl := UiKit.label(("STANDING ORDER  ·  " if d.standing else "DIRECTIVE  ·  ") + String(d.title).to_upper(), "HudLabel")
+		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(dl)
 		var msg := UiKit.label(String(d.message), "DimLabel")
 		msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(msg)
@@ -128,7 +140,9 @@ func _refresh_progression() -> void:
 		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(v)
 		var owned := Progression.bought.has(r.id)
-		v.add_child(UiKit.label(r.title.to_upper() + ("  ·  RESEARCHED" if owned else ""), "AccentLabel" if owned else "HudLabel"))
+		var tl := UiKit.label(r.title.to_upper() + ("  ·  RESEARCHED" if owned else ""), "AccentLabel" if owned else "HudLabel")
+		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(tl)
 		var desc := UiKit.label(r.description, "DimLabel")
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(desc)
@@ -139,7 +153,9 @@ func _refresh_progression() -> void:
 		var cost_parts := []
 		for c2: String in r.cost:
 			cost_parts.append("%d %s" % [int(r.cost[c2]), c2])
-		v.add_child(UiKit.label("Unlocks: %s   ·   Cost: %s" % [", ".join(unl), ", ".join(cost_parts)], "HudCaption"))
+		var ul := UiKit.label("Unlocks: %s   ·   Cost: %s" % [", ".join(unl), ", ".join(cost_parts)], "HudCaption")
+		ul.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART     # unwrapped it pushed the page past 1152 px
+		v.add_child(ul)
 		if not owned:
 			var b := UiKit.button("Research", func() -> void:
 				if Progression.buy(r.id):
@@ -149,6 +165,48 @@ func _refresh_progression() -> void:
 			b.disabled = not Progression.can_buy(r.id)
 			h.add_child(b)
 		_research_page.add_child(card)
+	for c in _stats_page.get_children():
+		c.queue_free()
+	_stats_page.add_child(UiKit.label("Everything made or mined since landing, and the average rate.", "DimLabel"))
+	var minutes := maxf(FactoryClock.sim_time / 60.0, 1.0 / 60.0)
+	var ids := Progression.produced.keys()
+	ids.sort_custom(func(a: String, b: String) -> bool: return int(Progression.produced[a]) > int(Progression.produced[b]))
+	for id: String in ids:
+		var def := Inventory.get_item_def(id)
+		var row := UiKit.hbox(UiTokens.GAP)
+		var ib := Control.new()
+		ib.custom_minimum_size = Vector2(24, 24)
+		ib.add_child(ItemIcon.new(id))
+		row.add_child(ib)
+		var nl := UiKit.label(def.display_name if def else id)
+		nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(nl)
+		row.add_child(UiKit.label("%d   ·   %.1f / min" % [int(Progression.produced[id]), float(Progression.produced[id]) / minutes], "HudCaption"))
+		_stats_page.add_child(row)
+	if ids.is_empty():
+		_stats_page.add_child(UiKit.label("Nothing yet. Dig something.", "DimLabel"))
+	for c in _supply_page.get_children():
+		c.queue_free()
+	_supply_page.add_child(UiKit.label("Spend Continuance credit on a supply drop. It lands next to you.", "DimLabel"))
+	for pack: String in SupplyPod.PACKS:
+		var info: Array = SupplyPod.PACKS[pack]
+		var card := UiKit.panel("Card")
+		var h := UiKit.hbox(UiTokens.GAP)
+		card.add_child(h)
+		var parts := []
+		for id: String in info[2]:
+			var def := Inventory.get_item_def(id)
+			parts.append("%d %s" % [int(info[2][id]), def.display_name if def else id])
+		var l := UiKit.label("%s  ·  %s" % [String(info[0]).to_upper(), ", ".join(parts)], "HudLabel")
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		h.add_child(l)
+		var b := UiKit.button("%d credit" % int(info[1]), func() -> void:
+			var pod := SupplyPod.order(pack, get_tree().get_first_node_in_group("player") as Node3D)
+			UiSound.play("confirm" if pod != null else "deny"), "PrimaryButton")
+		b.disabled = Progression.credit < int(info[1])
+		h.add_child(b)
+		_supply_page.add_child(card)
 
 func is_open() -> bool:
 	return visible

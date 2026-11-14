@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="Item" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/item.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/part_bearing.tscn" id="2"]
+
+[resource]
+script = ExtResource("1")
+id = "bearing"
+display_name = "Bearing"
+debug_color = Color(0.85, 0.62, 0.15, 1)
+max_stack = 50
+is_ship_block = true
+block_scene = ExtResource("2")

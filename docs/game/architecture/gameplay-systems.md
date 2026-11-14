@@ -302,6 +302,12 @@ Code map - read the class header comments, they carry the tuning reasons:
 - `scripts/world/threat_director.gd` + `scripts/world/enemies/*` - waves, raiders, drones, wrecks.
 - Terrain only exists near a viewer: a drill or crater far from the player pauses / does nothing (honest limit,
   shown as "Terrain not loaded").
+- `scripts/world/ship_joint.gd` - bearing/hinge/piston sub-grids (pilot: Z / C). `scripts/world/drone_port.gd` +
+  `cargo_drone.gd` - the hauler robot. `scripts/world_fx.gd` (autoload) - world sound + particles.
+- Machine modules (Building.MOD_*): speed x1.5 work / x1.6 power, efficiency x0.6 power, yield x1.5 drill payout;
+  installed in the panel's modifier slots, crafted in the Constructor.
+- Rivet gun (sidearm): a tool; hold the trigger, 1 pierce round per 0.22 s.
+- Settings > Gameplay > Raids: Off / Calm / Normal / Relentless scales the wave clock (Off = no waves).
 
 ### UI / UX System
 

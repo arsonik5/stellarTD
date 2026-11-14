@@ -291,7 +291,7 @@ func _collect_ships(tree: SceneTree) -> Array:
 		var ship := node as Ship
 		# Enemy ships are spawned by ThreatDirector and are not the player's
 		# property; saving them would resurrect a fight the player already won.
-		if ship == null or not ship.is_player_ship:
+		if ship == null or not ship.is_player_ship or ship.is_subgrid:
 			continue
 		out.append(ship.save_state())
 	return out

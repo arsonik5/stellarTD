@@ -64,6 +64,15 @@ const ITEM_DEFS_LIST := [
 	preload("res://data/items/crystal_reactor.tres"),
 	preload("res://data/items/alien_alloy.tres"),
 	preload("res://data/items/wreck.tres"),
+	preload("res://data/items/containment_field.tres"),
+	preload("res://data/items/respawn_beacon.tres"),
+	preload("res://data/items/waypoint_beacon.tres"),
+	preload("res://data/items/supply_pod.tres"),
+	preload("res://data/items/drone_port.tres"),
+	preload("res://data/items/speed_module.tres"),
+	preload("res://data/items/efficiency_module.tres"),
+	preload("res://data/items/yield_module.tres"),
+	preload("res://data/items/rivet_gun.tres"),
 ]
 
 var _item_defs: Dictionary = {}

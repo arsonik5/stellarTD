@@ -63,7 +63,8 @@ func _build() -> void:
 	var mscroll := ScrollContainer.new()
 	mscroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	mscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	mscroll.custom_minimum_size.y = 470
+	mscroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mscroll.custom_minimum_size.y = 220      # fills the screen's height; a fixed 470 overflowed 648 px windows
 	row.add_child(mscroll)
 	_machine_col = UiKit.vbox(UiTokens.GAP)
 	_machine_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -230,7 +231,9 @@ func _recipe_row(i: int, r: Recipe) -> Control:
 	var parts: Array[String] = []
 	for j in r.input_ids.size():
 		parts.append("%d %s" % [r.input_amounts[j], _display_name(r.input_ids[j])])
-	var inputs := UiKit.label("from  " + "  +  ".join(parts), "DimLabel")
+	# throughput at the machine's current speed (power doubles it): what a production line is planned with
+	var per_min := 60.0 / maxf(r.process_time, FactoryClock.TICK) * _building.work_speed
+	var inputs := UiKit.label("from  " + "  +  ".join(parts) + "   ·   %.1f / min" % (per_min * r.output_amount * _building.output_multiplier), "DimLabel")
 	inputs.name = "Inputs"
 	names.add_child(inputs)
 	var make := UiKit.button("Make", _on_recipe_pressed.bind(i))
@@ -281,6 +284,44 @@ func _refresh() -> void:
 	_cursor.item_id = _carry.carried_item_id
 	_cursor.count = _carry.carried_count
 	_refresh_extras()
+
+## Damaged buildings (raids, bombardment) show their structure and a Repair button: iron ingots for health,
+## REPAIR_HP_PER_INGOT each, paid from the player's inventory.
+const REPAIR_HP_PER_INGOT := 50.0
+
+func _repair_section() -> void:
+	var h := Health.of(_building)
+	if h == null or h.health >= h.max_health - 0.5:
+		return
+	_extras.add_child(UiKit.section("Structure"))
+	var row := UiKit.hbox(UiTokens.GAP)
+	_extras.add_child(row)
+	var need := ceili((h.max_health - h.health) / REPAIR_HP_PER_INGOT)
+	var info := UiKit.label("%d / %d  ·  repair costs %d Iron Ingot" % [roundi(h.health), roundi(h.max_health), need], "WarnLabel")
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	var b := UiKit.button("Repair", func() -> void:
+		if repair_building(_building):
+			UiSound.play("confirm")
+		else:
+			UiSound.play("deny")
+		_refresh(), "PrimaryButton")
+	b.disabled = Inventory.get_count("refined_material") <= 0
+	row.add_child(b)
+
+## Spend iron ingots (as many as needed and available) to restore health. Returns true if anything was repaired.
+static func repair_building(b: Node) -> bool:
+	var h := Health.of(b)
+	if h == null or h.is_dead():
+		return false
+	var need := ceili((h.max_health - h.health) / REPAIR_HP_PER_INGOT)
+	var have := mini(need, Inventory.get_count("refined_material"))
+	if have <= 0:
+		return false
+	Inventory.try_remove("refined_material", have)
+	h.heal(have * REPAIR_HP_PER_INGOT)
+	GameEvents.act("repair")
+	return true
 
 func _on_storage_pressed(index: int) -> void:
 	if _building == null:
@@ -333,6 +374,9 @@ func _refresh_extras() -> void:
 		c.queue_free()
 	if _building.has_method("build_ui_extras"):
 		_building.build_ui_extras(_extras, _refresh)
+	elif _building.power_draw > 0.0:
+		PowerUi.grid_section(_extras, _building)
+	_repair_section()
 	if _building is Turret:
 		var turret: Turret = _building
 		_extras.add_child(UiKit.section("Ammunition"))

@@ -32,6 +32,11 @@ const INFO := {
 	"solar_panel": ["power", "12 kW from the star overhead. Fades at dusk, nothing at night."],
 	"battery_bank": ["power", "Stores spare power and gives it back when the grid runs short."],
 	"crystal_reactor": ["power", "300 kW from crystal cells. While it runs, it can be seen from orbit."],
+	"containment_field": ["defense", "Hides 15 signature from the sky while powered. The way to keep crystal quiet."],
+	"respawn_beacon": ["structure", "If your suit fails you come back at the nearest one instead of the landing site."],
+	"waypoint_beacon": ["structure", "A named marker your HUD shows with its distance from anywhere on this world."],
+	"drone_port": ["logistics", "Launches a cargo drone that carries goods between two storages you pick. Needs power."],
+	"supply_pod": ["logistics", "A Continuance supply drop. Open it and take what you ordered."],
 	# logistics
 	"chest": ["logistics", "Storage box. Pipes can fill it and empty it."],
 	"vacuum_pipe": ["logistics", "Carries items between machines. Lay it in straight runs; it bends itself at corners."],
@@ -63,6 +68,10 @@ const INFO := {
 	"beam_2": ["vehicles", "1 m frame beam."],
 	"beam_4": ["vehicles", "2 m frame beam."],
 	"frame_cube": ["vehicles", "Open tube cube. Light filler in a frame."],
+	"bearing": ["vehicles", "Motorised turntable. Whatever you build on top turns. Z / C while piloting."],
+	"hinge": ["vehicles", "Motorised hinge, +-90 degrees. Doors, arms, ramps. Z / C while piloting."],
+	"piston": ["vehicles", "Pushes what is built on it out 1.5 m and back. Z / C while piloting."],
+	"rotor_head": ["vehicles", "The moving plate on a joint. Build onto it."],
 	"frame_corner": ["vehicles", "Frame joint with a bolting face on every side."],
 	# materials
 	"ore_a": ["material", "Iron ore. Smelts into iron ingots."],
@@ -86,12 +95,16 @@ const INFO := {
 	"circuit": ["material", "Circuit board. Machines that think: uplinks, sensors, robots."],
 	"gravel": ["material", "Crushed stone. Mixed into concrete."],
 	"concrete": ["material", "Concrete. Heavy foundations and the Continuance's colony orders."],
+	"speed_module": ["material", "Machine module: works 1.5x faster, draws 1.6x the power. Goes in a modifier slot."],
+	"efficiency_module": ["material", "Machine module: draws 40% less power. Goes in a modifier slot."],
+	"yield_module": ["material", "Drill module: 1.5x the ore from the same rock. Goes in a deposit drill's modifier slot."],
 	"alien_alloy": ["material", "Salvaged from alien wrecks. Light, absurdly strong; the labs on Earth want it."],
 	"wreck": ["defense", "A downed raider. Open it to salvage alien alloy."],
 	"crystal_cell": ["material", "Sealed crystal power cell. Earth wants these more than anything - and so do others."],
 	# tools
 	"mining_tool": ["tool", "Drill. Hold the trigger to cut the ground and collect ore."],
 	"building_tool": ["tool", "Places buildings. In hand: C opens the build menu."],
+	"rivet_gun": ["tool", "Sidearm. Hold the trigger to fire rivets (pierce ammo) at drones and raiders. Not a substitute for turrets."],
 	"scanner_tool": ["tool", "Pings the ground for ore and marks it on screen."],
 }
 

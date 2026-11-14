@@ -44,17 +44,36 @@ func _physics_process(delta: float) -> void:
 		else:
 			Health.deal(target, DPS * delta, "kinetic", self)
 	# stuck against something: hop
-	if move.length() > 0.1 and is_on_floor():
+	# stuck = trying to walk and not getting anywhere (on the ground or pressed against something in the air)
+	if move.length() > 0.1:
 		if global_position.distance_to(_last_pos) < SPEED * delta * 0.2:
 			_stuck += delta
 		else:
 			_stuck = 0.0
 		if _stuck > 0.6:
-			_vspeed = JUMP
+			# something is in the way: if it is ours to break (a wall, a machine), cut through it; else hop
+			var blocker := _blocker(move.normalized(), up)
+			if blocker != null:
+				target = blocker
+			elif is_on_floor():
+				_vspeed = JUMP
 			_stuck = 0.0
 	_last_pos = global_position
 	velocity = move + up * _vspeed
 	move_and_slide()
+
+## The player-owned thing with Health directly ahead (within 2.5 m at chest height), or null.
+func _blocker(dir: Vector3, up: Vector3) -> Node3D:
+	var from := global_position + up * 0.8
+	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 2.5)
+	q.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return null
+	var h := Health.of(hit.collider)
+	if h != null and h.faction == "player":
+		return h.get_parent() as Node3D
+	return null
 
 func _build_model() -> void:
 	var cs := CollisionShape3D.new()

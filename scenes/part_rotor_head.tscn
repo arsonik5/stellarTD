@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ship_block.gd" id="1"]
+
+[node name="part_rotor_head" type="Node3D"]
+script = ExtResource("1")
+block_id = "rotor_head"
+mass_kg = 30.0
+max_health = 120.0
+size_cells = Vector3i(2, 1, 2)

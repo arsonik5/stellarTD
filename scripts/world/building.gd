@@ -49,6 +49,9 @@ func _ready() -> void:
 	hp.died.connect(func(_src: Node) -> void: WorldObjects.remove(self))
 	if not recipes.is_empty():
 		FactoryClock.tick.connect(_on_factory_tick)
+	# every machine that draws power takes speed/efficiency modules (subclasses may add more)
+	if power_draw > 0.0 and compatible_modifiers.is_empty():
+		compatible_modifiers = ["speed_module", "efficiency_module"]
 
 	_mesh_instances.assign(find_children("*", "MeshInstance3D", true, false))
 	_highlight_material = StandardMaterial3D.new()
@@ -129,7 +132,7 @@ func status_text() -> String:
 
 func _on_factory_tick(dt: float) -> void:
 	if _active_recipe_index != -1:
-		_craft_elapsed += dt * work_speed
+		_craft_elapsed += dt * work_speed * modifier_speed()
 		# small epsilon: 20 x 0.1 must finish a 2.0 s recipe on tick 20, not 21
 		if _craft_elapsed < _craft_duration - 0.0001:
 			return
@@ -241,6 +244,34 @@ func set_modifier_slot(index: int, item_id: String) -> void:
 ## actually have modifier content designed for them yet.
 func can_place_modifier(item_id: String) -> bool:
 	return compatible_modifiers.has(item_id)
+
+## Modifier effects (design M3). Each installed module stacks multiplicatively:
+##   speed_module       work x1.5, power x1.6
+##   efficiency_module  power x0.6
+##   yield_module       extractor payout x1.5 (deposit drill)
+const MOD_SPEED := {"speed_module": 1.5}
+const MOD_POWER := {"speed_module": 1.6, "efficiency_module": 0.6}
+const MOD_YIELD := {"yield_module": 1.5}
+
+func _mod_product(table: Dictionary) -> float:
+	var f := 1.0
+	for m in _modifiers:
+		if table.has(m):
+			f *= float(table[m])
+	return f
+
+func modifier_speed() -> float:
+	return _mod_product(MOD_SPEED)
+
+func modifier_power() -> float:
+	return _mod_product(MOD_POWER)
+
+func modifier_yield() -> float:
+	return _mod_product(MOD_YIELD)
+
+## kW actually drawn while working, after modules (PowerNetwork sums this).
+func effective_power_draw() -> float:
+	return power_draw * modifier_power()
 
 func set_slot(index: int, item_id: String, count: int) -> void:
 	_inventory[index].item_id = item_id

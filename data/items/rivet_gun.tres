@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="Item" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "rivet_gun"
+display_name = "Rivet Gun"
+material_index = -1
+debug_color = Color(0.85, 0.62, 0.15, 1)
+is_tool = true
+max_stack = 1

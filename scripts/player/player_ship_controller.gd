@@ -87,3 +87,11 @@ func _physics_process(_delta: float) -> void:
 	if angular.length() > MAX_TURN_RATE:
 		angular = angular.normalized() * MAX_TURN_RATE
 	ship.desired_angular_velocity = angular
+	# mechanisms: Z / C turn every bearing and hinge and drive every piston on this ship (and its sub-grids)
+	var joint_in := 0.0
+	if Input.is_physical_key_pressed(KEY_C):
+		joint_in += 1.0
+	if Input.is_physical_key_pressed(KEY_Z):
+		joint_in -= 1.0
+	for j in ship.all_joints():
+		j.input = joint_in

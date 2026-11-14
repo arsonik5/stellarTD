@@ -198,6 +198,16 @@ readouts go into one of these places or into a screen.
 - Pickup feed also carries research data lines in the accent colour ("+1 GEOLOGY DATA · first Iron Ore").
 - In the world: an amber billboard "▲ MISSING INPUT" (etc.) over a machine that wants to work and can't, within
   45 m. "Idle" (switched off) shows nothing.
+- Key-hint strip: the very bottom of the screen (28 px), UNDER the O2 block and the hands card - at its old height
+  it crowded the O2 block at 1152 px wide. Waypoints: "◆ NAME 340 m" in accent at the beacon, clamped to edges.
+- Journal pages: Tutorial / Directives / Research / Supply / Stats; points and credit on their own line under the
+  tabs (in the tab row they pushed the detail panel off a 1152 screen). Pages fill the available height.
+
+### Layout rule (checked by `scenes/dev/feature_tour.tscn`)
+Every screen must fit 1152 x 648 and 1920 x 1080: the tour walks every visible control on every screen and fails
+any rectangle outside the viewport (scroll-container content excepted). Never give a page a fixed minimum height
+taller than ~220 px; let it EXPAND_FILL. Run both sizes after any UI change:
+`godot --path . res://scenes/dev/feature_tour.tscn -- tag=X` and the same with `--resolution 1920x1080`.
 
 ## 7. Key hints
 

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ResearchNode" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/research_node.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "r_drones"
+title = "Cargo Drones"
+description = "A powered port and a hauler drone that carries goods between two storages for you. The first of the robots."
+cost = {"engineering": 4}
+prerequisite_ids = Array[String](["r_power"])
+unlocks = Array[String](["drone_port"])

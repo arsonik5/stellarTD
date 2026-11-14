@@ -27,6 +27,12 @@ const SpotterScene := preload("res://scenes/enemy_spotter.tscn")
 const WARNING_TIME := 45.0
 ## Seconds between raid waves by tier (MEDIUM, HIGH, SIEGE). The wave clock only runs at MEDIUM or above.
 const WAVE_INTERVAL := {2: 300.0, 3: 220.0, 4: 160.0}
+## Settings > Gameplay > Raids: [Off, Calm, Normal, Relentless] -> wave interval multiplier (0 = no raids).
+const RAID_SETTING_MULT := [0.0, 1.8, 1.0, 0.6]
+
+static func raid_mult() -> float:
+	var idx := int(GameSettings.get_value("raids")) if GameSettings.SPEC.has("raids") else 2
+	return RAID_SETTING_MULT[clampi(idx, 0, RAID_SETTING_MULT.size() - 1)]
 
 var _cooldown_remaining: float = 0.0
 var _active_scout: EnemyScoutShip = null
@@ -51,7 +57,7 @@ func _process(delta: float) -> void:
 	var tier := RadiationSignature.tier()
 	if tier == RadiationSignature.Tier.LOW and not is_instance_valid(_active_scout) and _cooldown_remaining <= 0.0:
 		_try_spawn_scout()
-	if tier < RadiationSignature.Tier.MEDIUM:
+	if tier < RadiationSignature.Tier.MEDIUM or raid_mult() <= 0.0:
 		wave_timer = -1.0
 		_warned = false
 		return
@@ -87,7 +93,7 @@ static func composition_for(tier: int, wave: int) -> Dictionary:
 
 func _schedule(tier: int) -> void:
 	# the first wave after crossing into a raid tier gives a full warning window plus some calm
-	wave_timer = float(WAVE_INTERVAL.get(tier, 300.0)) if wave_number > 0 else WARNING_TIME + 30.0
+	wave_timer = float(WAVE_INTERVAL.get(tier, 300.0)) * raid_mult() if wave_number > 0 else WARNING_TIME + 30.0
 	_next_comp = composition_for(tier, wave_number)
 	_next_bearing = _random_tangent(base_center())
 	_warned = false
