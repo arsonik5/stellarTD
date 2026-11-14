@@ -53,3 +53,22 @@ The two references point at different build methods:
 
 Pixel render test: one flat chunk of the existing terrain + 3 existing machine models, orthographic camera at ~50
 degrees, 480x270 internal render upscaled to 1080p, palette quantise. Compare against the Garbage Country frames.
+
+## Ref 3: Unfallen, the CAMERA / SPACE reference (Michael: "exactly this - not art, how space and 2.5D is played")
+
+Instagram reel, 60 s, music only, gameplay montage. Unfallen: multiplayer open-world survival (scavenge, build
+bases, fight "the Fallen"), coming 2027. [VERIFIED unfallengame.com, official YouTube trailer title]
+
+What it shows (frames 0-60 s, observed, not confirmed by the studio):
+- **Camera almost straight down**, following the player/car, portrait framing in the reel. Not isometric, not a
+  fixed 3/4 tilt.
+- **Real perspective lean:** buildings, poles and trees show their walls/sides on the side facing away from the
+  screen centre and the lean changes as the camera moves (house top-left shows its south wall, house top-right
+  its west wall). Tall things feel tall because of that parallax. [OBSERVED: this is what a 3D perspective camera
+  looking down does; a flat sprite does not do it on its own]
+- **Light and shadow carry the height:** long sun shadows from people, poles, wires and trees; at night the screen
+  is near black and **pools of light** (street lamps, flashlight cone, car headlights) are what you see by; rain.
+- Vehicles drive across the map (red pickup on rails and roads), camera stays top-down over them.
+
+Steal for Stellar TD: the near-top-down follow camera, perspective lean on tall things, shadows as the main height
+cue, darkness + light pools at night (lamps, headlights, muzzle flashes, furnace glow) as real gameplay.
