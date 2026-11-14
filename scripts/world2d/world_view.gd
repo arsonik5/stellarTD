@@ -36,6 +36,27 @@ const ORE_COLOURS := [Color.TRANSPARENT, Color("#c8683a"), Color("#d89a48"), Col
 static func z_for_level(level: int) -> int:
 	return (level - WorldGrid.MIN_LEVEL) * 2 + 1
 
+## The tile whose LEANED top is under a point on screen (in world coordinates, e.g. get_global_mouse_position()).
+## Terrain at level L is drawn scaled away from the camera centre, so undo that per level, highest first, so a
+## cliff top in front wins over the ground behind it.
+func pick_tile(screen_world: Vector2, around_level: int) -> Vector2i:
+	if camera == null:
+		return grid.tile_of(screen_world)
+	var cam := camera.get_screen_center_position()
+	for lv in range(around_level + 4, around_level - 4, -1):
+		var k := 1.0 + float(lv) * WorldGrid.LEVEL_HEIGHT / CAM_HEIGHT
+		var tt := grid.tile_of(cam + (screen_world - cam) / k)
+		if grid.level_at(tt.x, tt.y) == lv:
+			return tt
+	return grid.tile_of(screen_world)
+
+## A world point drawn with the lean of `level` (for overlays: ghosts, cursors, labels).
+func leaned(p: Vector2, level: int) -> Vector2:
+	if camera == null:
+		return p
+	var cam := camera.get_screen_center_position()
+	return p + (p - cam) * (float(level) * WorldGrid.LEVEL_HEIGHT / CAM_HEIGHT)
+
 func setup(g: WorldGrid, cam: Camera2D) -> void:
 	grid = g
 	camera = cam

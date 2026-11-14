@@ -12,7 +12,12 @@ var view: WorldView
 var player: Player2D
 var cam: Camera2D
 var hud: Label
+var build: BuildGrid2D
+var build_mode: BuildMode2D
 var _zoom_i := 1
+
+## What a Voyager lands with (P1 placeholder for the landing pod's kit).
+const LANDING_KIT := {"deposit_drill": 2, "smelter": 1, "chest": 2, "conveyor_belt": 24, "refined_material": 10}
 var gen_ms := 0.0
 
 func _ready() -> void:
@@ -34,6 +39,9 @@ func _ready() -> void:
 	view = WorldView.new()
 	add_child(view)
 	view.setup(grid, cam)
+	build = BuildGrid2D.new()
+	add_child(build)
+	build.setup(grid, view)
 	player = Player2D.new()
 	add_child(player)
 	player.setup(grid, view, find_spawn(grid))
@@ -53,6 +61,12 @@ func _ready() -> void:
 	hud.add_theme_color_override("font_outline_color", Color.BLACK)
 	hud.add_theme_constant_override("outline_size", 4)
 	layer.add_child(hud)
+	build_mode = BuildMode2D.new()
+	add_child(build_mode)
+	build_mode.setup(build, view, player, layer)
+	if Inventory.get_count("deposit_drill") == 0 and Inventory.get_count("smelter") == 0:
+		for id: String in LANDING_KIT:
+			Inventory.add(id, LANDING_KIT[id])
 	if OS.get_cmdline_user_args().has("--shot"):
 		_shot.call_deferred()
 
@@ -64,11 +78,31 @@ func _shot() -> void:
 	for i in 60:
 		await get_tree().physics_frame
 	player.input_override = Vector2.ZERO
-	for i in 20:
+	# lay a small line through the real build code next to the player: drill on the nearest ore, belts, a chest
+	var ore := _nearest_ore(player.tile(), 40)
+	if ore.x >= 0:
+		player.position = (Vector2(ore) + Vector2(-2.5, 0.5)) * WorldGrid.TILE_PX
+		var placed: Variant = build.place("deposit_drill", ore, 0)
+		var x0 := ore.x + 2
+		for x in range(x0, x0 + 4):
+			build.place(BuildGrid2D.BELT, Vector2i(x, ore.y), 0)
+		build.place("chest", Vector2i(x0 + 4, ore.y), 0)
+		print("WORLD2D_SHOT drill at %s: %s" % [ore, "placed" if placed != null else build.can_place("deposit_drill", ore, 0)])
+	build_mode.selected = "smelter"
+	build_mode._set_active(true)
+	for i in 120:
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png("user://world2d_shot.png")
 	print("WORLD2D_SHOT gen %.0f ms, player tile %s level %d" % [gen_ms, player.tile(), player.level])
 	get_tree().quit()
+
+func _nearest_ore(c: Vector2i, r: int) -> Vector2i:
+	for d in r:
+		for y in range(c.y - d, c.y + d + 1):
+			for x in range(c.x - d, c.x + d + 1):
+				if grid.ore_at(x, y) > 0 and build.can_place("deposit_drill", Vector2i(x, y), 0) == "":
+					return Vector2i(x, y)
+	return Vector2i(-1, -1)
 
 ## Open flat ground near the map centre: a 7x7 block on one level, no ore, no ramps, with enough walkable land
 ## around it. Spiral search, deterministic.

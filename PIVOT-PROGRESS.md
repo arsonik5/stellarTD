@@ -29,6 +29,7 @@ Mindustry-spirit pixel art, Unfallen camera (straight down, things lean by heigh
 | P0 | Sprite tool: fit, palette, textures, dual-grid, cliff strips, normal maps, glow, snap-to-grid | tools/sprite_pipeline.py | `selftest` passes |
 | P0 | Lighting + lean proof (straight-down camera, roof lean with walls, shadows, night) | scripts/dev/lean_test.gd | screenshots sent |
 | P1.1 | **World data v2**: 25 levels, ground, ore + amount, flags (ramp/floor/explored), step rules, compressed save | scripts/world2d/world_grid.gd | world2d test |
+| P1.7 | **Build mode in game**: bar 1-5 (belt, drill, smelter, constructor, chest) with carried counts / costs, ghost under the cursor with lean (green/red + reason), R rotate, LMB place, drag lays belt lines that bend with the drag, X dismantle (drag too), Esc/RMB leave, E machine panel (status, recipes with auto, contents); mining off while building; landing kit on a new game; picking the leaned tile under the mouse moved to `WorldView.pick_tile` | scripts/world2d/build_mode_2d.gd, world_2d.gd | `world2d.tscn -- --shot`: drill + belts + chest placed through the real build code on generated terrain, 1 300 fps |
 | P1.6 | **Factory core**: `Building2D` (logic ported line for line from the 3D Building: slots, recipes on FactoryClock, auto, modules, power hooks, idle reasons, save/load; plus footprint, rotation, placeholder drawing that leans); machines smelter (2x2), chest (1x1), constructor (3x3), deposit drill (2x2, mines `ore_amount` under it, faster with more ore tiles); `BuildGrid2D` (occupancy, placement rules, pay with carried copy first then build recipe, dismantle with full refund incl. contents, Mindustry dump of outputs onto belts pointing away, save/load); `BeltSystem2D` (per-tile belts, 4 items/tile, 4 tiles/s, hand-off to belts/buildings, side-loading, drawn per level with lean + moving chevrons); new item + recipe `conveyor_belt` (1 refined_material -> 2) | scripts/world2d/building_2d.gd, machines/, build_grid_2d.gd, belt_system_2d.gd, data/items/conveyor_belt.tres, data/recipes/build_conveyor_belt.tres | factory2d test 15/15: 24 ingots reach the chest in 40 s |
 | P1.5 | **Mining**: hold LMB on a tile in reach (2.6 tiles) -> cracks over hardness x 0.7 s -> pays 2 stone (+4 ore while the deposit lasts, `ore_amount` counts down) into `Inventory`, emits `item_mined`, tile drops one level and becomes rubble (ramp) so shallow pits are walkable, deep shafts are real holes; cliff faces can be cut back; refusals (on it, out of reach, bedrock, too far down, built floor). Cursor overlay with lean + cracks; mouse picks the LEANED tile under it; HUD shows the bag | scripts/world2d/mining_2d.gd, player_2d.gd, cursor_overlay_2d.gd | player2d test 11/11 |
 | P1.4 | **Player**: top-down astronaut (placeholder drawing), WASD + mouse aim, tile collision via `can_step` (cliffs block, ramps carry, no diagonal squeeze), leans with its level, follow camera, zoom 1-4x; playable scene `scenes/world2d.tscn` (class `GameWorld2D`; `World2D` is a Godot built-in name) with a debug HUD; spawn on open plains near the centre | scripts/world2d/player_2d.gd, player_body_2d.gd, world_2d.gd | player2d test 5/5; `world2d.tscn -- --shot` screenshot, ~1 900 fps |
@@ -37,13 +38,15 @@ Mindustry-spirit pixel art, Unfallen camera (straight down, things lean by heigh
 
 ## Next (in order)
 
-1. **Build mode in the game**: build menu (the 5 buildables), ghost under the cursor with lean, R rotate, drag to lay
-   belt lines, refusal reason shown, X/hold to dismantle, hotbar 1-9, machine panel on click (recipes, auto, contents).
+1. **Save/load v2**: world bytes + buildings + belts + player + inventory + progression, quicksave/quickload,
+   autosave on quit, continue on start. Then wire the main menu to the 2D game.
 2. **More belt pieces**: junction, router/splitter, bridge, belt lift between levels (ramps).
-3. **Save/load v2** (world bytes + buildings + belts + game state), main menu wiring.
 4. Then P2 (power, research, uplink...) per the plan.
 
 ## Open problems / notes
+
+- Machine panel recipe toggles are display only (smelter auto-runs everything it is fed). Clicking recipes and
+  moving items in/out by hand come with the real UI pass.
 
 - Decision (2026-11-14): no `BuildingCore` split of the 3D Building. `Building2D` carries the ported logic; machines
   are ported one by one as P1/P2 need them (smelter, chest, constructor, drill done); the 3D Building and its 20
