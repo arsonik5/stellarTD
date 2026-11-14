@@ -17,6 +17,8 @@ Commands (python -I tools/sprite_pipeline.py <cmd> ...):
   lit      IN --out-dir DIR [--bevel 6] [--detail 1.0] [--strength 2.0]
                                                        normal map (+ emissive mask) for a sprite or tile, for
                                                        Godot CanvasTexture lighting (pivot-2d.md D11)
+  snap     IN --out OUT.png [--colors 24] [--grid N]   image-model "pixel art" onto a real pixel grid: finds the grid
+                                                       it was drawn at, one colour per cell, small palette
   sheet    IMG [IMG...] --out contact.png [--scale 4]  contact sheet for review (nearest upscale, labels)
   selftest                                             runs every command on generated input
 """
@@ -352,6 +354,33 @@ def cmd_lit(args) -> None:
     print(msg)
 
 
+# --- snap image-model pixel art onto a real grid ---------------------------------------------------------------
+
+def find_grid(a: np.ndarray, lo: int = 3, hi: int = 16, tol: float = 1.5) -> int:
+    """The cell size an image model drew its 'pixels' at: the LARGEST size whose cells are still about as flat as
+    the flattest one (a 6 px grid is also flat at 3 px, so the smallest flat size would be wrong)."""
+    errs = {}
+    for g in range(lo, hi + 1):
+        h, w = (a.shape[0] // g) * g, (a.shape[1] // g) * g
+        blk = a[:h, :w, :3].reshape(h // g, g, w // g, g, 3)
+        errs[g] = float(np.abs(blk - blk.mean(axis=(1, 3), keepdims=True)).mean())
+    floor = min(errs.values())
+    return max(g for g, e in errs.items() if e <= floor + tol)
+
+
+def cmd_snap(args) -> None:
+    a = np.array(Image.open(args.input).convert("RGBA")).astype(np.float32)
+    g = args.grid or find_grid(a)
+    h, w = (a.shape[0] // g) * g, (a.shape[1] // g) * g
+    cell = np.median(a[:h, :w].reshape(h // g, g, w // g, g, 4), axis=(1, 3))
+    rgb = Image.fromarray(cell[..., :3].astype(np.uint8), "RGB").quantize(
+        colors=args.colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).convert("RGBA")
+    out = np.array(rgb)
+    out[..., 3] = np.where(cell[..., 3] > ALPHA_CUT, 255, 0)
+    Image.fromarray(out, "RGBA").save(args.out)
+    print(f"snap: {args.out} grid {g}px -> {out.shape[1]}x{out.shape[0]}, {args.colors} colours")
+
+
 # --- review --------------------------------------------------------------------------------------------------
 
 def cmd_sheet(args) -> None:
@@ -428,6 +457,10 @@ def cmd_selftest(_args) -> None:
     glow = Image.new("RGBA", (32, 32), (60, 60, 60, 255)); ImageDraw.Draw(glow).rectangle((10, 10, 20, 20), fill=(255, 170, 40, 255)); glow.save(tmp / "glow.png")
     run(["lit", str(tmp / "glow.png"), "--out-dir", str(tmp)])
     check((tmp / "glow_e.png").exists() and np.array(Image.open(tmp / "glow_e.png"))[15, 15, 3] == 255, "emissive mask catches the glowing window")
+    blocky = np.kron(np.random.default_rng(3).integers(0, 255, (40, 40, 3)), np.ones((6, 6, 1))).astype(np.uint8)
+    Image.fromarray(blocky, "RGB").save(tmp / "blocky.png")
+    run(["snap", str(tmp / "blocky.png"), "--out", str(tmp / "snapped.png"), "--colors", "16"])
+    check(Image.open(tmp / "snapped.png").size == (40, 40), "snap finds a 6 px grid and returns 40x40 cells")
     run(["sheet", str(tmp / "spr.png"), str(tmp / "dg.png"), "--out", str(tmp / "sheet.png")])
     check((tmp / "sheet.png").exists(), "contact sheet written")
     print(f"SELFTEST DONE fails={fails}  ({tmp})")
@@ -443,6 +476,7 @@ def main(argv=None) -> None:
     p = sub.add_parser("dualgrid"); p.add_argument("a"); p.add_argument("b"); p.add_argument("--tile", type=int, default=32); p.add_argument("--out", required=True); p.add_argument("--seed", type=int, default=1); p.set_defaults(fn=cmd_dualgrid)
     p = sub.add_parser("cliff"); p.add_argument("--palette"); p.add_argument("--tile", type=int, default=32); p.add_argument("--level-px", type=int, default=8); p.add_argument("--base", default="#7a6a58"); p.add_argument("--out", required=True); p.set_defaults(fn=cmd_cliff)
     p = sub.add_parser("lit"); p.add_argument("input"); p.add_argument("--out-dir", required=True); p.add_argument("--bevel", type=int, default=6); p.add_argument("--detail", type=float, default=1.0); p.add_argument("--strength", type=float, default=2.0); p.add_argument("--wrap", action="store_true", help="tileable texture: wrap edges, no silhouette bevel"); p.add_argument("--height", help="exact height map (codeart _h.png): normals from it, not guessed"); p.add_argument("--height-px", type=float, default=12.0, help="pixels of relief that height 1.0 stands for"); p.set_defaults(fn=cmd_lit)
+    p = sub.add_parser("snap"); p.add_argument("input"); p.add_argument("--out", required=True); p.add_argument("--colors", type=int, default=24); p.add_argument("--grid", type=int, default=0); p.set_defaults(fn=cmd_snap)
     p = sub.add_parser("sheet"); p.add_argument("images", nargs="+"); p.add_argument("--out", required=True); p.add_argument("--scale", type=int, default=4); p.add_argument("--cols", type=int, default=6); p.set_defaults(fn=cmd_sheet)
     p = sub.add_parser("selftest"); p.set_defaults(fn=cmd_selftest)
     a = ap.parse_args(argv)

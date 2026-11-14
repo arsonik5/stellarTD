@@ -21,3 +21,4 @@ data/models/rocks/*/
 data/models/rocks/*/game/
 art_src/style_lock/*.png
 !art_src/style_lock/style_pick_astroneer.png
+art_src/qwen_px/*.png

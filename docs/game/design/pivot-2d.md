@@ -231,50 +231,43 @@ merges, the 3D scenes move to `legacy/`, and each later phase deletes the legacy
 
 ## 6. Art plan
 
-### 6.1 Style rules (locked in P0.1, written into `art-direction.md`)
+### 6.1 Style rules (decided 2026-11-14, see `reference/pivot-2026-11-14-references.md`)
 
-Michael, 2026-11-14: "more like Factorio, but with height"; "futuristic space art direction, more like Astroneer,
-rather than this industrial raw gritty style"; "still keeping detail, like dirt accumulating from use and
-explosions - MANY small details like that"; "all 2D sprites and art should be lit, normal mapped and all, to give
-a 3D illusion of shadows".
+Michael, 2026-11-14, in order: "more like Factorio, with height"; "futuristic space, more like Astroneer, rather than
+industrial raw gritty"; "MANY small details like dirt accumulating from use and explosions"; "all 2D sprites lit,
+normal mapped, 3D illusion of shadows"; Unfallen "exactly this - not art, how space and 2.5D is played"; "for the
+art ... what Mindustry did, I like its palette ... neither [Qwen art nor game renders], they aren't pixel art";
+"shrank Qwen is kinda the vibe"; "mix, let's try both, code drawn first".
 
-- **Read:** Factorio's projection and density of detail, **Astroneer's look**: rounded chunky shapes, clean
-  painted panels, white/light-grey bodies with bright accent colours (orange, teal, yellow) and soft forms. Worlds
-  carry the Garbage Country mood (warm haze, layered cliffs, foam on water). NOT raw/rusty/gritty industrial.
-- **Not retro pixel art.** Detailed rendered-looking sprites at **64 px per tile** (Factorio's HR density), shown
-  at 1x zoom = 32 px per tile and sharp up to 2x. No palette quantise, no 1 px outline (those were pixel-art rules).
-- **Projection:** top-down with a 3/4 tilt: roofs seen from above, a short south face visible.
-- **Everything is lit (D11).** Every sprite and tile is an albedo + **normal map** (+ emissive mask where it glows)
-  as a `CanvasTexture`. One `DirectionalLight2D` sun (angle and colour follow day/night), `PointLight2D` for
-  lamps, furnaces, muzzle flashes, explosions. Shadows: each building/unit casts a soft shadow sprite projected
-  along the sun direction from its height; cliffs cast onto lower ground the same way.
-- **Wear and small details (D12): the world shows what happened in it.** All runtime, all persistent in the save:
-  - grime on machines that grows with run time (shader blends a dirt mask by a per-building wear value);
-  - scorch marks, craters and debris from explosions on ground and buildings; bullet pocks on walls;
-  - ore spill and dust around drills, oil stains under machines, worn paths where the player and units walk,
-    tyre and landing-skid marks, footprints that fade;
-  - damage states (3 per building), sparks and smoke from damaged machines;
-  - dust settling on idle machines, cleaned when they run (or by a repair bot later).
-  Ground marks go into a per-chunk **decal layer** (a texture painted into, cheap and persistent); building wear is
-  per-building shader parameters.
+- **Art = pixel art in Mindustry's spirit:** 32 px per tile, hard pixels, 1 px dark outline on solid things, few
+  tones per ramp, light from the top-left baked into bevels, clean shapes, colour carries meaning. Our own palette
+  (`tools/codeart/kit.mjs` PAL), not Mindustry's. Shown at integer zoom (2x-4x), nearest filtering.
+- **Theme = futuristic space, Astroneer-ish shapes in pixel art:** rounded white/light-grey hull modules with
+  orange, teal and yellow accents on darker metal frames. Not rust and grime-first.
+- **Camera = Unfallen:** straight down, follows the player, no fixed tilt. **Perspective lean:** anything raised
+  (housings, towers, cliffs, trees, ships) has a ground layer and a raised layer; the raised layer shifts away from
+  the screen centre by its height (`(pos - camera) * height / CAM_H`), the gap filled as walls. Tall things feel
+  tall and the view feels like a real space. Proven in `scenes/dev/lean_test.tscn`.
+- **Lit (D11):** albedo + normal map (+ glow) per sprite. Code-drawn sprites write an exact height map, so their
+  normals are exact. Sun = DirectionalLight2D following day/night; lamps, furnaces, headlights, muzzle flashes =
+  PointLight2D. Sun shadows from height. **Night is dark** and light pools are what you see by (Unfallen).
+- **Wear and small details (D12):** baked grime clumps toward the bottom of parts (kit `grime`), plus runtime:
+  grime with run time, scorch and craters, ore spill, oil stains, worn paths, tracks, footprints, damage states,
+  dust on idle machines (per-chunk decal layer + per-building shader values, saved).
 
-### 6.2 Pipeline (tool: `tools/sprite_pipeline.py`)
+### 6.2 Production: a mix (D13)
 
-1. **Prompt** Qwen-Image 2.1 (`qwen-image` skill, `--rgba`) with a fixed style preamble + the object, at 1024 px.
-2. **Downscale** to 64 px per tile footprint (+ the south face height), area filter, premultiplied alpha.
-3. **Normal map** made by the tool: a bevel height from the alpha shape (distance to the edge) + fine detail from
-   the albedo's luminance, Sobel -> tangent-space normal. Optional per-sprite hand-painted height for key parts.
-   Emissive mask from bright saturated pixels (windows, lights, furnace mouths).
-4. **Shadow shape** from the alpha, projected in engine by the sun direction.
-5. **Moving parts** as separate sprites the engine animates (drill head spin, fans, pistons, belt scroll shader),
-   because image models cannot draw consistent animation frames.
-6. **Tiles:** Qwen draws a seamless top-down texture per ground type (+ its normal map via step 3); the tool builds
-   dual-grid transition sets (16 tiles per pair), plus lit cliff-face strips with strata per level.
-7. **Wear masks:** a dirt/scorch overlay per building made by the tool from the shape (edges and bottom get dirty
-   first), blended at runtime.
-8. **Effects:** pixelfx sheets (MIT, licence file in `art_src/licences/`), lit as unshaded additive where they glow.
-9. **Review:** every batch lands in a contact sheet for Michael; rejects are re-prompted.
-10. **Licence note:** Qwen-Image is research/non-commercial. Fine as long as Stellar TD stays non-commercial (D9).
+| What | Made by | Why |
+|---|---|---|
+| Machines, belts, pipes, turrets, units, ships, props, UI icons | **Code-drawn** (`tools/codeart`: pixelfx painter, MIT, + our kit; one shape -> albedo + height + glow) | crisp, consistent, exact normals, cheap to vary and recolour |
+| Ground, cliff faces, rocks, plants, big organic things | **Qwen** shrunk to the pixel grid and palette (`tools/sprite_pipeline.py`), or a pixel-art LoRA if one runs on Qwen-Image 2.1 | organic variety is where image models are good; "shrank Qwen is the vibe" |
+| Effects (explosions, sparks, smoke, fire, lightning) | **pixelfx** effects (MIT), recoloured to our palette | 244 ready, same method as our code-drawn sprites |
+
+Steps for a code-drawn sprite: write `art_src/codeart/<name>.mjs` -> `node tools/codeart/render.mjs` (layers:
+ground, raised, height, glow, preview sheet) -> `python tools/sprite_pipeline.py lit --height` (normal map) ->
+engine. Moving parts are separate sprites animated in engine. Every batch is reviewed on a contact sheet.
+
+Licence: pixelfx MIT (licence file kept in `tools/codeart/vendor/pixelfx/`). Qwen-Image is non-commercial (D9).
 
 ### 6.3 Asset list for P1 (first batch)
 
@@ -364,8 +357,8 @@ Defaults are what happens if you say "go".
 
 | # | Question | Default |
 |---|---|---|
-| D1 | Tile size | 64 px art per 1 m tile (Factorio HR), 1x zoom shows it at 32 px |
-| D2 | View | Top-down with 3/4 tilt (front faces), not pure top-down and not isometric |
+| D1 | Tile size | 32 px pixel art per 1 m tile, integer zoom 2x-4x (Mindustry) |
+| D2 | View | Straight down, follow camera, perspective lean on raised layers (Unfallen) |
 | D3 | Height range | 25 levels (-4..+20) for real mountains, ramps and natural slopes between, roofs for overhangs/caves, digging lowers by 1 |
 | D4 | World size | 1024^2 home, 512^2 moons, up to 2048^2 later |
 | D5 | Items on belts | Conveyors for items, pipes for fluids (Mindustry) |
@@ -374,5 +367,6 @@ Defaults are what happens if you say "go".
 | D8 | Player character | Small astronaut sprite, twin-stick aim, tools in two hands |
 | D9 | Art licence | Qwen assets accepted as non-commercial; revisit if the game is ever sold |
 | D11 | Lighting | Every sprite lit: albedo + normal map + emissive, sun + point lights, projected shadows (Michael 2026-11-14) |
-| D12 | Look | Futuristic space, Astroneer-like, with many small wear details (dirt from use, scorch, spills); not gritty industrial (Michael 2026-11-14) |
+| D12 | Look | Pixel art in Mindustry's spirit, futuristic Astroneer-ish shapes, many small wear details (Michael 2026-11-14) |
+| D13 | Art production | Mix: code-drawn (machines, units, props) + shrunk Qwen / pixel LoRA (terrain, organic) + pixelfx effects |
 | D10 | Branch strategy | `pivot/2d` branch, 3D master playable until P1 lands, `last-3d` tag |
