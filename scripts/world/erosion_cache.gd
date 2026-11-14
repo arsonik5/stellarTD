@@ -21,7 +21,7 @@ const DIR := "user://erosion_cache"
 ## a shader edit, a settings default, a new mask. Without it, a stale cache
 ## silently serves the old terrain and every measurement afterwards is of
 ## something that is no longer in the source.
-const FORMAT_VERSION := 15
+const FORMAT_VERSION := 14
 
 ## Layers in a cache entry, in write order. Height first so a truncated file
 ## still fails cleanly rather than loading masks against no terrain.
